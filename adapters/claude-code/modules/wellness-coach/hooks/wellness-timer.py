@@ -87,6 +87,23 @@ def is_vault_write(hook_input):
     return tool_name in ("Write", "Edit") and vault_path in file_path
 
 
+def is_wellness_prefs_access(hook_input):
+    """Check if the tool call targets wellness-preferences.json.
+
+    During strike, Claude needs to read/write the preferences file to credit
+    a break when the user says they're back. Blocking these creates a deadlock.
+    """
+    tool_name = hook_input.get("tool_name", "")
+    tool_input = hook_input.get("tool_input", {})
+    prefs_file = "wellness-preferences.json"
+
+    if tool_name in ("Read", "Write", "Edit"):
+        return prefs_file in tool_input.get("file_path", "")
+    if tool_name == "Bash":
+        return prefs_file in tool_input.get("command", "")
+    return False
+
+
 # ── Output helpers ─────────────────────────────────────────
 
 def emit_allow(message):
@@ -173,9 +190,21 @@ def main():
                  "snooze_count": f"{old_snooze} → 0"})
         sys.exit(0)
 
-    # Strike already active — block every tool call (except vault writes)
+    # Auto-detect breaks from activity monitoring — runs BEFORE strike check
+    # so a real break (screen off, system sleep) can clear a strike naturally.
+    auto_break = _detect_auto_break(prefs)
+
+    last_break = prefs.get("last_break_timestamp")
+    if auto_break and (not last_break or auto_break > last_break):
+        _credit_auto_break(prefs, auto_break, last_break, coach_name)
+        # Re-read prefs after crediting — strike may have been cleared
+        prefs = read_prefs() or prefs
+
+    # Strike already active — block most tool calls
     if prefs.get("strike_active"):
-        if is_vault_write(hook_input):
+        # Let through: vault writes, wellness prefs access (so user can say
+        # "I'm back" and have Claude credit the break)
+        if is_vault_write(hook_input) or is_wellness_prefs_access(hook_input):
             sys.exit(0)
 
         elapsed = minutes_since(prefs.get("last_break_timestamp"))
@@ -185,14 +214,6 @@ def main():
             f"On strike — {int(elapsed)} min without a break",
             center_block(box),
         )
-
-    # Auto-detect breaks from activity monitoring
-    auto_break = _detect_auto_break(prefs)
-
-    # Apply auto-detected break
-    last_break = prefs.get("last_break_timestamp")
-    if auto_break and (not last_break or auto_break > last_break):
-        _credit_auto_break(prefs, auto_break, last_break, coach_name)
 
     elapsed = minutes_since(prefs.get("last_break_timestamp"))
     level = determine_level(prefs, elapsed)
