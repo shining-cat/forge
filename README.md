@@ -167,4 +167,4 @@ Organization-specific tooling (private plugins, internal APIs, custom KB integra
 
 ## License
 
-MIT
+[GPL-3.0](LICENSE)
