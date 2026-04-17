@@ -6,25 +6,29 @@ input=$(cat)
 
 # Extract tool name and check if it requires approval
 tool_name=$(echo "$input" | jq -r '.tool_name // empty')
-tool_input=$(echo "$input" | jq -r '.tool_input // empty')
 
-# Tools that typically require approval (based on your settings.json "ask" list)
-# WebFetch, git commit, git push, gh pr create, curl, acli jira edit/transition/comment/create
 requires_approval=false
 
 if [[ "$tool_name" == "Bash" ]]; then
   command=$(echo "$input" | jq -r '.tool_input.command // empty')
 
-  # Check if command matches patterns in "ask" list
+  # Built-in patterns that typically require approval
   if [[ "$command" == git\ commit* ]] || \
      [[ "$command" == git\ push* ]] || \
      [[ "$command" == gh\ pr\ create* ]] || \
-     [[ "$command" == curl* ]] || \
-     [[ "$command" == acli\ jira\ workitem\ edit* ]] || \
-     [[ "$command" == acli\ jira\ workitem\ transition* ]] || \
-     [[ "$command" == acli\ jira\ workitem\ comment\ create* ]] || \
-     [[ "$command" == acli\ jira\ workitem\ create* ]]; then
+     [[ "$command" == curl* ]]; then
     requires_approval=true
+  fi
+
+  # Extra patterns from ~/.claude/approval-patterns.conf (one glob per line)
+  if [ "$requires_approval" = false ] && [ -f "$HOME/.claude/approval-patterns.conf" ]; then
+    while IFS= read -r pattern; do
+      [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+      if [[ "$command" == $pattern ]]; then
+        requires_approval=true
+        break
+      fi
+    done < "$HOME/.claude/approval-patterns.conf"
   fi
 elif [[ "$tool_name" == "WebFetch" ]]; then
   requires_approval=true

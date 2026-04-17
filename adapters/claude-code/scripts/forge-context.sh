@@ -315,12 +315,15 @@ do_recover() {
       echo ""
       echo "--- PRs ---"
       local repo pr_json
-      if echo "$remote" | grep -q "github.schibsted.io"; then
-        repo="$(echo "$remote" | sed 's|.*github.schibsted.io[:/]||;s|\.git$||')"
-        pr_json="$(GH_HOST=github.schibsted.io gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
-      else
-        repo="$(echo "$remote" | sed 's|.*github.com[:/]||;s|\.git$||')"
+      # Extract host and repo path from remote URL (supports github.com and GHE)
+      local gh_host repo
+      gh_host="$(echo "$remote" | sed -n 's|.*[/@]\([^:/]*\)[:/].*|\1|p')"
+      repo="$(echo "$remote" | sed "s|.*${gh_host}[:/]||;s|\.git$||")"
+
+      if [ "$gh_host" = "github.com" ] || [ -z "$gh_host" ]; then
         pr_json="$(gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
+      else
+        pr_json="$(GH_HOST="$gh_host" gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
       fi
       if [ -n "$pr_json" ] && [ "$pr_json" != "[]" ]; then
         echo "$pr_json" | python3 -c "
