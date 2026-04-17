@@ -1,10 +1,11 @@
 #!/bin/bash
 # Forge Installer — copies Forge components into ~/.claude/ and wires hooks/permissions
 #
-# Usage: ./install.sh [--vault-path PATH]
+# Usage: ./install.sh [--vault-path PATH] [--dry-run]
 #
 # Options:
 #   --vault-path PATH  Set vault location (default: ~/Vault)
+#   --dry-run          Show what would be done without changing anything
 #
 # Idempotent: safe to re-run after updates (git pull && ./install.sh)
 
@@ -26,10 +27,12 @@ hint()  { printf "${DIM}    %s${NC}\n" "$1"; }
 
 # ─── Parse arguments ─────────────────────────────────────────────────────────
 VAULT_PATH=""
+DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --vault-path) VAULT_PATH="$2"; shift 2 ;;
+    --dry-run) DRY_RUN=true; shift ;;
     -h|--help)
       sed -n '2,/^$/s/^# //p' "$0"
       exit 0
@@ -37,6 +40,15 @@ while [[ $# -gt 0 ]]; do
     *) fail "Unknown option: $1" ;;
   esac
 done
+
+# Dry-run helper: prints the command instead of running it
+run() {
+  if [ "$DRY_RUN" = true ]; then
+    printf "${DIM}    would run: %s${NC}\n" "$*"
+  else
+    "$@"
+  fi
+}
 
 # ─── Detect repo root ────────────────────────────────────────────────────────
 FORGE_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -46,6 +58,9 @@ if [ ! -d "$FORGE_ROOT/core" ] || [ ! -d "$FORGE_ROOT/adapters/claude-code" ]; t
 fi
 
 echo ""
+if [ "$DRY_RUN" = true ]; then
+  printf "${YELLOW}[forge] DRY RUN — no files will be modified${NC}\n"
+fi
 info "Installing Forge from $FORGE_ROOT"
 echo ""
 
@@ -126,10 +141,14 @@ fi
 
 if [ -z "$VAULT_PATH" ]; then
   VAULT_PATH="$HOME/Vault"
-  printf "${CYAN}[forge]${NC} Where should the vault live? [%s]: " "$VAULT_PATH"
-  read -r custom_path
-  if [ -n "$custom_path" ]; then
-    VAULT_PATH="${custom_path/#\~/$HOME}"
+  if [ "$DRY_RUN" = true ]; then
+    info "Would prompt for vault location (default: $VAULT_PATH)"
+  else
+    printf "${CYAN}[forge]${NC} Where should the vault live? [%s]: " "$VAULT_PATH"
+    read -r custom_path
+    if [ -n "$custom_path" ]; then
+      VAULT_PATH="${custom_path/#\~/$HOME}"
+    fi
   fi
 fi
 
@@ -137,26 +156,30 @@ fi
 VAULT_PATH="${VAULT_PATH/#\~/$HOME}"
 
 # Write forge.conf
-cat > "$CLAUDE_DIR/forge.conf" <<EOF
+if [ "$DRY_RUN" = true ]; then
+  ok "forge.conf would be written (vault: $VAULT_PATH)"
+else
+  cat > "$CLAUDE_DIR/forge.conf" <<EOF
 # Forge configuration — written by install.sh
 VAULT_PATH=$VAULT_PATH
 FORGE_REPO=$FORGE_ROOT
 ONBOARDING_COMPLETE=false
 WELLNESS_ENABLED=false
 EOF
-ok "forge.conf written (vault: $VAULT_PATH)"
+  ok "forge.conf written (vault: $VAULT_PATH)"
+fi
 
 # ─── Create vault structure ──────────────────────────────────────────────────
 echo ""
 info "Setting up vault..."
 
-mkdir -p "$VAULT_PATH/_shared/tasks/open" \
-         "$VAULT_PATH/_shared/tasks/resolved" \
-         "$VAULT_PATH/_shared/decisions" \
-         "$VAULT_PATH/_templates" \
-         "$VAULT_PATH/_meta"
+run mkdir -p "$VAULT_PATH/_shared/tasks/open" \
+             "$VAULT_PATH/_shared/tasks/resolved" \
+             "$VAULT_PATH/_shared/decisions" \
+             "$VAULT_PATH/_templates" \
+             "$VAULT_PATH/_meta"
 
-cp "$FORGE_ROOT/core/vault-templates/"* "$VAULT_PATH/_templates/"
+run cp "$FORGE_ROOT/core/vault-templates/"* "$VAULT_PATH/_templates/"
 ok "Vault structure at $VAULT_PATH"
 
 # ─── Copy skills ─────────────────────────────────────────────────────────────
@@ -168,16 +191,16 @@ info "Installing skills..."
 
 # Core skills
 for skill in forge forge-checkpoint forge-exit keeper refiner plan-reviewer; do
-  mkdir -p "$SKILLS_DIR/$skill"
-  cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
+  run mkdir -p "$SKILLS_DIR/$skill"
+  run cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
 ok "Core skills (forge, forge-checkpoint, forge-exit, keeper, refiner, plan-reviewer)"
 
 # Symlink core references into forge skill
-mkdir -p "$SKILLS_DIR/forge/references"
+run mkdir -p "$SKILLS_DIR/forge/references"
 for ref in lifecycle.md vocabulary.md wellness-awareness.md; do
-  rm -f "$SKILLS_DIR/forge/references/$ref"
-  ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
+  run rm -f "$SKILLS_DIR/forge/references/$ref"
+  run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
 done
 ok "References symlinked (updates with git pull)"
 
@@ -185,34 +208,34 @@ ok "References symlinked (updates with git pull)"
 WC_SRC="$ADAPTER/modules/wellness-coach"
 WC_DST="$SKILLS_DIR/wellness-coach"
 
-mkdir -p "$WC_DST/hooks" "$WC_DST/scripts" "$WC_DST/src"
-cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
-cp "$WC_SRC/README.md" "$WC_DST/"
-cp "$WC_SRC/hooks/"* "$WC_DST/hooks/"
-cp "$WC_SRC/scripts/"* "$WC_DST/scripts/"
-cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
-chmod +x "$WC_DST/scripts/"*.sh
+run mkdir -p "$WC_DST/hooks" "$WC_DST/scripts" "$WC_DST/src"
+run cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
+run cp "$WC_SRC/README.md" "$WC_DST/"
+run cp "$WC_SRC/hooks/"*.py "$WC_DST/hooks/"
+run cp "$WC_SRC/scripts/"* "$WC_DST/scripts/"
+run cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
+run chmod +x "$WC_DST/scripts/"*.sh
 ok "Wellness coach files (activation offered during first /forge session)"
 
 # ─── Copy hooks & scripts ────────────────────────────────────────────────────
 echo ""
 info "Installing hooks and scripts..."
 
-mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
+run mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
 
-cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
-cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
-cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
-cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
+run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
+run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
+run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
+run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
-chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
-         "$CLAUDE_DIR/hooks/approval-notifier.sh" \
-         "$CLAUDE_DIR/scripts/forge-context.sh" \
-         "$CLAUDE_DIR/statusline.sh"
+run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
+             "$CLAUDE_DIR/hooks/approval-notifier.sh" \
+             "$CLAUDE_DIR/scripts/forge-context.sh" \
+             "$CLAUDE_DIR/statusline.sh"
 
 # Patch vault path in scripts (replace placeholder with actual path)
-sed -i '' "s|{{VAULT_ABSOLUTE}}|$VAULT_PATH|g" "$CLAUDE_DIR/scripts/forge-context.sh"
-sed -i '' "s|{{VAULT_ABSOLUTE}}|$VAULT_PATH|g" "$CLAUDE_DIR/hooks/forge-compaction.sh"
+run sed -i '' "s|{{VAULT_ABSOLUTE}}|$VAULT_PATH|g" "$CLAUDE_DIR/scripts/forge-context.sh"
+run sed -i '' "s|{{VAULT_ABSOLUTE}}|$VAULT_PATH|g" "$CLAUDE_DIR/hooks/forge-compaction.sh"
 
 ok "Hooks and scripts installed"
 
@@ -221,11 +244,18 @@ echo ""
 info "Configuring settings.json..."
 
 if [ ! -f "$SETTINGS_FILE" ]; then
-  echo '{}' > "$SETTINGS_FILE"
+  if [ "$DRY_RUN" = true ]; then
+    ok "settings.json not found — would create empty"
+    SETTINGS='{}'
+  else
+    echo '{}' > "$SETTINGS_FILE"
+  fi
 fi
 
 # Backup
-cp "$SETTINGS_FILE" "$SETTINGS_FILE.forge-backup"
+if [ "$DRY_RUN" = false ]; then
+  cp "$SETTINGS_FILE" "$SETTINGS_FILE.forge-backup"
+fi
 
 # ── Permissions ──
 PERMS_TO_ADD=(
@@ -277,8 +307,15 @@ SETTINGS=$(echo "$SETTINGS" | jq '.statusLine = {type: "command", command: "~/.c
 ok "Statusline"
 
 # Write back
-echo "$SETTINGS" | jq '.' > "$SETTINGS_FILE"
-ok "settings.json updated (backup: settings.json.forge-backup)"
+if [ "$DRY_RUN" = true ]; then
+  # Show what would change
+  HOOKS_COUNT=$(echo "$SETTINGS" | jq '[.hooks | to_entries[] | .value[]] | length')
+  PERMS_COUNT=$(echo "$SETTINGS" | jq '[.permissions.allow // [] | .[]] | length')
+  ok "settings.json would be updated ($HOOKS_COUNT hook entries, $PERMS_COUNT permissions)"
+else
+  echo "$SETTINGS" | jq '.' > "$SETTINGS_FILE"
+  ok "settings.json updated (backup: settings.json.forge-backup)"
+fi
 
 # ─── Patch vault paths in SKILL.md files ──────────────────────────────────────
 VAULT_REL="${VAULT_PATH/#$HOME\//}"
@@ -286,17 +323,32 @@ VAULT_REL="${VAULT_PATH/#$HOME\//}"
 echo ""
 info "Patching vault paths in skills..."
 
-for skill_file in "$SKILLS_DIR"/*/SKILL.md; do
-  if grep -q '{{VAULT}}' "$skill_file" 2>/dev/null; then
-    sed -i '' "s|{{VAULT}}|$VAULT_REL|g" "$skill_file"
-  fi
-done
-ok "Vault paths set to $VAULT_REL"
+if [ "$DRY_RUN" = true ]; then
+  # Count how many files would be patched
+  PATCH_COUNT=0
+  for skill_file in "$ADAPTER"/skills/*/SKILL.md; do
+    if grep -q '{{VAULT}}' "$skill_file" 2>/dev/null; then
+      PATCH_COUNT=$((PATCH_COUNT + 1))
+    fi
+  done
+  ok "Would patch {{VAULT}} → $VAULT_REL in $PATCH_COUNT skill files"
+else
+  for skill_file in "$SKILLS_DIR"/*/SKILL.md; do
+    if grep -q '{{VAULT}}' "$skill_file" 2>/dev/null; then
+      sed -i '' "s|{{VAULT}}|$VAULT_REL|g" "$skill_file"
+    fi
+  done
+  ok "Vault paths set to $VAULT_REL"
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-printf "${GREEN}  Forge installed successfully.${NC}\n"
+if [ "$DRY_RUN" = true ]; then
+  printf "${YELLOW}  Dry run complete — no files were modified.${NC}\n"
+else
+  printf "${GREEN}  Forge installed successfully.${NC}\n"
+fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "  Core skills:   forge, forge-checkpoint, forge-exit,"
