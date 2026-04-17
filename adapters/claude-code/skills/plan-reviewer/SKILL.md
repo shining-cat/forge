@@ -17,6 +17,16 @@ Perform a checklist-based pass/fail review of the implementation plan. This is n
 
 Your job is to find problems. A plan that passes with no findings on the first try is suspicious — look harder. Every checklist item must be actively verified, not assumed.
 
+## Subagent Dispatch
+
+When dispatching Reviewer as a subagent via the Agent tool:
+
+- **Model:** `sonnet` — structured checklist review, sonnet handles it well
+- **Name:** `Forge-Reviewer`
+- **Background:** No — review must complete before execution begins
+
+Include in the prompt: full plan text, project CLAUDE.md rules, INDEX.md contents, and any relevant decision files. The subagent needs enough context to check each item.
+
 ## Checklist
 
 All items must pass:

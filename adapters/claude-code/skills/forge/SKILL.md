@@ -290,13 +290,26 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 **Proactive Keeper:** The Keeper skill is always active in Forge mode:
 - Log decisions when validated (not implicitly assumed)
 - Write checkpoints at natural pause points (task done, topic shift, before long operations)
+  - **Prefer background dispatch** for routine checkpoints: `Agent({ model: "sonnet", run_in_background: true })`. Include branch, completed items, in-progress, next steps, and vault paths in the prompt.
+  - **Use inline** when: user explicitly requested the checkpoint, session exit, or decision logging is needed
 - On every checkpoint write: silently reconcile PRs (step 3) and update checkpoint — no output to user
-- After context compression: immediately read `current-checkpoint.md` to reorient
+- After context compression: immediately read `current-checkpoint.md` to reorient (always inline)
 
 **Proactive Refiner:** The Refiner skill is always active. When the user corrects or redirects:
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
 
 **Subagent naming:** Prefix subagents with `Forge-`: `Forge-Keeper`, `Forge-Refiner`, `Forge-Reviewer`, `Forge-Impl`.
+
+**Model tuning:** When dispatching Forge subagents, use cost-appropriate models via the Agent tool's `model` parameter:
+
+| Role | Model | Background | Rationale |
+|------|-------|------------|-----------|
+| Forge-Keeper | `sonnet` | yes | Checkpoint writes, index updates — formulaic |
+| Forge-Refiner | `opus` | no | Root cause analysis needs deep reasoning |
+| Forge-Reviewer | `sonnet` | no | Structured checklist, must complete before execution |
+| Forge-Impl | (inherit) | yes | Uses whatever the session runs |
+
+Each role's SKILL.md has a "Subagent Dispatch" section with full details. Use subagent dispatch when the operation is self-contained (all context can be included in the prompt). Use inline when the operation needs conversation history.
 
 ## Session Exit
 

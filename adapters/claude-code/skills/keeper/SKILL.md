@@ -75,6 +75,31 @@ At natural checkpoints (task done, topic shift, before long ops, user request), 
 - Keep INDEX.md lean: one line per entry, under 50 active entries
 - Never bulk-read all decision files -- always go through INDEX.md first
 
+## Subagent Dispatch
+
+When dispatching Keeper as a subagent via the Agent tool:
+
+- **Model:** `sonnet` — checkpoint writes are formulaic, don't need opus
+- **Name:** `Forge-Keeper`
+- **Background:** Yes — checkpoint writes don't block user work
+
+The main session must include all necessary context in the prompt: current branch, completed items, in-progress work, next steps, vault paths. The subagent has no conversation history.
+
+Example:
+```
+Agent({
+  description: "Forge-Keeper checkpoint",
+  model: "sonnet",
+  run_in_background: true,
+  prompt: "Write a checkpoint to {vault_path}/current-checkpoint.md. ..."
+})
+```
+
+Use inline (no subagent) when:
+- The checkpoint is the primary action (user requested, session exit)
+- Decision logging is needed (requires conversation context to identify what was decided)
+- After context compression (must reorient the main session)
+
 ## Active Reminders
 
 The Keeper is not passive. Actively prompt when:

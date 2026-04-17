@@ -57,6 +57,16 @@ Append to `{{VAULT}}/_shared/friction-log.md`:
 - If rules/skills/vault structure changed: update `{{VAULT}}/_meta/BLUEPRINT.md` to reflect current state
 - Add a line to `{{VAULT}}/_meta/CHANGELOG.md`
 
+## Subagent Dispatch
+
+When dispatching Refiner as a subagent via the Agent tool:
+
+- **Model:** `opus` — root cause analysis needs deep reasoning
+- **Name:** `Forge-Refiner`
+- **Background:** No — friction analysis should complete before continuing
+
+Refiner rarely benefits from subagent dispatch. It needs conversation context (what went wrong, what the user said, what Claude did) to identify root causes. Prefer inline execution.
+
 **Critical rules:**
 - NEVER modify rules, skills, or CLAUDE.md without explicit user approval
 - Present the proposed fix clearly: show what will change, where, and why
