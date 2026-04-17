@@ -104,12 +104,15 @@ Preferences stored at `~/.claude/wellness-preferences.json`. Editable directly o
 ## Files
 
 ```
-plugins/wellness-coach/
-├── .claude-plugin/plugin.json    — plugin metadata
+wellness-coach/
 ├── hooks/
-│   ├── hooks.json                — PreToolUse hook registration
+│   ├── wellness-timer.py         — main hook (timer, escalation, strike)
+│   ├── wellness-precompact.py    — break suggestions during compaction
 │   ├── preferences.py            — shared preferences module
-│   └── wellness-timer.py         — main hook (timer, escalation, strike)
+│   ├── activity_log.py           — timestamped activity logging
+│   ├── formatting.py             — box rendering and terminal centering
+│   ├── context.py                — weather, calendar, energy enrichment
+│   └── personas.py               — persona message templates
 ├── skills/wellness-coach/
 │   └── SKILL.md                  — onboarding, suggestions, personas
 ├── scripts/
@@ -117,7 +120,8 @@ plugins/wellness-coach/
 │   ├── weather.sh                — wttr.in weather helper
 │   ├── idle-sampler.py           — background screen state sampler (Tier 2)
 │   ├── install-monitor.sh        — Tier 2 install
-│   └── uninstall-monitor.sh      — Tier 2 uninstall
+│   ├── uninstall-monitor.sh      — Tier 2 uninstall
+│   └── wellness-reset.sh         — manual strike reset
 ├── src/
 │   └── screen_state.c            — CoreGraphics display + lock checker
 └── README.md

@@ -21,7 +21,7 @@ def get_persona_messages(prefs, level, elapsed_min):
     escape = [
         "",
         f"Talk to {coach_name} or run:",
-        "! ~/.claude/vigor-reset.sh",
+        "! ~/.claude/wellness-reset.sh",
     ]
 
     if persona == "professional":

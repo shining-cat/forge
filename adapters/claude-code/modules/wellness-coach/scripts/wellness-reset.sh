@@ -1,6 +1,6 @@
 #!/bin/bash
 # Manual strike reset for wellness coach.
-# Usage: ! ~/.claude/vigor-reset.sh
+# Usage: ! ~/.claude/wellness-reset.sh
 
 PREFS_FILE="$HOME/.claude/wellness-preferences.json"
 
