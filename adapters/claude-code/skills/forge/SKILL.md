@@ -300,20 +300,32 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 
 **Subagent naming:** Prefix subagents with `Forge-`: `Forge-Keeper`, `Forge-Refiner`, `Forge-Reviewer`, `Forge-Impl`.
 
-**Model tuning:** When dispatching Forge subagents, use cost-appropriate models via the Agent tool's `model` parameter:
+**Model tuning:** Role-to-model assignments are configured in `~/.claude/forge.conf` under `MODEL_*` keys. Read them at session start. Empty value means "inherit from session model".
 
-| Role | Model | Background | Rationale |
-|------|-------|------------|-----------|
-| Forge-Keeper | `sonnet` | yes | Checkpoint writes, index updates — formulaic |
-| Forge-Refiner | `opus` | no | Root cause analysis needs deep reasoning |
-| Forge-Reviewer | `sonnet` | no | Structured checklist, must complete before execution |
-| Forge-Impl | (inherit) | yes | Implementation — uses whatever the session runs |
-| Forge-Architect | `opus` | no | Design and tradeoff analysis needs deep reasoning |
-| Forge-Debugger | `opus` | no | Systematic root cause analysis needs deep reasoning |
-| Forge-Release | `sonnet` | no | Verification, commits, PRs — mechanical |
-| Forge-Toolsmith | `opus` | no | Skill authoring needs creativity and precision |
+Defaults (written by install.sh):
+
+| Key | Default | Role | Background |
+|-----|---------|------|------------|
+| `MODEL_KEEPER` | `sonnet` | Checkpoint writes, index updates | yes |
+| `MODEL_REFINER` | `opus` | Root cause analysis | no |
+| `MODEL_REVIEWER` | `sonnet` | Structured checklist review | no |
+| `MODEL_IMPL` | (inherit) | Implementation | yes |
+| `MODEL_ARCHITECT` | `opus` | Design and tradeoff analysis | no |
+| `MODEL_DEBUGGER` | `opus` | Systematic diagnosis | no |
+| `MODEL_RELEASE` | `sonnet` | Verification, commits, PRs | no |
+| `MODEL_TOOLSMITH` | `opus` | Skill authoring | no |
+
+When dispatching a subagent for a role, read the model from forge.conf:
+```bash
+grep '^MODEL_KEEPER=' ~/.claude/forge.conf | cut -d= -f2
+```
+Then pass it to the Agent tool: `Agent({ model: "{value}", ... })`. If the value is empty, omit the `model` parameter (inherits from session).
 
 Each role's SKILL.md has a "Subagent Dispatch" section with full details. Use subagent dispatch when the operation is self-contained (all context can be included in the prompt). Use inline when the operation needs conversation history.
+
+**Conversational model assignment:** The user can view or change role models at any time:
+- "show model assignments" / "which models are the roles using" → read forge.conf, display the table with current values
+- "set Keeper model to haiku" / "change Reviewer to opus" → update the `MODEL_*` key in forge.conf, confirm the change
 
 ## Session Exit
 

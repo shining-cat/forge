@@ -165,6 +165,17 @@ VAULT_PATH=$VAULT_PATH
 FORGE_REPO=$FORGE_ROOT
 ONBOARDING_COMPLETE=false
 WELLNESS_ENABLED=false
+
+# Model assignments per role — valid values: opus, sonnet, haiku
+# Empty value = inherit from session model
+MODEL_KEEPER=sonnet
+MODEL_REFINER=opus
+MODEL_REVIEWER=sonnet
+MODEL_IMPL=
+MODEL_ARCHITECT=opus
+MODEL_DEBUGGER=opus
+MODEL_RELEASE=sonnet
+MODEL_TOOLSMITH=opus
 EOF
   ok "forge.conf written (vault: $VAULT_PATH)"
 fi
