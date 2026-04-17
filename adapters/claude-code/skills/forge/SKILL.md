@@ -146,7 +146,27 @@ The vault root was created by the install script. Now set up the project structu
    (none yet)
    ```
 
-**d) Complete onboarding**
+**d) First work folder**
+
+After scaffolding the vault, invite the user to confirm or point to their main work folder:
+
+> Petra: The vault's set up. Now — where does the real work live?
+>
+> I've detected you're in `{current_directory}`. If that's your project, we're good. Otherwise, point me to the folder you want to track — e.g., `~/projects/my-app`.
+>
+> You can add more projects anytime by saying "add project" from inside the folder.
+
+If the user provides a different path, re-run step (c) with that path as the project root.
+
+Then, if only one project/environment exists in the vault so far, gently recommend the multi-environment pattern:
+
+> Petra: One tip for the road — if you work across different contexts (personal projects, work repos, client work), it helps to split them into separate environments. Each gets its own git identity, vault section, and project rules. Keeps things clean.
+>
+> No need to set that up now — just say "add environment" when you're ready.
+
+This is a recommendation, not a requirement. Don't push if the user dismisses it.
+
+**e) Complete onboarding**
 
 Update `~/.claude/forge.conf`: set `ONBOARDING_COMPLETE=true`
 
