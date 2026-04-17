@@ -10,6 +10,7 @@ Output JSON to stdout (PreCompact hookSpecificOutput format):
 """
 import json
 import os
+import subprocess
 import sys
 
 # Add plugin directory to path for preferences module
@@ -49,6 +50,15 @@ def main():
     else:
         # Break isn't due — just suggest a micro-break
         msg = _micro_message(coach_name, persona, minutes_until_break)
+
+    # OS notification — systemMessage may get swallowed by the compaction UI
+    scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    notify_script = os.path.join(scripts_dir, "notify.sh")
+    if os.path.exists(notify_script):
+        try:
+            subprocess.run([notify_script, coach_name, msg], capture_output=True, timeout=5)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
 
     output = {"systemMessage": msg}
     print(json.dumps(output))
