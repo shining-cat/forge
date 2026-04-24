@@ -2,6 +2,18 @@
 
 Session orchestration layer for AI-assisted development. Keeps a knowledge vault, runs agent roles, and gives you a consistent workflow across sessions.
 
+## Why Forge
+
+Most multi-agent setups quietly turn the human into a router. You open parallel windows because it feels like leverage — but each window is another tab to read, another thread to merge, another mental context to hold. The agents work in parallel; you don't. You sequence yourself across them, paying a context-switch tax on every glance.
+
+That tax is real. Each switch drops one mental model and loads another. The orchestration work — deciding what each agent should do next, reconciling what they produced, keeping the bigger picture coherent — falls on you. The more agents, the more orchestration, the less time spent actually thinking about the problem.
+
+Forge inverts that. One conversation, one point of contact, one orchestrator (Petra) who dispatches subagents internally and reports back. You state intent, review results, make decisions. Routing, dispatch, context-sharing, and reconciliation happen behind the scenes. Your job is to think; Forge's job is to manage the team.
+
+Focus doesn't mean tunnel vision. Forge holds all your projects in one vault, so when a side-thought strikes mid-task — an idea for another project, a question to chase later — you log it in seconds and keep going. You don't lose the spark to the discipline of staying focused, and you don't break focus to chase the spark.
+
+This isn't about being faster than parallel agents. It's about being quieter. If you've found yourself flipping between three terminal panes to figure out what your agents actually did, Forge is for you. The leverage is in keeping your attention on the work, not on the routing.
+
 ## What it does
 
 - **Vault** — persistent knowledge store: decisions, checkpoints, friction log, brain dumps. Plain markdown files, browsable in Obsidian or any editor.
@@ -30,6 +42,14 @@ forge/
 **Core** defines what Forge is — vault structure, role definitions, reference docs. Agent-agnostic.
 
 **Adapters** wire Forge into a specific AI tool. Currently Claude Code only. Adding support for another tool means writing a new adapter, not changing the core.
+
+For the full breakdown of components, dependencies, and how the pieces fit together, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, philosophy, where things live, agent roles overview
+- [docs/ROLES.md](docs/ROLES.md) — per-role specifications (Petra, Keeper, Refiner, Reviewer, Architect, Builder, Debugger, Release Manager, Toolsmith)
+- [docs/PROJECT-STRUCTURE.md](docs/PROJECT-STRUCTURE.md) — how to lay out a vault project (INDEX vs checkpoint, on-demand folders, repo-docs symlinks)
 
 ## Requirements
 
