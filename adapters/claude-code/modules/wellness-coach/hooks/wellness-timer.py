@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse hook for wellness-coach plugin.
+PreToolUse hook for wellness-coach Forge module.
 Runs before every tool call. Checks elapsed time since last break.
 
 Exit codes:

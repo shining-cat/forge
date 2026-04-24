@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Shared preferences module for wellness-coach plugin.
+Shared preferences module for wellness-coach Forge module.
 Reads/writes ~/.claude/wellness-preferences.json with basic file coordination.
 """
 import fcntl

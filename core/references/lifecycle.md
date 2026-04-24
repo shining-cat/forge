@@ -8,7 +8,7 @@
 - Adapt over time if the pattern shifts
 
 **Entering wrap-up:**
-- If the wellness-coach plugin is installed, reset the break timer to buy quiet time for wind-down. Run `date +"%Y-%m-%dT%H:%M:%S"` and set `last_break_timestamp` in `~/.claude/wellness-preferences.json` to that value. This is not a real break — it just silences reminders during wrap-up.
+- If the wellness-coach module is enabled, reset the break timer to buy quiet time for wind-down. Run `date +"%Y-%m-%dT%H:%M:%S"` and set `last_break_timestamp` in `~/.claude/wellness-preferences.json` to that value. This is not a real break — it just silences reminders during wrap-up.
 
 **Wrap-up flow (light):**
 - Checkpoint the day's work

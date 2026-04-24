@@ -1,6 +1,6 @@
 # Wellness Coach Awareness (optional)
 
-The wellness-coach is an optional third-party plugin, not part of Forge. If installed, Forge can read its state to plan work around break timing. If not installed, skip this entirely.
+The wellness-coach is an optional Forge module — bundled with Forge but disabled unless the user opts in during onboarding. If enabled, Forge can read its state to plan work around break timing. If not enabled (or files removed), skip this entirely.
 
 **Boundary:** Petra reads wellness state, the wellness coach knows nothing about Forge. Two separate authorities, no hierarchy. Petra never duplicates or overrides the coach's reminders.
 

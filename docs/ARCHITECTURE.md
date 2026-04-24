@@ -22,7 +22,7 @@ The forge is assembled from Claude Code building blocks:
 | `keeper` | Skill | Decision logging, checkpoints, scope monitoring, INDEX maintenance |
 | `refiner` | Skill | Friction detection, root cause analysis, rule proposals |
 | `plan-reviewer` | Skill | Checklist-based plan validation |
-| `wellness-coach` | Skill + Plugin | Break reminders, escalation, strike enforcement (optional) |
+| `wellness-coach` | Forge module (skill + hooks + scripts) | Break reminders, escalation, strike enforcement (optional, opt-in) |
 | `wellness-timer.py` | Hook (PreToolUse) | Runtime break timer — injects reminders, blocks tools on strike |
 | `approval-notifier.sh` | Hook (PreToolUse) | Notification on tool approval prompts |
 | `forge-compaction.sh` | Hook (PreCompact + PostCompact) | Warns if checkpoint stale (PreCompact), reminds to reload Forge after (PostCompact) |
@@ -37,7 +37,7 @@ The forge is assembled from Claude Code building blocks:
 | `~/.claude/skills/{name}/SKILL.md` | Skill definitions (forge, forge-checkpoint, forge-exit, keeper, plan-reviewer, refiner, wellness-coach) |
 | `~/.claude/skills/forge/references/` | Forge skill references (vocabulary.md, lifecycle.md, wellness-awareness.md) — loaded on-demand from main SKILL.md |
 | `~/.claude/hooks/` | Hook scripts (approval-notifier.sh, forge-compaction.sh, forge-checkpoint-nudge.sh) |
-| `~/.claude/plugins/marketplaces/{marketplace}/plugins/wellness-coach/` | Wellness coach plugin (hook, scripts, preferences module) |
+| `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
 | `~/.claude/wellness-preferences.json` | Wellness coach runtime state |
 | `~/.claude/forge-active` | Marker file (contains project name, empty when deactivated) |
@@ -52,7 +52,7 @@ Skills reference capabilities from these marketplaces:
 |-------------|--------------------------|
 | `superpowers-marketplace` | brainstorming, writing-plans, systematic-debugging, writing-skills, finishing-a-development-branch, verification-before-completion, executing-plans, test-driven-development, subagent-driven-development, dispatching-parallel-agents, requesting-code-review, receiving-code-review, using-git-worktrees |
 | `claude-plugins-official` | code-review (code-simplifier, code-reviewer), commit-commands (commit, commit-push-pr), pr-review-toolkit (review-pr, silent-failure-hunter, type-design-analyzer, pr-test-analyzer, comment-analyzer) |
-| Optional / org-specific | wellness-coach (hook + scripts), google-workspace, jira, developer-documentation |
+| Optional / org-specific | google-workspace, jira, developer-documentation (private marketplaces — not bundled with Forge) |
 
 ## Vault Structure
 
@@ -109,10 +109,11 @@ Defined in `~/.claude/skills/forge/SKILL.md`. Persona inspired by Petra Forgewom
 
 ## Wellness Coach
 
-Optional companion. Separate authority from Petra — one-way dependency (Petra reads wellness state, wellness knows nothing about Forge).
+Optional Forge module — bundled with Forge but disabled unless the user opts in during onboarding. Separate authority from Petra: one-way dependency (Petra reads wellness state, wellness knows nothing about Forge).
 
 - **Skill:** `wellness-coach` — onboarding, break handling, persona, conversational queries
-- **Plugin module:** hook (`wellness-timer.py`), scripts (weather, activity monitor install)
+- **Hooks:** `wellness-timer.py` (PreToolUse — break timer, escalation, strike), `wellness-precompact.py` (PreCompact — break suggestion during compaction)
+- **Scripts:** weather lookup, activity monitor install/uninstall, idle sampler
 - **Runtime state:** `~/.claude/wellness-preferences.json`
 
 Petra uses wellness state for break-aware work planning (steer away from deep work near interruptions) and end-of-day wrap-up (quiet time via timestamp reset).

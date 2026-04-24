@@ -1,6 +1,6 @@
 # Wellness Coach
 
-A context-aware wellness coaching plugin for Claude Code that helps users take better breaks. Unlike blind timers, it uses work context (task boundaries, calendar, weather) and personal knowledge to suggest breaks at the right moments, in the right tone, with escalation up to refusing to work.
+A context-aware wellness coaching module for Claude Code, bundled with Forge as an optional opt-in. Unlike blind timers, it uses work context (task boundaries, calendar, weather) and personal knowledge to suggest breaks at the right moments, in the right tone, with escalation up to refusing to work.
 
 ## Features
 

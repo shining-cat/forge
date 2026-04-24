@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Idle sampler for wellness-coach plugin (Tier 2).
+Idle sampler for wellness-coach Forge module (Tier 2).
 Runs via launchd every 60 seconds. Checks screen state and writes to idle log.
 
 The log is a JSON array of samples, pruned to the last 2 hours.

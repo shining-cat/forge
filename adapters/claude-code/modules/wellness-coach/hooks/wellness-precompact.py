@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreCompact hook for wellness-coach plugin.
+PreCompact hook for wellness-coach Forge module.
 Suggests a break during compaction idle time. Never blocks compaction.
 
 Output JSON to stdout (PreCompact hookSpecificOutput format):
