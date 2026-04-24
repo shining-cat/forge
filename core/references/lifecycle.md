@@ -46,9 +46,10 @@
 
 ## Spec-Runtime Sync Rule
 
-When modifying any forge component (skills, hooks, roles, vault structure), the change **must** be reflected in the corresponding `Forge/` specification file in the same action. The specification describes what the forge IS — if it drifts from what the forge DOES, it becomes misleading.
+When modifying any forge component (skills, hooks, roles, vault structure), the change **must** be reflected in the corresponding `docs/` file in the Forge repo, in the same action. The repo docs describe what the forge IS — if they drift from what the forge DOES, they become misleading for users.
 
-- Changed the output format? Update `Forge/BLUEPRINT.md` and `Forge/roles/forge-master.md`.
-- Added a role? Update `Forge/BLUEPRINT.md` role table and create `Forge/roles/{role}.md`.
-- Changed vault structure? Update `Forge/PROJECT-STRUCTURE.md` and `Forge/BLUEPRINT.md` vault section.
-- Changed a role's behavior? Update its `Forge/roles/{role}.md`.
+- Changed the output format or session lifecycle? Update `docs/ARCHITECTURE.md`.
+- Added or modified a role? Update `docs/ROLES.md` and the role table in `docs/ARCHITECTURE.md`.
+- Changed vault structure conventions? Update `docs/PROJECT-STRUCTURE.md` and `docs/ARCHITECTURE.md` vault section.
+- Changed install behaviour? Update README install section.
+- Changed Petra's persona or vocabulary? Update `docs/ARCHITECTURE.md` Petra section and `core/references/vocabulary.md`.

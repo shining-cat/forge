@@ -40,14 +40,10 @@ You MUST complete all steps in order:
 
 ### 0. First-Run Onboarding
 
-Check if onboarding has been completed:
+Check if onboarding has been completed by reading `~/.claude/forge.conf` with the Read tool (not Bash — avoids a visible grep on every session start).
 
-```bash
-grep '^ONBOARDING_COMPLETE=' ~/.claude/forge.conf 2>/dev/null
-```
-
-- If `ONBOARDING_COMPLETE=true` → skip to step 1
-- If `ONBOARDING_COMPLETE=false` or file not found → run onboarding below
+- If the file contains `ONBOARDING_COMPLETE=true` → skip to step 1
+- If `ONBOARDING_COMPLETE=false` or the key is missing → run onboarding below
 
 **If `~/.claude/forge.conf` doesn't exist at all**, the install script hasn't been run. Tell the user:
 > "Forge needs to be installed first. Clone the repo and run `./install.sh` — see the README for details."
@@ -86,10 +82,15 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
 
 **If yes:**
 1. Read `~/.claude/settings.json`
-2. Add these permissions if not present:
-   - `Write(*/.claude/wellness-preferences.json)`
-   - `Edit(*/.claude/wellness-preferences.json)`
-   - `Bash(*skills/wellness-coach/scripts/*)`
+2. Add these permissions if not present. Important syntax notes:
+   - **Single `*` does not cross `/`** — use the literal absolute path for multi-segment matches, not `*/.claude/...`
+   - **Leading `*` in `Bash(...)` is literal**, not a wildcard — use proper `prefix*` form
+   - **Tilde `~` expansion is unverified** for permission rules — add both tilde and absolute forms as belt-and-braces
+
+   Patterns to add (substituting the user's actual home directory):
+   - `Write(<HOME>/.claude/wellness-preferences.json)` and `Edit(<HOME>/.claude/wellness-preferences.json)`
+   - `Bash(~/.claude/skills/wellness-coach/scripts/*)` and `Bash(<HOME>/.claude/skills/wellness-coach/scripts/*)`
+   - Where `<HOME>` is the user's actual home directory (e.g. `/Users/shiva.bernhard@m10s.io`)
 3. Add these hooks if not present:
    - PreToolUse: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5)
    - PreCompact: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-precompact.py` (timeout: 5)
@@ -183,6 +184,11 @@ Read `~/.claude/forge.conf` to get `VAULT_PATH`. Check which project directories
 Once the project is known, write the forge-active marker so compaction hooks can detect Forge state.
 Use the Write tool to create/overwrite `~/.claude/forge-active` with the project name (e.g. `FINN`). Do NOT use Bash echo — it triggers a sensitive-path permission prompt.
 
+**Marker convention** (used by `forge-context.sh`, `forge-compaction.sh`, `statusline.sh`):
+- File contains a project name → Forge active for that project
+- File exists but is empty / whitespace-only → Forge deactivated (set by `/forge-exit`)
+- File missing → Forge has never been activated on this machine
+
 ### 2. Load Vault Context
 
 Run the recovery script to get a structured summary of the project state:
@@ -196,7 +202,7 @@ This replaces manually reading checkpoint, braindump, and breadcrumbs. The scrip
 Still read separately (cross-project context not covered by recovery). Read `VAULT_PATH` from `~/.claude/forge.conf` for the vault root:
 
 1. `{VAULT_PATH}/_shared/OVERVIEW.md` — cross-project awareness (all projects, forge work, punctual tasks)
-2. `{VAULT_PATH}/_shared/current-checkpoint.md` — last known state of forge-level work (only if project != Forge)
+2. `{VAULT_PATH}/_shared/current-checkpoint.md` — last known state of cross-project work (only if project != Forge — when project = Forge/forge, the project's own checkpoint at `{VAULT_PATH}/PERSO/forge/current-checkpoint.md` is used instead, picked up automatically by the recovery script via the routing in step 1)
 3. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
 4. `{VAULT_PATH}/_shared/friction-log.md` — recent friction events (last 5 entries only)
 

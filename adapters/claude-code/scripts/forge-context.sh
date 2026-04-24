@@ -7,7 +7,7 @@ set -euo pipefail
 
 HOME_DIR="$HOME"
 MARKER="$HOME_DIR/.claude/forge-active"
-VAULT_BASE="{{VAULT_ABSOLUTE}}"  # Patched by install.sh
+VAULT_BASE="$HOME_DIR/__DEV/Vault"
 
 # ── Read stdin once, store for all subcommands ──────────────────────────
 STDIN_JSON=""
@@ -21,52 +21,39 @@ if [ ! -f "$MARKER" ]; then
 fi
 
 # ── Determine project name and paths ────────────────────────────────────
-PROJECT_NAME="$(head -1 "$MARKER" | tr -d '[:space:]')"
+PROJECT_NAME="$(head -1 "$MARKER" 2>/dev/null | tr -d '[:space:]')"
+
+# Empty marker = Forge deactivated (exit wrote empty file)
+if [ -z "$PROJECT_NAME" ]; then
+  exit 0
+fi
 
 get_vault_dir() {
   case "$1" in
-    Forge)
-      echo "$VAULT_BASE/_shared"
+    FINN|DBA|TORI|BLOCKET)
+      echo "$VAULT_BASE/SCHIBSTED/$1"
+      ;;
+    Forge|forge)
+      echo "$VAULT_BASE/PERSO/forge"
       ;;
     *)
-      # Check for project directly under vault, then scan ENV subdirectories
-      if [ -d "$VAULT_BASE/$1" ]; then
-        echo "$VAULT_BASE/$1"
-      else
-        # Scan for {ENV}/{PROJECT} structure
-        for env_dir in "$VAULT_BASE"/*/; do
-          if [ -d "${env_dir}$1" ]; then
-            echo "${env_dir}$1"
-            return
-          fi
-        done
-        # Fallback: create directly under vault
-        echo "$VAULT_BASE/$1"
-      fi
+      echo "$VAULT_BASE/PERSO/$1"
       ;;
   esac
 }
 
 get_project_dir() {
-  # Read project working directory from forge.conf if available
-  local conf="$HOME_DIR/.claude/forge.conf"
-  local project_dir=""
-
-  if [ "$1" = "Forge" ]; then
-    echo ""
-    return
-  fi
-
-  # Check forge-active for a stored project path (line 2, if present)
-  if [ -f "$MARKER" ] && [ "$(wc -l < "$MARKER" | tr -d ' ')" -ge 2 ]; then
-    project_dir="$(sed -n '2p' "$MARKER")"
-    if [ -n "$project_dir" ] && [ -d "$project_dir" ]; then
-      echo "$project_dir"
-      return
-    fi
-  fi
-
-  echo ""
+  case "$1" in
+    FINN|DBA|TORI|BLOCKET)
+      echo "$HOME_DIR/__DEV/SCHIBSTED/$1"
+      ;;
+    Forge)
+      echo ""
+      ;;
+    *)
+      echo "$HOME_DIR/__DEV/PERSO/$1"
+      ;;
+  esac
 }
 
 VAULT_DIR="$(get_vault_dir "$PROJECT_NAME")"
@@ -315,15 +302,12 @@ do_recover() {
       echo ""
       echo "--- PRs ---"
       local repo pr_json
-      # Extract host and repo path from remote URL (supports github.com and GHE)
-      local gh_host repo
-      gh_host="$(echo "$remote" | sed -n 's|.*[/@]\([^:/]*\)[:/].*|\1|p')"
-      repo="$(echo "$remote" | sed "s|.*${gh_host}[:/]||;s|\.git$||")"
-
-      if [ "$gh_host" = "github.com" ] || [ -z "$gh_host" ]; then
-        pr_json="$(gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
+      if echo "$remote" | grep -q "github.schibsted.io"; then
+        repo="$(echo "$remote" | sed 's|.*github.schibsted.io[:/]||;s|\.git$||')"
+        pr_json="$(GH_HOST=github.schibsted.io gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
       else
-        pr_json="$(GH_HOST="$gh_host" gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
+        repo="$(echo "$remote" | sed 's|.*github.com[:/]||;s|\.git$||')"
+        pr_json="$(GH_HOST=github.com gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
       fi
       if [ -n "$pr_json" ] && [ "$pr_json" != "[]" ]; then
         echo "$pr_json" | python3 -c "

@@ -14,29 +14,30 @@ if [ ! -f "$MARKER" ]; then
   exit 0
 fi
 
-PROJECT=$(cat "$MARKER" 2>/dev/null)
+PROJECT=$(head -1 "$MARKER" 2>/dev/null | tr -d '[:space:]')
+
+# Empty marker = Forge deactivated (exit wrote empty file) — nothing to do
+if [ -z "$PROJECT" ]; then
+  exit 0
+fi
 
 if [ "$PHASE" = "pre" ]; then
   # Check checkpoint staleness — warn but don't block
   # PreCompact fires when context is nearly full, so requiring Claude actions here creates deadlock
-  CHECKPOINT_DIR="{{VAULT_ABSOLUTE}}"  # Patched by install.sh
+  CHECKPOINT_DIR="$HOME/__DEV/Vault"
 
   # Determine which checkpoint file to check based on project
-  if [ "$PROJECT" = "Forge" ]; then
-    CHECKPOINT_FILE="$CHECKPOINT_DIR/_shared/current-checkpoint.md"
-  elif [ -d "$CHECKPOINT_DIR/$PROJECT" ]; then
-    CHECKPOINT_FILE="$CHECKPOINT_DIR/$PROJECT/current-checkpoint.md"
-  else
-    # Scan for {ENV}/{PROJECT} structure
-    CHECKPOINT_FILE=""
-    for env_dir in "$CHECKPOINT_DIR"/*/; do
-      if [ -d "${env_dir}$PROJECT" ]; then
-        CHECKPOINT_FILE="${env_dir}$PROJECT/current-checkpoint.md"
-        break
-      fi
-    done
-    [ -z "$CHECKPOINT_FILE" ] && CHECKPOINT_FILE="$CHECKPOINT_DIR/$PROJECT/current-checkpoint.md"
-  fi
+  case "$PROJECT" in
+    FINN|DBA|TORI|BLOCKET)
+      CHECKPOINT_FILE="$CHECKPOINT_DIR/SCHIBSTED/$PROJECT/current-checkpoint.md"
+      ;;
+    Forge|forge)
+      CHECKPOINT_FILE="$CHECKPOINT_DIR/PERSO/forge/current-checkpoint.md"
+      ;;
+    *)
+      CHECKPOINT_FILE="$CHECKPOINT_DIR/PERSO/$PROJECT/current-checkpoint.md"
+      ;;
+  esac
 
   NEEDS_WARNING=false
   if [ -f "$CHECKPOINT_FILE" ]; then
