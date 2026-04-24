@@ -145,7 +145,9 @@ Confirm in the chosen persona tone.
 
 ## Break Reminders
 
-The hook (`wellness-timer.py`) injects messages into the conversation when thresholds are reached. When you see a hook-injected wellness message:
+The hook (`wellness-timer.py`) injects messages into the conversation when thresholds are reached. **This is the only moment where context-rich suggestions belong** — the user hasn't decided what to do yet, so a weather note or "you haven't been outside in 4 days" can actually shape the break. After the user has acknowledged taking a break, suggestions become noise (see Break Acknowledgment).
+
+When you see a hook-injected wellness message:
 
 1. **Read preferences** to know persona, settings, personal notes
 2. **Enrich with context** (if enabled):
@@ -173,11 +175,15 @@ LLMs do not have reliable clocks. **Never estimate or guess the time.** Always r
 - Append to `break_history`: `{"timestamp": "<result>", "type": "real"}`
 - Respond in persona tone, e.g., "Enjoy your break!" / "Good call, see you soon!"
 
+**CRITICAL — no suggestions at acknowledgment:**
+The credit + brief send-off is the entire response. **Do NOT add context-rich suggestions** ("the weather is nice, you should go outside", "you haven't walked in 4 days, please make it outdoor", etc.) at this moment. By the time the user reads them, the break decision is already made — the suggestion is noise that arrives when the user is away from the keyboard or returning. Save context-rich nudges for the **next break reminder**, before the decision. Same applies if the user states what kind of break they're taking ("knitting break", "going for a walk") — just credit it and let them go.
+
 **When user returns** (next message after break acknowledgment):
 - Run `date +"%Y-%m-%dT%H:%M:%S"` for the current time
 - Calculate break duration from `last_break_timestamp` to now
 - If < 5 min: "That was quick — are you sure that was enough?" (don't fully reset; set `last_break_timestamp` but note short break)
 - If 5+ min: Welcome back warmly in persona tone, full reset
+- **Optional reflection** (only when context warrants — stale `last_outdoor_walk`, lots of indoor breaks today, etc.): a single light question like "Did you get outside?" to update tracked fields. Accept any answer including "nothing special". This is data capture, not nagging — never push back on the answer, never follow up with another suggestion.
 
 ## Snooze Handling
 
@@ -347,3 +353,5 @@ The wellness-coach skill is **always reachable**, even during a strike. The PreT
 - **Always read preferences fresh** — another terminal may have updated them.
 - **Weather/calendar failures are silent** — skip context, still suggest break.
 - **Trust the user over logs** — if user says they took a break, believe them.
+- **Suggestions belong before the decision.** Context-rich nudges (weather, last walk, energy pattern) go in break reminders, BEFORE the user decides what to do. At acknowledgment time, just credit + send-off. After the user returns, reflection is optional and lightweight — never a fresh suggestion.
+- **Respect stated user intent.** If the user has said they want a light day, are taking a specific break (knitting, coffee with friend), or have a planned activity, do not push more suggestions on top of that decision.
