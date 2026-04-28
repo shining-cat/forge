@@ -80,3 +80,17 @@ Use the `repo-` prefix for all symlinked content to make it visually distinct fr
 | `decisions/` | Project-specific decisions with rationale | First decision that needs its own file |
 | `tasks/open/` | Open project-level tasks | First task logged |
 | `tasks/resolved/` | Completed project-level tasks | First task resolved |
+
+## Templates available
+
+The vault includes templates for recurring file shapes. Source of truth lives in `core/vault-templates/` in the forge repo; install copies them to `Vault/_templates/` for immediate use in Obsidian.
+
+| Template | Use when |
+|----------|----------|
+| `checkpoint.md` | Writing the per-project `current-checkpoint.md` (usually via `/forge-checkpoint`, not by hand) |
+| `decision.md` | Logging a validated decision (one decision per file, lives in `{project}/decisions/`) |
+| `architecture.md` | Documenting an architectural pattern or design doc (lives in `{project}/architecture/`) |
+| `task.md` | Bounded work item with a single goal (lives in `{project}/tasks/open/`, moves to `resolved/` when done) |
+| `issue.md` | Stabilisation log — multiple sub-issues accumulating around one component over time (per 2026-04-16 stabilisation-task-format decision) |
+| `friction-entry.md` | Snippet for appending a new entry to `_shared/friction-log.md` (no frontmatter — it's a section, not a file) |
+| `project-index.md` | Starter `INDEX.md` for a new project (about, decisions, tasks links, standing notes) |
