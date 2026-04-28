@@ -61,9 +61,17 @@ When a tool call appears in the user's UI as `Update(.claude/forge-active)` or `
 
 ## Meta-rules for permission-pattern work
 
-### Mid-session settings.json patches: assume they don't apply
+### Mid-session settings.json patches DO NOT apply until restart
 
-Whether Claude Code reloads the allowlist when `settings.json` is modified mid-session is unverified. Treat as: **patches added during a session take effect on next session restart, not before.** Don't rely on a same-session test to verify a new pattern works.
+**Verified 2026-04-28:** Claude Code does NOT reload the allowlist when `settings.json` is modified mid-session. Patches added during a session take effect ONLY after a session restart.
+
+This was confirmed end-to-end: a new `Edit(.claude/forge-active)` pattern was added to settings.json, then the very next Edit on `~/.claude/forge-active` (the marker clear at `/forge-exit`) STILL prompted the user. The pattern is in the file but not in the running session's allowlist.
+
+Implications:
+- Never rely on a same-session test to verify a new pattern works
+- When patching settings live, surface this to the user explicitly: "this won't take effect until you restart Claude Code"
+- For verification: the only valid test is a session restart followed by user-observed behavior
+- Avoid Edit/Write loops in the same session that depend on a new pattern you just added — they will prompt
 
 ### Tool-result success is NOT evidence the permission matched
 
