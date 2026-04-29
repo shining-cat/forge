@@ -6,8 +6,48 @@
 set -euo pipefail
 
 HOME_DIR="$HOME"
-MARKER="$HOME_DIR/.claude/forge-active"
+
+# Resolve marker path from forge.conf VAULT_PATH
+FORGE_CONF="$HOME_DIR/.claude/forge.conf"
+if [ ! -f "$FORGE_CONF" ]; then
+  echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
+  exit 1
+fi
+VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
+if [ -z "$VAULT_PATH" ]; then
+  echo "[forge-context] ERROR: VAULT_PATH not set in $FORGE_CONF" >&2
+  exit 1
+fi
+MARKER="$VAULT_PATH/_shared/forge-active"
 VAULT_BASE="$HOME_DIR/__DEV/Vault"
+
+# Reconcile marker against most-recent-checkpoint frontmatter.
+# Emits a one-line warning to stderr if marker disagrees with truth.
+# Skips silently for missing/empty/__pending__ markers.
+reconcile_marker() {
+  if [ ! -f "$MARKER" ]; then
+    return 0
+  fi
+  local marker_value
+  marker_value=$(head -1 "$MARKER" 2>/dev/null | tr -d '[:space:]')
+  if [ -z "$marker_value" ] || [ "$marker_value" = "__pending__" ]; then
+    return 0
+  fi
+  # Most recent checkpoint by mtime (proxy for `date:` frontmatter — good enough)
+  local newest_checkpoint
+  newest_checkpoint=$(find "$VAULT_PATH" -path '*/current-checkpoint.md' -print0 2>/dev/null | \
+    xargs -0 ls -t 2>/dev/null | head -1)
+  if [ -z "$newest_checkpoint" ]; then
+    return 0
+  fi
+  local checkpoint_project
+  checkpoint_project=$(grep '^project:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | tr -d '[:space:]')
+  local checkpoint_date
+  checkpoint_date=$(grep '^date:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | tr -d '[:space:]')
+  if [ -n "$checkpoint_project" ] && [ "$checkpoint_project" != "$marker_value" ]; then
+    echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but most recent checkpoint is for \"$checkpoint_project\" (${checkpoint_date:-unknown date}). If this is intentional cross-env work, ignore. Otherwise: switch projects or update the marker." >&2
+  fi
+}
 
 # ── Read stdin once, store for all subcommands ──────────────────────────
 STDIN_JSON=""
