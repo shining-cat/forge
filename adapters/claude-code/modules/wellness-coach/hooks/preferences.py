@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Shared preferences module for wellness-coach Forge module.
-Reads/writes ~/.claude/wellness-preferences.json with basic file coordination.
+Reads/writes wellness-preferences.json (path resolved via forge.conf — see _resolve_prefs_path).
 """
 import fcntl
 import json
@@ -12,7 +12,49 @@ import sys
 import time
 from pathlib import Path
 
-PREFS_PATH = Path.home() / ".claude" / "wellness-preferences.json"
+def _resolve_prefs_path() -> Path:
+    """Resolve wellness-preferences.json location.
+
+    Reads VAULT_PATH from ~/.claude/forge.conf and returns
+    {VAULT_PATH}/_shared/wellness-preferences.json.
+
+    Falls back to ~/.claude/wellness-preferences.json (with a stderr
+    warning) if forge.conf is missing or VAULT_PATH is unset, so the
+    wellness-coach module remains usable standalone.
+    """
+    legacy = Path.home() / ".claude" / "wellness-preferences.json"
+    forge_conf = Path.home() / ".claude" / "forge.conf"
+    if not forge_conf.is_file():
+        print(
+            "[wellness-coach] forge.conf not found — using legacy path "
+            f"{legacy} (install Forge to silence prompts).",
+            file=sys.stderr,
+        )
+        return legacy
+    vault_path = ""
+    try:
+        for raw in forge_conf.read_text().splitlines():
+            line = raw.strip()
+            if line.startswith("VAULT_PATH="):
+                vault_path = line.split("=", 1)[1].strip()
+                break
+    except OSError as e:
+        print(
+            f"[wellness-coach] Could not read forge.conf ({e}) — using legacy path {legacy}.",
+            file=sys.stderr,
+        )
+        return legacy
+    if not vault_path:
+        print(
+            "[wellness-coach] VAULT_PATH not set in forge.conf — using legacy "
+            f"path {legacy}.",
+            file=sys.stderr,
+        )
+        return legacy
+    return Path(vault_path) / "_shared" / "wellness-preferences.json"
+
+
+PREFS_PATH = _resolve_prefs_path()
 
 DEFAULT_PREFS = {
     "persona": "playful",
