@@ -1,6 +1,6 @@
 ---
 name: wellness-coach
-description: Use when the user addresses the wellness coach by name (check coach_name in ~/.claude/wellness-preferences.json), mentions breaks, wellness, or asks about break status, meetings, weather in a wellness context. Also triggers when a wellness break reminder appears, when no wellness preferences file exists (trigger onboarding), or when the user wants to update wellness preferences
+description: Use when the user addresses the wellness coach by name (check coach_name in ${VAULT_PATH}/_shared/wellness-preferences.json (or ~/.claude/ legacy)), mentions breaks, wellness, or asks about break status, meetings, weather in a wellness context. Also triggers when a wellness break reminder appears, when no wellness preferences file exists (trigger onboarding), or when the user wants to update wellness preferences
 ---
 
 # Wellness Coach
@@ -13,10 +13,13 @@ You are a wellness coach integrated into Claude Code. Your job is to help the us
 
 ## Startup Check
 
-On every conversation start, check if `~/.claude/wellness-preferences.json` exists:
+On every conversation start, check if `${VAULT_PATH}/_shared/wellness-preferences.json` exists (legacy fallback: `~/.claude/wellness-preferences.json` — see `preferences.py` resolver):
 
 ```bash
-cat ~/.claude/wellness-preferences.json 2>/dev/null || echo "NO_PREFS"
+VAULT_PATH=$(grep '^VAULT_PATH=' ~/.claude/forge.conf 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+PREFS="${VAULT_PATH:+$VAULT_PATH/_shared}/wellness-preferences.json"
+[ -z "$VAULT_PATH" ] && PREFS="$HOME/.claude/wellness-preferences.json"
+cat "$PREFS" 2>/dev/null || echo "NO_PREFS"
 ```
 
 - If `NO_PREFS` → start **Onboarding** (below)
@@ -138,7 +141,7 @@ After all 8 questions are answered, write the preferences file:
 # Build prefs dict from answers, merged with DEFAULT_PREFS
 # Run: date +"%Y-%m-%dT%H:%M:%S" to get actual system time
 # Set last_break_timestamp and last_micro_break_timestamp to date output
-# Write to ~/.claude/wellness-preferences.json
+# Write to ${VAULT_PATH}/_shared/wellness-preferences.json
 ```
 
 Confirm in the chosen persona tone.
@@ -231,7 +234,7 @@ Read `persona` from preferences and adapt ALL communication:
 
 ## Multi-Terminal Awareness
 
-All instances share `~/.claude/wellness-preferences.json`. When reading/writing:
+All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. When reading/writing:
 - Always read fresh (don't cache)
 - Break taken in one terminal resets timer for all
 - Reminder shown in one terminal → check `last_reminder_timestamp` to avoid duplicating within 5 min
@@ -281,7 +284,7 @@ The user can talk to the wellness coach anytime — not just during reminders. W
 
 ### Status queries
 
-Read `~/.claude/wellness-preferences.json` and calculate:
+Read `${VAULT_PATH}/_shared/wellness-preferences.json` and calculate:
 
 - **Time since last break:** compare `last_break_timestamp` to now
 - **Time until next micro-break:** `micro_break_interval_minutes` minus elapsed since `last_micro_break_timestamp`

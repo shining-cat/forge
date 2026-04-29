@@ -88,9 +88,10 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
    - **Tilde `~` expansion is unverified** for permission rules — add both tilde and absolute forms as belt-and-braces
 
    Patterns to add (substituting the user's actual home directory):
-   - `Write(<HOME>/.claude/wellness-preferences.json)` and `Edit(<HOME>/.claude/wellness-preferences.json)`
    - `Bash(~/.claude/skills/wellness-coach/scripts/*)` and `Bash(<HOME>/.claude/skills/wellness-coach/scripts/*)`
    - Where `<HOME>` is the user's actual home directory (e.g. `/Users/shiva.bernhard@m10s.io`)
+
+   Wellness preferences live at `${VAULT_PATH}/_shared/wellness-preferences.json` — covered by the existing vault allowlist, no per-file permission needed.
 3. Add these hooks if not present:
    - PreToolUse: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5)
    - PreCompact: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-precompact.py` (timeout: 5)
@@ -284,7 +285,7 @@ Petra narrates entry. Use "Anvil's warm" when a checkpoint exists, "Cold start" 
 PR sync results (from step 3) are shown first, then the context summary, then the time window check.
 
 **Time window check:** Check for upcoming interruptions to gauge available deep-work time. The **next interruption** is the soonest of:
-- Next wellness break — if `~/.claude/wellness-preferences.json` exists (see `references/wellness-awareness.md`)
+- Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — typically `${VAULT_PATH}/_shared/`, or `~/.claude/` legacy) (see `references/wellness-awareness.md`)
 - Next calendar meeting — if calendar is enabled (use the `google-workspace:google-calendar` skill approach). Skip events where the user's `responseStatus` is `"declined"` in the `attendees` array.
 
 ```

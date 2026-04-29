@@ -95,11 +95,11 @@ Both are optional. Calendar uses the Google Calendar plugin if available. Weathe
 
 ## Multi-Terminal
 
-All instances share `~/.claude/wellness-preferences.json`. Break taken in one terminal resets the timer for all. Strike in any terminal blocks all terminals. Break acknowledged anywhere resumes everywhere.
+All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. Break taken in one terminal resets the timer for all. Strike in any terminal blocks all terminals. Break acknowledged anywhere resumes everywhere.
 
 ## Configuration
 
-Preferences stored at `~/.claude/wellness-preferences.json`. Editable directly or via conversation ("set break interval to 90 minutes", "change persona to professional").
+Preferences stored at `${VAULT_PATH}/_shared/wellness-preferences.json` (legacy: `~/.claude/wellness-preferences.json` if Forge is not installed). Editable directly or via conversation ("set break interval to 90 minutes", "change persona to professional").
 
 ## Files
 

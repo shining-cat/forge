@@ -6,7 +6,7 @@ The wellness-coach is an optional Forge module — bundled with Forge but disabl
 
 ## What Forge Reads
 
-If `~/.claude/wellness-preferences.json` exists, Forge reads two fields to calculate time until next break:
+If `wellness-preferences.json` exists at `${VAULT_PATH}/_shared/` (or legacy `~/.claude/`), Forge reads two fields to calculate time until next break:
 - `last_break_timestamp` — when the user last took a real break
 - `real_break_interval_minutes` — the user's configured break interval
 
