@@ -40,8 +40,8 @@ The forge is assembled from Claude Code building blocks:
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
 | `~/.claude/wellness-preferences.json` | Wellness coach runtime state |
-| `~/.claude/forge-active` | Marker file (contains project name, empty when deactivated) |
 | `~/.claude/forge.conf` | Per-install configuration (vault path, repo path, model assignments) |
+| `${VAULT_PATH}/_shared/forge-active` | Marker file (contains project name, empty when deactivated) — lives in the vault to avoid `~/.claude/` sensitive-zone permission prompts |
 | `{vault}/` | Knowledge vault (see [Vault Structure](#vault-structure)) |
 
 ### External dependencies
@@ -74,7 +74,7 @@ Skills reference capabilities from these marketplaces:
     └── architecture/       ← created on demand
 ```
 
-Forge install state lives outside the vault, in `~/.claude/` (forge.conf, forge-active, wellness-preferences.json).
+Forge install state lives in `~/.claude/` (forge.conf, wellness-preferences.json). The `forge-active` runtime marker lives in the vault at `${VAULT_PATH}/_shared/forge-active` instead — `~/.claude/` is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5), and the marker needs silent writes on every Forge entry/exit.
 
 See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md) for the per-project layout.
 

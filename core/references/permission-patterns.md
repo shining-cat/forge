@@ -2,7 +2,7 @@
 
 Reference for writing `permissions.allow` / `permissions.deny` entries in `~/.claude/settings.json` (and project-level `.claude/settings.local.json`). Each entry below documents a pitfall observed in the wild — every one has cost a debugging session.
 
-## The 4 known pitfalls
+## The 5 known pitfalls
 
 ### 1. Single `*` does NOT cross `/`
 
@@ -58,6 +58,24 @@ When a tool call appears in the user's UI as `Update(.claude/forge-active)` or `
 **Why it bites:** absolute-path entries look like the most precise/safe form, so they're the natural reach. They never match. Belt-and-braces: include both the literal CWD-relative form AND the absolute form (the latter for hypothetical alternative invocation paths) — the relative one is what actually does the work today.
 
 **How to verify which form the matcher sees:** when the user reports a prompt for what looks like an allowed operation, ask them to share the UI chip text. The string inside the parentheses is the matcher input.
+
+### 5. `~/.claude/` is a hardcoded sensitive zone — allowlist patterns DO NOT apply
+
+Claude Code treats `~/.claude/` as a protected directory with mandatory permission prompts on Write/Edit/Bash operations targeting files inside it. Allowlist patterns cannot suppress these prompts, regardless of pattern shape (CWD-relative, absolute, single `*`, double `**`).
+
+```jsonc
+"Write(.claude/forge-active)"                                  // ❌ chip text matches but still prompts
+"Write(/Users/shiva.bernhard@m10s.io/.claude/forge-active)"   // ❌ same
+"Edit(**/.claude/forge-active)"                                // ❌ same (and even ** doesn't help here)
+```
+
+**Why it bites:** the four pitfalls above (single `*`, leading `*` in Bash, deny precedence, CWD-relative chip text) all suggest the model "right-shape pattern → match → no prompt." Inside `~/.claude/` that pipeline is bypassed by an upstream sensitive-zone check. The pattern is loaded, the chip matches, the matcher would have allowed — but the request is gated separately and prompts anyway.
+
+**Verified 2026-04-29:** identical-shape patterns work in vault paths and fail in `~/.claude/`. See design doc `~/__DEV/PERSO/forge/.claude/plans/2026-04-29-marker-relocation-design.md` for the case study (the `forge-active` marker, originally at `~/.claude/forge-active`, kept prompting through every pattern shape until it was relocated to `${VAULT_PATH}/_shared/forge-active`).
+
+**The fix:** for runtime state files that need silent writes, place them outside `~/.claude/` — typically in the vault, which is freely allowlistable. Reserve `~/.claude/` for files Claude Code itself manages (settings.json, hooks/, skills/, scripts/) where the prompt friction is acceptable because those files change rarely.
+
+**Implications for past hypotheses:** pitfall #4 (matcher uses CWD-relative chip text) is correct for normal paths, but inside `~/.claude/` it's moot — no allowlist match fires regardless. Don't trust mid-session pattern experiments inside `~/.claude/`; they'll always fail, and the failure tells you nothing about whether the pattern shape is correct.
 
 ## Meta-rules for permission-pattern work
 

@@ -12,7 +12,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 - `forge` skill (`~/.claude/skills/forge/SKILL.md`) — entry, session rules, persona
 - `forge-checkpoint` skill — mid-session state save
 - `forge-exit` skill — end-of-session wrap-up
-- `~/.claude/forge-active` marker — written on entry (contains project name), cleared on exit (empty content). Enables compaction and checkpoint hooks to detect Forge state.
+- `${VAULT_PATH}/_shared/forge-active` marker — written on entry (contains project name), cleared on exit (empty content). Enables compaction and checkpoint hooks to detect Forge state. Lives in the vault rather than `~/.claude/` because the latter is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5).
 
 **Proactive.** Yes — always active. Petra is the session itself.
 
@@ -53,7 +53,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 | Before context compaction | PreCompact hook | Warns if checkpoint stale (>2 min), **allows compaction** (non-blocking) |
 | After context compaction | PostCompact hook | Instructs Claude to re-invoke `/forge` for full skill reload |
 
-The `~/.claude/forge-active` marker file (written on Forge entry, cleared on exit) tells hooks whether Forge is running.
+The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cleared on exit) tells hooks whether Forge is running.
 
 **Vault interaction**
 - **Reads:** previous decisions, previous checkpoints, INDEX files
