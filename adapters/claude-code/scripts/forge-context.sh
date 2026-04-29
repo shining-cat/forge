@@ -29,7 +29,7 @@ reconcile_marker() {
     return 0
   fi
   local marker_value
-  marker_value=$(head -1 "$MARKER" 2>/dev/null | tr -d '[:space:]')
+  marker_value=$(head -1 "$MARKER" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
   if [ -z "$marker_value" ] || [ "$marker_value" = "__pending__" ]; then
     return 0
   fi
@@ -41,9 +41,9 @@ reconcile_marker() {
     return 0
   fi
   local checkpoint_project
-  checkpoint_project=$(grep '^project:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | tr -d '[:space:]')
+  checkpoint_project=$(grep '^project:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
   local checkpoint_date
-  checkpoint_date=$(grep '^date:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | tr -d '[:space:]')
+  checkpoint_date=$(grep '^date:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
   if [ -n "$checkpoint_project" ] && [ "$checkpoint_project" != "$marker_value" ]; then
     echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but most recent checkpoint is for \"$checkpoint_project\" (${checkpoint_date:-unknown date}). If this is intentional cross-env work, ignore. Otherwise: switch projects or update the marker." >&2
   fi
