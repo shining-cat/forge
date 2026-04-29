@@ -77,6 +77,13 @@ if [ -z "$PROJECT_NAME" ]; then
   exit 0
 fi
 
+# __pending__ = Forge is launching, no project chosen yet (set by skills/forge step 1a).
+# Treat the same as empty so non-reconcile subcommands don't fall through to
+# get_vault_dir "__pending__" and create stray Vault/PERSO/__pending__/ dirs.
+if [ "$PROJECT_NAME" = "__pending__" ]; then
+  exit 0
+fi
+
 get_vault_dir() {
   case "$1" in
     FINN|DBA|TORI|BLOCKET)
