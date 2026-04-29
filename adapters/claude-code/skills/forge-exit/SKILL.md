@@ -45,7 +45,7 @@ Next session starts with:
 
 ### 3. Deactivate
 
-- Clear the forge-active marker: use the **Edit** tool to replace the project name in `~/.claude/forge-active` with a single newline (the file already exists from the `/forge` entry, so Edit is the right tool — Write would require a prior Read in this session). Do NOT use `rm` — it's denied by the global `Bash(rm:*)` rule. The empty-marker convention is recognized by `forge-context.sh` and `forge-compaction.sh` as "Forge deactivated" (same effect as deletion, no permission friction).
+- Clear the forge-active marker: use the **Edit** tool to replace the project name in `${VAULT_PATH}/_shared/forge-active` with a single newline (the file already exists from the `/forge` entry, so Edit is the right tool — Write would require a prior Read in this session). Do NOT use `rm` — it's denied by the global `Bash(rm:*)` rule. The empty-marker convention is recognized by `forge-context.sh` and `forge-compaction.sh` as "Forge deactivated" (same effect as deletion, no permission friction). Resolve `VAULT_PATH` from `~/.claude/forge.conf`.
 - Stop using `[Forge | {PROJECT}]` prefix
 - Stop proactive Keeper/Refiner behavior
 - Session returns to normal mode

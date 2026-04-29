@@ -405,13 +405,14 @@ do_status() {
 SUBCMD="${1:-}"
 
 case "$SUBCMD" in
-  post-tool)  do_post_tool ;;
-  gate)       do_gate ;;
-  stop)       do_stop ;;
-  recover)    do_recover ;;
-  status)     do_status ;;
+  post-tool)         do_post_tool ;;
+  gate)              do_gate ;;
+  stop)              do_stop ;;
+  recover)           do_recover ;;
+  reconcile-marker)  reconcile_marker ;;
+  status)            do_status ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|status}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status}" >&2
     exit 1
     ;;
 esac

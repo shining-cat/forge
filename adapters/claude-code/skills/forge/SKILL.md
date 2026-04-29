@@ -179,15 +179,29 @@ Then continue to step 1 as normal.
 
 Determine which environment and project are active based on the current working directory or user instruction.
 
-Read `~/.claude/forge.conf` to get `VAULT_PATH`. Check which project directories exist under the vault to determine valid environments and projects. If the current working directory maps to a known project, use that. If ambiguous, ask the user.
+Read `~/.claude/forge.conf` to get `VAULT_PATH`. The marker file lives at `${VAULT_PATH}/_shared/forge-active`.
 
-Once the project is known, write the forge-active marker so compaction hooks can detect Forge state.
-Use the Write tool to create/overwrite `~/.claude/forge-active` with the project name (e.g. `FINN`). Do NOT use Bash echo — it triggers a sensitive-path permission prompt.
+#### 1a. Mark Forge as launching (BEFORE disambiguation)
+
+Use the Write tool to create/overwrite `${VAULT_PATH}/_shared/forge-active` with the literal sentinel `__pending__`. This MUST happen before any project disambiguation question is asked.
+
+Why: it signals "Forge is launching, no project chosen yet" — distinct from missing (never installed) and empty (deactivated). Hooks suppress brain-dump nags and Keeper warnings during this state. Without this step, an auto-memory hint (e.g., "you were on FINN last time") could prematurely set the marker to the wrong project, causing Keeper hooks to fire against the wrong vault before the user has actually chosen.
+
+#### 1b. Disambiguate, then write the project name
+
+Check which project directories exist under the vault to determine valid environments and projects.
+
+- If the current working directory maps unambiguously to a single known project → use that.
+- If the vault contains exactly one project → use it.
+- Otherwise → ask the user which project to activate.
+
+Once the project is unambiguously chosen, use the Write tool to overwrite `${VAULT_PATH}/_shared/forge-active` with the project name (e.g. `FINN`).
 
 **Marker convention** (used by `forge-context.sh`, `forge-compaction.sh`, `statusline.sh`):
-- File contains a project name → Forge active for that project
-- File exists but is empty / whitespace-only → Forge deactivated (set by `/forge-exit`)
 - File missing → Forge has never been activated on this machine
+- File exists but is empty / whitespace-only → Forge deactivated (set by `/forge-exit`)
+- File contains literal `__pending__` → Forge is launching, no project chosen yet (set by step 1a above)
+- File contains a project name → Forge active for that project (set by step 1b above or by an explicit project switch)
 
 ### 2. Load Vault Context
 

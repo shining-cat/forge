@@ -53,3 +53,12 @@ Display:
   Completed: {count items}
   Next: {first next step}
 ```
+
+### 5. Reconcile marker (silent unless mismatch)
+
+After writing the checkpoint, run:
+`~/.claude/scripts/forge-context.sh reconcile-marker`
+
+This compares the marker against the most-recent-checkpoint truth. If they disagree, a `[Keeper]` warning surfaces to stderr — repeat it to the user verbatim and let them decide what to do. **Do NOT auto-fix.**
+
+The reconciliation skips silently when the marker is missing, empty, or `__pending__`.
