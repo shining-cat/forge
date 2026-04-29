@@ -6,7 +6,19 @@
 #   forge-compaction.sh pre   — called by PreCompact hook
 #   forge-compaction.sh post  — called by PostCompact hook
 
-MARKER="$HOME/.claude/forge-active"
+# Resolve marker path from forge.conf VAULT_PATH
+# Hard-fail to stderr but exit 0 (don't block compaction on missing config).
+FORGE_CONF="$HOME/.claude/forge.conf"
+if [ ! -f "$FORGE_CONF" ]; then
+  echo "[forge-compaction] forge.conf not found at $FORGE_CONF" >&2
+  exit 0
+fi
+VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
+if [ -z "$VAULT_PATH" ]; then
+  echo "[forge-compaction] VAULT_PATH not set in $FORGE_CONF" >&2
+  exit 0
+fi
+MARKER="$VAULT_PATH/_shared/forge-active"
 PHASE="${1:-}"
 
 if [ ! -f "$MARKER" ]; then
@@ -68,7 +80,16 @@ EOF
   exit 0
 
 elif [ "$PHASE" = "post" ]; then
-  # After compaction — tell Claude to reload Forge
+  # After compaction — reconcile marker against most-recent checkpoint, then
+  # tell Claude to reload Forge. Sourcing forge-context.sh is safe here:
+  # the `if BASH_SOURCE != $0; then return 0` guard inside it short-circuits
+  # the subcommand dispatch but still defines `reconcile_marker` (and re-runs
+  # the resolver, which is idempotent).
+  if [ -f "$HOME/.claude/scripts/forge-context.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$HOME/.claude/scripts/forge-context.sh"
+    reconcile_marker  # warns to stderr on mismatch; silent otherwise
+  fi
   cat <<EOF
 {"systemMessage":"Forge was active before compaction (project: $PROJECT). Re-invoke the /forge skill now to restore full session rules, then read current-checkpoint.md to reorient."}
 EOF

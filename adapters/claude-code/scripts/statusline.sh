@@ -42,10 +42,25 @@ COST_FORMATTED=$(printf "%.1f" "$COST")
 # Format duration (convert ms to seconds, no decimal places)
 DURATION_SEC=$(echo "scale=0; $DURATION / 1000" | bc 2>/dev/null || echo "0")
 
-# Forge status (if active)
+# Forge status (if active) — resolve marker via VAULT_PATH from forge.conf
+# Soft-fail: missing forge.conf or VAULT_PATH renders no chip (statusline must not break).
 FORGE_STATUS=""
-if [ -f "$HOME/.claude/forge-active" ]; then
-  FORGE_STATUS=$("$HOME/.claude/scripts/forge-context.sh" status 2>/dev/null)
+FORGE_CONF="$HOME/.claude/forge.conf"
+MARKER=""
+if [ -f "$FORGE_CONF" ]; then
+  VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
+  [ -n "$VAULT_PATH" ] && MARKER="$VAULT_PATH/_shared/forge-active"
+fi
+
+if [ -n "$MARKER" ] && [ -f "$MARKER" ]; then
+  marker_value=$(head -1 "$MARKER" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  if [ -z "$marker_value" ]; then
+    FORGE_STATUS="[Forge | -]"
+  elif [ "$marker_value" = "__pending__" ]; then
+    FORGE_STATUS="[Forge | choosing…]"
+  else
+    FORGE_STATUS=$("$HOME/.claude/scripts/forge-context.sh" status 2>/dev/null)
+  fi
 fi
 
 # Create sleek status line with colors

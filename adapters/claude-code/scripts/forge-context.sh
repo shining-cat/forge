@@ -49,6 +49,15 @@ reconcile_marker() {
   fi
 }
 
+# ── Sourceable boundary ─────────────────────────────────────────────────
+# Everything below runs only when this file is executed as a script.
+# When sourced (e.g., from forge-compaction.sh to reuse `reconcile_marker`),
+# the resolver above and the function definition stay in scope, but no
+# stdin is consumed and no subcommand dispatch runs.
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0
+fi
+
 # ── Read stdin once, store for all subcommands ──────────────────────────
 STDIN_JSON=""
 if [ ! -t 0 ]; then
