@@ -244,10 +244,6 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
-# Patch vault path in scripts (replace placeholder with actual path)
-run sed -i '' "s|{{VAULT_ABSOLUTE}}|$VAULT_PATH|g" "$CLAUDE_DIR/scripts/forge-context.sh"
-run sed -i '' "s|{{VAULT_ABSOLUTE}}|$VAULT_PATH|g" "$CLAUDE_DIR/hooks/forge-compaction.sh"
-
 ok "Hooks and scripts installed"
 
 # ─── Merge settings.json ─────────────────────────────────────────────────────
