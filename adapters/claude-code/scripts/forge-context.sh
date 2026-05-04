@@ -19,7 +19,6 @@ if [ -z "$VAULT_PATH" ]; then
   exit 1
 fi
 MARKER="$VAULT_PATH/_shared/forge-active"
-VAULT_BASE="$HOME_DIR/__DEV/Vault"
 
 # Reconcile marker against most-recent-checkpoint frontmatter.
 # Emits a one-line warning to stderr if marker disagrees with truth.
@@ -84,32 +83,54 @@ if [ "$PROJECT_NAME" = "__pending__" ]; then
   exit 0
 fi
 
+# Resolve vault directory for a project by scanning $VAULT_PATH/{env}/{project}/
+# case-insensitively. Skips underscore-prefixed env dirs (_shared, _templates).
+# Emits stderr warning + empty stdout if no match.
 get_vault_dir() {
-  case "$1" in
-    FINN|DBA|TORI|BLOCKET)
-      echo "$VAULT_BASE/SCHIBSTED/$1"
-      ;;
-    Forge|forge)
-      echo "$VAULT_BASE/PERSO/forge"
-      ;;
-    *)
-      echo "$VAULT_BASE/PERSO/$1"
-      ;;
-  esac
+  local project="$1"
+  local target_lower
+  target_lower="$(echo "$project" | tr '[:upper:]' '[:lower:]')"
+  local env_dir env_name proj_dir proj_name
+  for env_dir in "$VAULT_PATH"/*/; do
+    [ -d "$env_dir" ] || continue
+    env_name="$(basename "$env_dir")"
+    case "$env_name" in _*) continue ;; esac
+    for proj_dir in "$env_dir"*/; do
+      [ -d "$proj_dir" ] || continue
+      proj_name="$(basename "$proj_dir")"
+      if [ "$(echo "$proj_name" | tr '[:upper:]' '[:lower:]')" = "$target_lower" ]; then
+        echo "${proj_dir%/}"
+        return 0
+      fi
+    done
+  done
+  echo "[forge-context] no vault dir found for project '$project' under $VAULT_PATH" >&2
+  return 1
 }
 
+# Resolve project repo directory by scanning $HOME_DIR/__DEV/{env}/{project}/
+# case-insensitively. Skips Vault* and underscore-prefixed dirs at the env level.
+# Emits stderr warning + empty stdout if no match.
 get_project_dir() {
-  case "$1" in
-    FINN|DBA|TORI|BLOCKET)
-      echo "$HOME_DIR/__DEV/SCHIBSTED/$1"
-      ;;
-    Forge)
-      echo ""
-      ;;
-    *)
-      echo "$HOME_DIR/__DEV/PERSO/$1"
-      ;;
-  esac
+  local project="$1"
+  local target_lower
+  target_lower="$(echo "$project" | tr '[:upper:]' '[:lower:]')"
+  local env_dir env_name proj_dir proj_name
+  for env_dir in "$HOME_DIR/__DEV"/*/; do
+    [ -d "$env_dir" ] || continue
+    env_name="$(basename "$env_dir")"
+    case "$env_name" in _*|Vault*) continue ;; esac
+    for proj_dir in "$env_dir"*/; do
+      [ -d "$proj_dir" ] || continue
+      proj_name="$(basename "$proj_dir")"
+      if [ "$(echo "$proj_name" | tr '[:upper:]' '[:lower:]')" = "$target_lower" ]; then
+        echo "${proj_dir%/}"
+        return 0
+      fi
+    done
+  done
+  echo "[forge-context] no project repo found for '$project' under $HOME_DIR/__DEV/" >&2
+  return 1
 }
 
 VAULT_DIR="$(get_vault_dir "$PROJECT_NAME")"
