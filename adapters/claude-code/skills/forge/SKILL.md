@@ -339,7 +339,7 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 **Proactive Refiner:** The Refiner skill is always active. When the user corrects or redirects:
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
 
-**Subagent naming:** Prefix subagents with `Forge-`: `Forge-Keeper`, `Forge-Refiner`, `Forge-Reviewer`, `Forge-Impl`.
+**Subagent definitions:** Each Forge role has a Claude Code subagent definition at `~/.claude/agents/forge-{role}.md` (installed by `install.sh` from `adapters/claude-code/agents/` in the forge repo). Dispatch via `Agent({subagent_type: "forge-{role}", ...})`. The 8 roles are: `forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`. The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable from the vault via `repo-core/`).
 
 **Model tuning:** Role-to-model assignments are configured in `~/.claude/forge.conf` under `MODEL_*` keys. Read them at session start. Empty value means "inherit from session model".
 
@@ -362,11 +362,43 @@ grep '^MODEL_KEEPER=' ~/.claude/forge.conf | cut -d= -f2
 ```
 Then pass it to the Agent tool: `Agent({ model: "{value}", ... })`. If the value is empty, omit the `model` parameter (inherits from session).
 
-Each role's SKILL.md has a "Subagent Dispatch" section with full details. Use subagent dispatch when the operation is self-contained (all context can be included in the prompt). Use inline when the operation needs conversation history.
+Each role's adapter file (`adapters/claude-code/agents/forge-{role}.md` in the repo, installed at `~/.claude/agents/forge-{role}.md`) is the source of truth for that role's behavior, tools allowlist, and dispatch contract — including subagent-mode caveats and team-mode notes. Use subagent dispatch when the operation is self-contained (all context can be included in the prompt). Use inline when the operation needs conversation history.
 
 **Conversational model assignment:** The user can view or change role models at any time:
 - "show model assignments" / "which models are the roles using" → read forge.conf, display the table with current values
 - "set Keeper model to haiku" / "change Reviewer to opus" → update the `MODEL_*` key in forge.conf, confirm the change
+
+## Agent-Teams Mode
+
+For workflows that genuinely benefit from parallel collaboration with inter-agent communication, Petra can spawn an agent team instead of dispatching subagents sequentially.
+
+**Requires:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in `~/.claude/settings.json` (env var). Takes effect on session restart. Requires Claude Code v2.1.32+.
+
+**When to spawn a team (Petra's call):**
+
+- **Pattern A — Pair / triplet of different roles** on the same artifact. PR review needing both structural validation (Reviewer) and friction analysis (Refiner). Design discussion needing both forward design (Architect) and adversarial failure analysis (Debugger).
+- **Pattern B — Multiple instances of the same role**, each seeded with a different hypothesis. Hard debugging where root cause is unclear (3-5 Debuggers, adversarial debate). Security investigation with multiple attack vectors. The value is anti-anchoring through competing hypotheses, not "more thorough coverage."
+- **Pattern C — Same role, scope-partitioned**. PR review split into separate concerns (security / performance / test coverage), each owned by a different Reviewer.
+
+**Trigger convention:** Petra detects the workflow shape and asks before spawning ("This looks like a multi-perspective review — should I spin up a team?"). The user can also explicitly request a team.
+
+**Limitations to remember:**
+- One team per session (Petra can't run a permanent role-team alongside an ad-hoc team).
+- No nested teams (a teammate can't spawn its own team).
+- Lead is fixed (Petra stays Petra; no promotion).
+- No session resumption (teammates are not restored on `/resume`).
+- Token cost is linear in teammate count.
+- Per Anthropic's docs, `skills` and `mcpServers` frontmatter on subagent defs are NOT applied when run as teammates — only `tools`, `model`, body. Skill dependencies must be invoked from the body.
+
+**Cleanup:** Always end teams cleanly ("Ask the lead to clean up the team"). Don't leave orphaned teammates running between user requests.
+
+**When NOT to use teams:**
+- Sequential tasks tied to specific tool calls (use Keeper / Release inline).
+- Same-file edits (file conflicts).
+- Routine work (overhead exceeds benefit — most Forge work).
+- Quick lookups or single-perspective tasks.
+
+For the deeper rationale and ongoing evaluation, see open task `forge-agent-teams-evaluation` (2026-05-04).
 
 ## Session Exit
 
