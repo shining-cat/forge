@@ -50,6 +50,16 @@ run() {
   fi
 }
 
+# set_conf_key — update or append a key=value line in forge.conf in place
+set_conf_key() {
+  local key="$1" val="$2" conf="$CLAUDE_DIR/forge.conf"
+  if grep -q "^${key}=" "$conf" 2>/dev/null; then
+    sed -i '' "s|^${key}=.*|${key}=${val}|" "$conf"
+  else
+    echo "${key}=${val}" >> "$conf"
+  fi
+}
+
 # ─── Detect repo root ────────────────────────────────────────────────────────
 FORGE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
@@ -157,8 +167,16 @@ VAULT_PATH="${VAULT_PATH/#\~/$HOME}"
 
 # Write forge.conf
 if [ "$DRY_RUN" = true ]; then
-  ok "forge.conf would be written (vault: $VAULT_PATH)"
+  ok "forge.conf would be written/updated (vault: $VAULT_PATH)"
+elif [ -f "$CLAUDE_DIR/forge.conf" ]; then
+  # Existing config — only update install-managed keys, preserve user-set values.
+  # Other keys (ONBOARDING_COMPLETE, WELLNESS_ENABLED, MODEL_*, VAULT_GIT_DECLINED)
+  # are left untouched. Consumer code uses sensible defaults when keys are missing.
+  set_conf_key VAULT_PATH "$VAULT_PATH"
+  set_conf_key FORGE_REPO "$FORGE_ROOT"
+  ok "forge.conf updated (preserved existing user-set values)"
 else
+  # First install — write full template with defaults.
   cat > "$CLAUDE_DIR/forge.conf" <<EOF
 # Forge configuration — written by install.sh
 VAULT_PATH=$VAULT_PATH
@@ -192,6 +210,47 @@ run mkdir -p "$VAULT_PATH/_shared/tasks/open" \
 
 run cp "$FORGE_ROOT/core/vault-templates/"* "$VAULT_PATH/_templates/"
 ok "Vault structure at $VAULT_PATH"
+
+# ─── Encourage vault git-init ────────────────────────────────────────────────
+# Check 1: vault is already a git repo? Skip silently.
+# Check 2: user previously declined? Skip silently (flag in forge.conf).
+# Check 3: dry-run? Print would-prompt and skip.
+# Otherwise: prompt; on Y init+commit scaffold+hint; on N record decline.
+
+if ! git -C "$VAULT_PATH" rev-parse --git-dir &>/dev/null; then
+  if grep -q '^VAULT_GIT_DECLINED=true' "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    : # user previously declined — silent skip
+  elif [ "$DRY_RUN" = true ]; then
+    info "Would prompt: initialize vault as git repo"
+  else
+    echo ""
+    printf "${CYAN}[forge]${NC} Vault at %s is not under version control.\n" "$VAULT_PATH"
+    printf "        Strongly recommended:\n"
+    printf "          - Survives laptop loss / disk failure\n"
+    printf "          - Enables cross-machine work\n"
+    printf "          - Powers vault-state line at session start (drift detection)\n"
+    printf "        Initialize git in the vault now? [Y/n]: "
+    read -r git_init_answer
+    case "${git_init_answer:-Y}" in
+      [Yy]*|"")
+        info "Initializing vault as git repo…"
+        run git -C "$VAULT_PATH" init -q
+        ok "git init"
+        run git -C "$VAULT_PATH" add _shared _templates _meta
+        run git -C "$VAULT_PATH" commit -q -m "Initial vault scaffold"
+        ok "Initial commit (vault scaffold)"
+        hint "Add a remote later: git -C $VAULT_PATH remote add origin <url> && git push -u origin HEAD"
+        ;;
+      *)
+        # Persist decline flag via set_conf_key so it survives future install runs.
+        if [ "$DRY_RUN" = false ]; then
+          set_conf_key VAULT_GIT_DECLINED true
+        fi
+        info "Vault left unversioned per user choice."
+        ;;
+    esac
+  fi
+fi
 
 # ─── Copy skills ─────────────────────────────────────────────────────────────
 ADAPTER="$FORGE_ROOT/adapters/claude-code"
