@@ -54,7 +54,13 @@ run() {
 set_conf_key() {
   local key="$1" val="$2" conf="$CLAUDE_DIR/forge.conf"
   if grep -q "^${key}=" "$conf" 2>/dev/null; then
-    sed -i '' "s|^${key}=.*|${key}=${val}|" "$conf"
+    local tmp="${conf}.tmp.$$"
+    # Pass via ENVIRON (not -v) so backslash escapes in val are preserved verbatim.
+    # awk's -v interprets escape sequences (\n, \t, unknown \X) which would mangle
+    # values containing literal backslashes.
+    SET_CONF_K="$key" SET_CONF_V="$val" \
+      awk 'BEGIN{FS="="; k=ENVIRON["SET_CONF_K"]; v=ENVIRON["SET_CONF_V"]} $1==k {print k"="v; next} {print}' "$conf" > "$tmp" \
+      && mv "$tmp" "$conf"
   else
     echo "${key}=${val}" >> "$conf"
   fi
