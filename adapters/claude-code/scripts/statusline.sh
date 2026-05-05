@@ -63,9 +63,14 @@ if [ -n "$MARKER" ] && [ -f "$MARKER" ]; then
   fi
 fi
 
+# Wellness chips — soft-fails to empty if wellness-coach not installed or vault unreachable
+WELLNESS_STATUS=""
+WELLNESS_SCRIPT="$HOME/.claude/skills/wellness-coach/scripts/wellness-status.sh"
+[ -x "$WELLNESS_SCRIPT" ] && WELLNESS_STATUS=$("$WELLNESS_SCRIPT" 2>/dev/null)
+
 # Create sleek status line with colors
 if [ -n "$FORGE_STATUS" ]; then
-  printf "\033[33m%s\033[0m | \033[36m⚡ %s\033[0m \033[32m💰 \$%s\033[0m \033[35m⏱️ %ss\033[0m\n" "$FORGE_STATUS" "$MODEL" "$COST_FORMATTED" "$DURATION_SEC"
+  printf "\033[33m%s\033[0m | \033[36m⚡ %s\033[0m \033[32m💰 \$%s\033[0m \033[35m⏱️ %ss\033[0m | %s\n" "$FORGE_STATUS" "$MODEL" "$COST_FORMATTED" "$DURATION_SEC" "$WELLNESS_STATUS"
 else
-  printf "📁 \033[33m%s 🌿 %s\033[0m | \033[36m⚡ %s\033[0m \033[32m💰 \$%s\033[0m \033[35m⏱️ %ss\033[0m\n" "$DIR_DISPLAY" "$GIT_BRANCH" "$MODEL" "$COST_FORMATTED" "$DURATION_SEC"
+  printf "📁 \033[33m%s 🌿 %s\033[0m | \033[36m⚡ %s\033[0m \033[32m💰 \$%s\033[0m \033[35m⏱️ %ss\033[0m | %s\n" "$DIR_DISPLAY" "$GIT_BRANCH" "$MODEL" "$COST_FORMATTED" "$DURATION_SEC" "$WELLNESS_STATUS"
 fi
