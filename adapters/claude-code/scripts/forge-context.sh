@@ -417,14 +417,18 @@ do_status() {
     branch="$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null)"
   fi
 
-  local indicator
+  # Checkpoint freshness chip: 💾 always (semantic = "save state"), color = urgency
+  # green ≤15min, yellow ≤30min, red >30min. "ago" suffix anchors elapsed-time meaning.
+  local color
   if [ "$age" -le 15 ]; then
-    indicator="✓ ${age}m"
+    color='\033[32m'  # green
   elif [ "$age" -le 30 ]; then
-    indicator="⚠ ${age}m"
+    color='\033[33m'  # yellow
   else
-    indicator="🔴 ${age}m"
+    color='\033[31m'  # red
   fi
+  local indicator
+  indicator=$(printf "${color}💾 %sm ago\033[0m" "$age")
 
   echo "⚒ $PROJECT_NAME | 🌿 ${branch:-n/a} | $indicator"
 }
