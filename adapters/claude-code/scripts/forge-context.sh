@@ -399,6 +399,27 @@ for pr in json.load(sys.stdin):
     fi
   fi
 
+  # Vault state — surfaces drift in the vault repo itself (not the project repo).
+  # Loss of laptop = loss of all decisions/checkpoints/plans if the vault never gets pushed.
+  if [ -d "$VAULT_PATH/.git" ]; then
+    echo ""
+    echo "--- Vault state ---"
+    local vault_dirty vault_ahead vault_behind vault_untracked_dirs
+    vault_dirty="$(git -C "$VAULT_PATH" status --short 2>/dev/null | wc -l | tr -d ' ')"
+    vault_ahead="$(git -C "$VAULT_PATH" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+    vault_behind="$(git -C "$VAULT_PATH" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
+    vault_untracked_dirs="$(git -C "$VAULT_PATH" status --short 2>/dev/null | awk '/^\?\?/ {print $2}' | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ')"
+
+    if [ "$vault_dirty" -eq 0 ] && [ "$vault_ahead" -eq 0 ] && [ "$vault_behind" -eq 0 ]; then
+      echo "Clean, in sync with origin."
+    else
+      [ "$vault_dirty" -gt 0 ] && echo "Dirty files: $vault_dirty"
+      [ "$vault_untracked_dirs" -gt 0 ] && echo "Untracked top-level dirs: $vault_untracked_dirs"
+      [ "$vault_ahead" -gt 0 ] && echo "Unpushed commits: $vault_ahead"
+      [ "$vault_behind" -gt 0 ] && echo "Behind origin: $vault_behind"
+    fi
+  fi
+
   echo "========================"
 
   # Truncate breadcrumbs (fresh session)
