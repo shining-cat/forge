@@ -19,7 +19,7 @@ FILE_PATH="$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')"
 FORGE_CONF="$HOME/.claude/forge.conf"
 [ -f "$FORGE_CONF" ] || exit 0
 
-VAULT_PATH="$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)"
+VAULT_PATH="$(grep '^VAULT_PATH=' "$FORGE_CONF" | head -1 | cut -d= -f2- || true)"
 [ -z "$VAULT_PATH" ] && exit 0
 
 MARKER="$VAULT_PATH/_shared/forge-active"
