@@ -339,6 +339,12 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 **Proactive Refiner:** The Refiner skill is always active. When the user corrects or redirects:
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
 
+**Plan storage (Forge mode):** All plan, design, and spec files MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`.
+
+- **Project work** (FINN, SimpleHIIT, forge, etc.): `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md` (and matching `-plan.md` for the implementation plan when separate).
+- **Cross-project / shared work**: `{VAULT_PATH}/_shared/tasks/open/YYYY-MM-DD-<topic>.md`.
+- This overrides the default `docs/plans/...` instruction in the superpowers `brainstorming` and `writing-plans` skills. The Forge override is enforced by a PreToolUse hook (`forge-vault-plan-guard.sh`) — Claude cannot write to `docs/plans/` or `.claude/plans/` while Forge is active.
+
 **Subagent definitions:** Each Forge role has a Claude Code subagent definition at `~/.claude/agents/forge-{role}.md` (installed by `install.sh` from `adapters/claude-code/agents/` in the forge repo). Dispatch via `Agent({subagent_type: "forge-{role}", ...})`. The 8 roles are: `forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`. The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable from the vault via `repo-core/`).
 
 **Model tuning:** Role-to-model assignments are configured in `~/.claude/forge.conf` under `MODEL_*` keys. Read them at session start. Empty value means "inherit from session model".
