@@ -418,6 +418,11 @@ for pr in json.load(sys.stdin):
       [ "$vault_ahead" -gt 0 ] && echo "Unpushed commits: $vault_ahead"
       [ "$vault_behind" -gt 0 ] && echo "Behind origin: $vault_behind"
     fi
+  elif ! grep -q '^VAULT_GIT_DECLINED=true' "$HOME/.claude/forge.conf" 2>/dev/null; then
+    echo ""
+    echo "--- Vault state ---"
+    echo "Not under version control. Decisions, checkpoints, plans live only on this disk."
+    echo "Run \`git -C $VAULT_PATH init\` to enable history + recovery."
   fi
 
   echo "========================"
