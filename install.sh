@@ -345,12 +345,20 @@ done
 ok "Permissions"
 
 # ── Hooks ──
-# Helper: add a hook entry if its command doesn't already exist in the event
+# Helper: add a hook entry if its command doesn't already exist in the event.
+# Dedup is tilde-aware: `~/.claude/...` and `$HOME/.claude/...` are treated as
+# the same command (shell expands both identically when the hook runs). Without
+# this normalization, re-running install.sh after the tilde→$HOME migration
+# duplicates every Forge hook entry, causing every hook to fire twice per event.
 add_hook() {
   local event="$1" matcher="$2" command="$3" timeout="${4:-5}"
   local settings="$5"
 
-  if echo "$settings" | jq -e ".hooks.\"$event\" // [] | .. | .command? // empty | select(. == \"$command\")" &>/dev/null 2>&1; then
+  if echo "$settings" | jq -e --arg cmd "$command" --arg home "$HOME" \
+    ".hooks.\"$event\" // [] | .. | .command? // empty
+     | (gsub(\$home; \"~\")) as \$stored
+     | (\$cmd | gsub(\$home; \"~\")) as \$incoming
+     | select(\$stored == \$incoming)" &>/dev/null 2>&1; then
     echo "$settings"
     return
   fi
