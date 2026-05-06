@@ -229,12 +229,44 @@ print(summary)
   echo "$timestamp | $tool_name | $input_summary" >> "$BREADCRUMBS_FILE"
 
   # ── Brain dump prompt (if >10min since last entry) ──────────────────
-  local dump_age checkpoint_age output
+  # Stacked throttle: subagent guard + just-dumped mtime + per-response cooldown.
+  # Fixes per-tool-call refire pattern (see vault task keeper-braindump-hook-suppress-in-subagents).
+  local dump_age checkpoint_age output session_id agent_id now braindump_mtime cooldown_marker cooldown_age
   dump_age="$(get_braindump_age_minutes)"
   checkpoint_age="$(get_checkpoint_age_minutes)"
   output=""
 
+  # Defensive subagent guard — Claude Code issue #34692 says PostToolUse
+  # may not fire in subagents, but observed counter-evidence; harmless either way.
+  agent_id="$(echo "$STDIN_JSON" | jq -r '.agent_id // empty' 2>/dev/null)"
+  if [ -n "$agent_id" ]; then
+    return 0
+  fi
+
+  # Just-dumped check — if braindump.md was touched within 60s, suppress.
+  now="$(date +%s)"
+  if [ -f "$BRAINDUMP_FILE" ]; then
+    braindump_mtime="$(stat -f %m "$BRAINDUMP_FILE" 2>/dev/null || stat -c %Y "$BRAINDUMP_FILE" 2>/dev/null || echo 0)"
+    if [ $((now - braindump_mtime)) -lt 60 ]; then
+      return 0
+    fi
+  fi
+
+  # Per-response cooldown — if marker exists and is fresh, suppress.
+  session_id="$(echo "$STDIN_JSON" | jq -r '.session_id // empty' 2>/dev/null)"
+  if [ -n "$session_id" ]; then
+    cooldown_marker="/tmp/forge-braindump-cooldown-${session_id}"
+    if [ -f "$cooldown_marker" ]; then
+      cooldown_age="$(stat -f %m "$cooldown_marker" 2>/dev/null || stat -c %Y "$cooldown_marker" 2>/dev/null || echo 0)"
+      if [ $((now - cooldown_age)) -lt 60 ]; then
+        return 0
+      fi
+    fi
+  fi
+
   if [ "$dump_age" -ge 10 ]; then
+    # Touch the cooldown marker before emitting (suppresses next tool call within 60s).
+    [ -n "$session_id" ] && touch "/tmp/forge-braindump-cooldown-${session_id}" 2>/dev/null
     output="{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[Keeper] Brain dump due (${dump_age}min since last). Append 2-3 lines to braindump.md: what you're working on, what you just figured out, what's next. File: $BRAINDUMP_FILE\"}}"
   fi
 
