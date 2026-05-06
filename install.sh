@@ -301,11 +301,13 @@ run mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
 
 run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
+run cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
 run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
+             "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
@@ -368,11 +370,12 @@ add_hook() {
 # Core hooks only — wellness hooks are wired during onboarding
 SETTINGS=$(add_hook "PreToolUse" "null" "$HOME/.claude/hooks/approval-notifier.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreToolUse" "Bash" "$HOME/.claude/scripts/forge-context.sh gate" 5 "$SETTINGS")
+SETTINGS=$(add_hook "PreToolUse" "Write|Edit" "$HOME/.claude/hooks/forge-vault-plan-guard.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreCompact" "null" "$HOME/.claude/hooks/forge-compaction.sh pre" 10 "$SETTINGS")
 SETTINGS=$(add_hook "PostCompact" "null" "$HOME/.claude/hooks/forge-compaction.sh post" 10 "$SETTINGS")
 SETTINGS=$(add_hook "PostToolUse" "null" "$HOME/.claude/scripts/forge-context.sh post-tool" 5 "$SETTINGS")
 SETTINGS=$(add_hook "Stop" "null" "$HOME/.claude/scripts/forge-context.sh stop" 5 "$SETTINGS")
-ok "Hooks (6 core hooks)"
+ok "Hooks (7 core hooks)"
 
 # ── Statusline ──
 SETTINGS=$(echo "$SETTINGS" | jq '.statusLine = {type: "command", command: "~/.claude/statusline.sh", padding: 0}')
