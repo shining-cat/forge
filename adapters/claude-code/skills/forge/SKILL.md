@@ -345,6 +345,14 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 - **Cross-project / shared work**: `{VAULT_PATH}/_shared/tasks/open/YYYY-MM-DD-<topic>.md`.
 - This overrides the default `docs/plans/...` instruction in the superpowers `brainstorming` and `writing-plans` skills. The Forge override is enforced by a PreToolUse hook (`forge-vault-plan-guard.sh`) — Claude cannot write to `docs/plans/` or `.claude/plans/` while Forge is active.
 
+**Backlog (per-project view):** Each project maintains a single-page prioritized view at `{VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — Keeper-curated table of open tasks with Effort / Impact / Status / Notes columns, grouped by cluster. Replaces scrolling through `tasks/open/` for prioritization decisions.
+
+- Refresh at: task add, task resolve, cluster transition, natural pauses
+- Header carries `Updated: YYYY-MM-DD` — re-audit if more than ~3 days stale
+- Not a kanban — single table per cluster section, no swim lanes
+- Judgment columns (Effort/Impact/Status) are Keeper's call — don't auto-generate
+- Petra references the BACKLOG when prioritizing ("Per BACKLOG, next is X")
+
 **Subagent definitions:** Each Forge role has a Claude Code subagent definition at `~/.claude/agents/forge-{role}.md` (installed by `install.sh` from `adapters/claude-code/agents/` in the forge repo). Dispatch via `Agent({subagent_type: "forge-{role}", ...})`. The 8 roles are: `forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`. The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable from the vault via `repo-core/`).
 
 **Model tuning:** Role-to-model assignments are configured in `~/.claude/forge.conf` under `MODEL_*` keys. Read them at session start. Empty value means "inherit from session model".

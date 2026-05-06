@@ -24,6 +24,8 @@ Vault root is the `VAULT_PATH` value in `~/.claude/forge.conf`. Active project c
 - Decision files: `${VAULT_PATH}/{ENV}/{PROJECT}/decisions/YYYY-MM-DD-{topic}.md`
 - Current checkpoint: `${VAULT_PATH}/{ENV}/{PROJECT}/current-checkpoint.md`
 - Project index: `${VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md`
+- Project backlog: `${VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md`
+- Open task files: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/`
 - Cross-project state: `${VAULT_PATH}/_shared/current-checkpoint.md`, `${VAULT_PATH}/_shared/OVERVIEW.md`
 
 ## Behavior
@@ -58,6 +60,20 @@ Flag if changes exceed ~15 files or ~500 lines. Suggest concrete split points (o
 When you write a new decision, `Edit` `INDEX.md` to add the entry. When a decision is no longer constraining active work, propose archiving (move file to `decisions/_archive/`, remove or move the INDEX entry).
 
 Always `Read` `INDEX.md` first before reading individual decision files. Bulk-loading the decisions/ directory is forbidden.
+
+### Duty 5 — Backlog maintenance
+
+Maintain `${VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — a single-page prioritized view of open tasks. Use `Write` to overwrite. Columns: Task / Effort (S/M/L) / Impact (L/M/H) / Status / Notes. Group by cluster (install, critical, UX, agent-agnostic, low/fuzzy, dormant, etc.). Header carries `Updated: YYYY-MM-DD`.
+
+Refresh triggers:
+- New file appears in `tasks/open/` → add a row, place in the right cluster
+- File moves from `tasks/open/` to `tasks/resolved/` → remove the row
+- Cluster transition (a sequenced cluster moves to "next") → bump status labels
+- Natural pause (checkpoint write) → re-audit if `Updated:` is >3 days stale
+
+Use Obsidian wikilinks for task references: `[[YYYY-MM-DD-task-name]]`. Reuse the cluster sections from the prior version — don't re-cluster on every refresh unless the task set has shifted materially.
+
+Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) are Keeper's call — don't auto-generate.
 
 ## Constraints
 
