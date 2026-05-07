@@ -48,6 +48,21 @@ reconcile_marker() {
   fi
 }
 
+# Returns 0 if Pip (wellness coach) is on strike (tool use blocked), 1 otherwise.
+# Used by do_stop and do_post_tool to suppress nags during a strike — without
+# this short-circuit, Keeper's Stop hook fires on every response and the user
+# cannot satisfy it (writing a checkpoint requires tool calls Pip blocks),
+# producing a hook-deadlock loop. See friction log 2026-05-07 — "Hook
+# coordination deadlock loop". Fail-open: if wellness file is missing or
+# unreadable, treat as not-on-strike (wellness-disabled installs unaffected).
+is_pip_on_strike() {
+  local prefs="${VAULT_PATH}/_shared/wellness-preferences.json"
+  [ -f "$prefs" ] || return 1
+  local strike
+  strike="$(jq -r '.strike_active // false' "$prefs" 2>/dev/null)"
+  [ "$strike" = "true" ]
+}
+
 # ── Sourceable boundary ─────────────────────────────────────────────────
 # Everything below runs only when this file is executed as a script.
 # When sourced (e.g., from forge-compaction.sh to reuse `reconcile_marker`),
@@ -228,6 +243,13 @@ print(summary)
   mkdir -p "$(dirname "$BREADCRUMBS_FILE")"
   echo "$timestamp | $tool_name | $input_summary" >> "$BREADCRUMBS_FILE"
 
+  # Pip on strike — breadcrumb still recorded above, but suppress all nags
+  # below (brain-dump, push/PR nudge). User can't act on them during a strike,
+  # and Keeper's Stop hook would loop on the resulting empty responses.
+  if is_pip_on_strike; then
+    return 0
+  fi
+
   # ── Brain dump prompt (if >10min since last entry) ──────────────────
   # Stacked throttle: subagent guard + just-dumped mtime + per-response cooldown.
   # Fixes per-tool-call refire pattern (see vault task keeper-braindump-hook-suppress-in-subagents).
@@ -319,6 +341,13 @@ EOF
 
 # ── Subcommand: stop (staleness check on session end) ──────────────────
 do_stop() {
+  # Pip on strike — suppress nag. User cannot write a checkpoint while tool
+  # use is blocked, and every response triggers another Stop hook fire,
+  # producing a deadlock loop. Resume nagging when strike lifts naturally.
+  if is_pip_on_strike; then
+    exit 0
+  fi
+
   local age
   age="$(get_checkpoint_age_minutes)"
 
