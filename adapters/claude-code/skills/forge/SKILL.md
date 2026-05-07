@@ -296,6 +296,13 @@ PR sync results (from step 3) are shown first, then the context summary, then th
 - Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — typically `${VAULT_PATH}/_shared/`, or `~/.claude/` legacy) (see `references/wellness-awareness.md`)
 - Next calendar meeting — if calendar is enabled (use the `google-workspace:google-calendar` skill approach). Skip events where the user's `responseStatus` is `"declined"` in the `attendees` array.
 
+**Team substrate check:** Inspect whether Pattern A agent teams can spawn in this session.
+- If `$TMUX` env var is set and non-empty → "Team substrate: ready" (claude is running inside tmux, teammates can spawn as panes).
+- If `$TMUX` is empty AND `command -v tmux` succeeds → "Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback". This typically means the `forge-shell-init.sh` wrapper was bypassed (FORGE_NO_TMUX_WRAP set, or claude launched outside the wrapped shell).
+- If `$TMUX` is empty AND tmux is NOT installed → "Team substrate: missing — install tmux (`brew install tmux`) and relaunch for Pattern A; inline subagent fallback works either way".
+
+This check makes Petra's substrate-awareness explicit at session entry, so she does not trigger Pattern A and *then* discover the team feature is unavailable. When substrate is missing, Pattern A falls back to inline subagent dispatches per the Pattern A protocol section below.
+
 ```
 [Forge | {PROJECT}]
 
@@ -310,6 +317,7 @@ Checkpoint: {date} — {current goal summary}
 Active decisions: {count or "none"}
 Friction events: {count recent or "none"}
 Git state: {clean / N uncommitted changes}
+Team substrate: {ready / missing — Pattern A would fall back to inline}
 Next interruption: {break in Xmin / meeting "Name" in Xmin / none in sight}
 ```
 
@@ -457,6 +465,15 @@ When dispatching `forge-refiner` in Mode 2 (static-artifact friction prediction)
 - **Positive question:** "Where does this PR make future work easier? Name patterns worth replicating."
 
 These echo the constraints in `core/roles/refiner.md`, but stating them in the brief reinforces the framing for the specific dispatch.
+
+**5. Substrate-missing fallback.**
+If session entry detected "Team substrate: missing" (no tmux, or tmux installed but not in a tmux session), Petra MUST NOT attempt `TeamCreate` + teammate dispatch — the spawn will be cancelled with "iTerm2 setup required" or equivalent. Instead, run Pattern A as **inline subagent dispatches** — same protocol (Tier 1 → Tier 2 header relay → Tier 3), same output quality, no live multi-pane visibility:
+
+1. **Tier 1:** `Agent({subagent_type: "forge-reviewer", ...})` foreground. Read full report.
+2. **Tier 2:** Compose one-line-per-finding header summary from the Tier 1 report.
+3. **Tier 3:** `Agent({subagent_type: "forge-refiner", ...})` foreground with the header summary in the brief.
+
+Same trigger evaluation, same Refiner brief constraints, same pre-shutdown follow-ups (just no teammates to ask, since this is sequential subagent dispatch). The only loss is concurrent observability — which is fine when substrate isn't there to support it. Inline fallback shipped via change-set #6 of `2026-05-07-forge-team-substrate-install` task.
 
 **Limitations to remember:**
 - One team per session (Petra can't run a permanent role-team alongside an ad-hoc team).

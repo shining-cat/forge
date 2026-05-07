@@ -115,6 +115,15 @@ else
   ok "python3"
 fi
 
+if ! command -v tmux &>/dev/null; then
+  warn "tmux not found — Pattern A agent teams will not work."
+  hint "Install: brew install tmux  (macOS)  or  apt install tmux  (Linux)"
+  hint "Without tmux, Petra falls back to inline subagent dispatch — same work, no live multi-pane visibility."
+else
+  TMUX_VERSION=$(tmux -V 2>/dev/null | awk '{print $2}')
+  ok "tmux $TMUX_VERSION"
+fi
+
 if [ -f "$SETTINGS_FILE" ]; then
   if jq -e '.enabledPlugins | keys[] | select(startswith("superpowers@"))' "$SETTINGS_FILE" &>/dev/null 2>&1; then
     ok "superpowers plugin"
@@ -139,6 +148,40 @@ if command -v terminal-notifier &>/dev/null; then
 else
   hint "terminal-notifier recommended for macOS notifications on approval prompts."
   hint "Install: brew install terminal-notifier"
+fi
+
+# iTerm2 setup — required for clean Pattern A team UX on macOS.
+# Idempotent: each setting only writes if not already correct.
+if [ "$(uname)" = "Darwin" ] && [ -d "/Applications/iTerm.app" ]; then
+  # 1. Enable Python API — required for tmux -CC native pane integration
+  CURRENT_API=$(defaults read com.googlecode.iterm2 EnableAPIServer 2>/dev/null || echo "0")
+  if [ "$CURRENT_API" != "1" ]; then
+    if [ "$DRY_RUN" = true ]; then
+      info "Would enable iTerm2 Python API (defaults write com.googlecode.iterm2 EnableAPIServer 1)"
+    else
+      defaults write com.googlecode.iterm2 EnableAPIServer 1
+      ok "iTerm2 Python API enabled (restart iTerm2 to take effect)"
+    fi
+  else
+    ok "iTerm2 Python API already enabled"
+  fi
+
+  # 2. Auto-hide tmux gateway client window — buries the "control" window
+  # that tmux -CC opens, leaving only the integration window visible.
+  # Without this, users see two windows per claude session and find it confusing
+  # (the gateway looks frozen on "tmux mode started"). See task
+  # 2026-05-07-forge-team-substrate-install (UX iteration after first user trial).
+  CURRENT_HIDE=$(defaults read com.googlecode.iterm2 AutoHideTmuxClientSession 2>/dev/null || echo "0")
+  if [ "$CURRENT_HIDE" != "1" ]; then
+    if [ "$DRY_RUN" = true ]; then
+      info "Would auto-hide tmux gateway window (defaults write com.googlecode.iterm2 AutoHideTmuxClientSession -bool true)"
+    else
+      defaults write com.googlecode.iterm2 AutoHideTmuxClientSession -bool true
+      ok "iTerm2 tmux gateway auto-hide enabled (single-window UX for Pattern A teams)"
+    fi
+  else
+    ok "iTerm2 tmux gateway auto-hide already enabled"
+  fi
 fi
 
 echo ""
@@ -385,6 +428,10 @@ SETTINGS=$(add_hook "PostToolUse" "null" "$HOME/.claude/scripts/forge-context.sh
 SETTINGS=$(add_hook "Stop" "null" "$HOME/.claude/scripts/forge-context.sh stop" 5 "$SETTINGS")
 ok "Hooks (7 core hooks)"
 
+# ── Env vars for agent teams ──
+SETTINGS=$(echo "$SETTINGS" | jq '.env = ((.env // {}) + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})')
+ok "Env: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+
 # ── Statusline ──
 SETTINGS=$(echo "$SETTINGS" | jq '.statusLine = {type: "command", command: "~/.claude/statusline.sh", padding: 0}')
 ok "Statusline"
@@ -398,6 +445,55 @@ if [ "$DRY_RUN" = true ]; then
 else
   echo "$SETTINGS" | jq '.' > "$SETTINGS_FILE"
   ok "settings.json updated (backup: settings.json.forge-backup)"
+fi
+
+# ─── Install shell wrapper for Pattern A team substrate ──────────────────────
+echo ""
+info "Installing shell wrapper for agent teams..."
+
+WRAPPER_FILE="$CLAUDE_DIR/forge-shell-init.sh"
+WRAPPER_SOURCE="$ADAPTER/scripts/forge-shell-init.sh"
+
+run cp "$WRAPPER_SOURCE" "$WRAPPER_FILE"
+ok "Wrapper installed at $WRAPPER_FILE"
+
+# Detect user's shell rc file
+SHELL_RC=""
+case "${SHELL##*/}" in
+  zsh) SHELL_RC="$HOME/.zshrc" ;;
+  bash) SHELL_RC="$HOME/.bashrc" ;;
+  fish) SHELL_RC="$HOME/.config/fish/config.fish" ;;
+esac
+
+if [ -z "$SHELL_RC" ]; then
+  warn "Couldn't detect your shell rc file (\$SHELL=$SHELL)."
+  hint "Manually source ~/.claude/forge-shell-init.sh in your shell init."
+elif [ ! -f "$SHELL_RC" ]; then
+  warn "$SHELL_RC not found."
+  hint "Create it and add: [ -f ~/.claude/forge-shell-init.sh ] && source ~/.claude/forge-shell-init.sh"
+elif grep -q "forge-shell-init.sh" "$SHELL_RC"; then
+  ok "Wrapper already sourced in $SHELL_RC"
+elif [ "$SHELL_RC" = "$HOME/.config/fish/config.fish" ]; then
+  warn "Fish shell detected — wrapper uses bash/zsh syntax, not fish-compatible."
+  hint "Fish port not yet shipped. File an issue if you'd like one."
+  hint "Manual port reference: $WRAPPER_FILE"
+else
+  if grep -q "^[[:space:]]*alias[[:space:]]\+claude=" "$SHELL_RC" || \
+     grep -q "^[[:space:]]*claude[[:space:]]*()" "$SHELL_RC"; then
+    warn "$SHELL_RC already defines 'claude' (alias or function) — wrapper may conflict."
+    hint "Review existing definition before sourcing the wrapper."
+  fi
+  if [ "$DRY_RUN" = true ]; then
+    info "Would append source line to $SHELL_RC"
+  else
+    cat >> "$SHELL_RC" <<EOF
+
+# Forge shell wrapper — auto-tmux for Pattern A agent teams (added by forge install.sh)
+[ -f ~/.claude/forge-shell-init.sh ] && source ~/.claude/forge-shell-init.sh
+EOF
+    ok "Wrapper sourced in $SHELL_RC"
+    hint "Open a new terminal (or 'source $SHELL_RC') for the wrapper to take effect."
+  fi
 fi
 
 # ─── Patch vault paths in SKILL.md files ──────────────────────────────────────
@@ -440,6 +536,19 @@ echo "  Wellness:      files ready — offered during onboarding"
 echo "  Vault:         $VAULT_PATH"
 echo "  Config:        ~/.claude/forge.conf"
 echo "  Backup:        ~/.claude/settings.json.forge-backup"
+echo ""
+echo "  Team substrate (Pattern A agent teams):"
+if command -v tmux &>/dev/null; then
+  printf "    tmux:        %s\n" "$(tmux -V 2>/dev/null | awk '{print $2}')"
+else
+  printf "    tmux:        ${YELLOW}not installed${NC} — Pattern A teams unavailable\n"
+fi
+if [ "$(uname)" = "Darwin" ] && [ -d "/Applications/iTerm.app" ]; then
+  echo "    iTerm2 API:  enabled"
+fi
+echo "    Wrapper:     ~/.claude/forge-shell-init.sh"
+hint "Open a fresh terminal — your 'claude' command now auto-wraps in tmux"
+hint "for Pattern A team support. Scripts using 'claude -p' are unaffected."
 echo ""
 echo "  Next step:     type /forge in Claude Code to start"
 echo ""
