@@ -43,5 +43,14 @@ out=$("$LINTER" --file "$FIXTURES/check1-good.json" 2>&1); rc=$?
 assert_exit "check1-good: exits 0" "0" "$rc"
 
 echo ""
+echo "Check 2 — Bash leading-* literal"
+out=$("$LINTER" --file "$FIXTURES/check2-bad.json" 2>&1); rc=$?
+assert_exit "check2-bad: exits 1" "1" "$rc"
+assert_contains "check2-bad: reports the bad Bash pattern" "Bash(*forge-context.sh*)" "$out"
+
+out=$("$LINTER" --file "$FIXTURES/check2-good.json" 2>&1); rc=$?
+assert_exit "check2-good: exits 0" "0" "$rc"
+
+echo ""
 echo "Total: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

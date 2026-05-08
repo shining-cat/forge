@@ -55,6 +55,22 @@ check1() {
 
 check1
 
+# Check 2: Bash(*foo*) patterns with leading *
+# Leading * in Bash matchers is literal (not a wildcard), pattern never matches.
+check2() {
+  local patterns
+  patterns=$(jq -r '.permissions.allow[]?, .permissions.deny[]?' "$SETTINGS_FILE" 2>/dev/null)
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    if echo "$p" | grep -qE '^Bash\(\*'; then
+      echo "[CRITICAL] check2-bash-leading-star: $p — leading * in Bash matcher is literal, pattern never matches. Use 'prefix:*' form instead."
+      CRITICAL=$((CRITICAL+1))
+    fi
+  done <<< "$patterns"
+}
+
+check2
+
 echo ""
 echo "$CRITICAL critical, $WARN warning"
 [ "$CRITICAL" -eq 0 ]
