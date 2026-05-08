@@ -346,12 +346,14 @@ run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
+run cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
 run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
+             "$CLAUDE_DIR/scripts/forge-permission-lint.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"
@@ -518,6 +520,22 @@ else
     fi
   done
   ok "Vault paths set to $VAULT_REL"
+fi
+
+# ─── Validate settings.json against known anti-patterns ─────────────────────
+echo ""
+info "Validating settings.json for known anti-patterns..."
+
+if [ "$DRY_RUN" = true ]; then
+  ok "Skipped (dry run)"
+elif "$CLAUDE_DIR/scripts/forge-permission-lint.sh"; then
+  ok "settings.json validation passed"
+else
+  echo ""
+  echo "  ✗ settings.json validation failed — see findings above."
+  echo "    Fix the patterns and re-run install.sh."
+  echo "    (If the bad patterns came from install.sh itself, file a forge bug.)"
+  exit 1
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
