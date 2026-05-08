@@ -309,11 +309,11 @@ echo ""
 info "Installing skills..."
 
 # Core skills
-for skill in forge forge-checkpoint forge-exit keeper refiner plan-reviewer; do
+for skill in forge forge-checkpoint forge-exit forge-audit-permissions keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
   run cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
-ok "Core skills (forge, forge-checkpoint, forge-exit, keeper, refiner, plan-reviewer)"
+ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, keeper, refiner, plan-reviewer)"
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
@@ -346,12 +346,14 @@ run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
+run cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
 run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
+             "$CLAUDE_DIR/scripts/forge-permission-lint.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"
@@ -375,8 +377,13 @@ if [ "$DRY_RUN" = false ]; then
 fi
 
 # ── Permissions ──
+# Allow the forge-context.sh script to be invoked by hooks without prompting.
+# The hooks use $HOME-expanded paths (see add_hook calls below), so we match
+# the absolute form. Leading `*` in Bash matchers is LITERAL, not a wildcard,
+# so patterns like `Bash(*forge-context.sh*)` would silently never match —
+# see forge-permission-lint check2.
 PERMS_TO_ADD=(
-  'Bash(*forge-context.sh*)'
+  "Bash($HOME/.claude/scripts/forge-context.sh:*)"
 )
 
 SETTINGS=$(cat "$SETTINGS_FILE")
@@ -520,6 +527,22 @@ else
   ok "Vault paths set to $VAULT_REL"
 fi
 
+# ─── Validate settings.json against known anti-patterns ─────────────────────
+echo ""
+info "Validating settings.json for known anti-patterns..."
+
+if [ "$DRY_RUN" = true ]; then
+  ok "Skipped (dry run)"
+elif "$CLAUDE_DIR/scripts/forge-permission-lint.sh"; then
+  ok "settings.json validation passed"
+else
+  echo ""
+  echo "  ✗ settings.json validation failed — see findings above."
+  echo "    Fix the patterns and re-run install.sh."
+  echo "    (If the bad patterns came from install.sh itself, file a forge bug.)"
+  exit 1
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -530,7 +553,7 @@ else
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Core skills:   forge, forge-checkpoint, forge-exit,"
+echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit-permissions,"
 echo "                 keeper, refiner, plan-reviewer"
 echo "  Wellness:      files ready — offered during onboarding"
 echo "  Vault:         $VAULT_PATH"

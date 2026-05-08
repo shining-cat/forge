@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Write(/Users/me/.claude/scripts/*)",
+      "Edit(/Users/me/.claude/skills/wellness-coach/scripts/*)"
+    ],
+    "deny": []
+  },
+  "hooks": {}
+}
