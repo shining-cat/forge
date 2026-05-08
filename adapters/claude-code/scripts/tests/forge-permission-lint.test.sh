@@ -52,5 +52,14 @@ out=$("$LINTER" --file "$FIXTURES/check2-good.json" 2>&1); rc=$?
 assert_exit "check2-good: exits 0" "0" "$rc"
 
 echo ""
+echo "Check 3 — Allow masked by deny *"
+out=$("$LINTER" --file "$FIXTURES/check3-bad.json" 2>&1); rc=$?
+assert_exit "check3-bad: exits 1" "1" "$rc"
+assert_contains "check3-bad: reports the masked allow" "Bash(rm:foo*)" "$out"
+
+out=$("$LINTER" --file "$FIXTURES/check3-good.json" 2>&1); rc=$?
+assert_exit "check3-good: exits 0" "0" "$rc"
+
+echo ""
 echo "Total: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

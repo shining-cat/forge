@@ -71,6 +71,53 @@ check2() {
 
 check2
 
+# Check 3: Allow patterns masked by deny pattern with same Tool prefix and inside-content "*"
+# E.g. allow Bash(rm:foo*) is silently masked by deny Bash(rm:*).
+check3() {
+  local denies allows
+  denies=$(jq -r '.permissions.deny[]?' "$SETTINGS_FILE" 2>/dev/null)
+  allows=$(jq -r '.permissions.allow[]?' "$SETTINGS_FILE" 2>/dev/null)
+
+  # Build list of "masked prefixes" from deny patterns shaped Tool(*) or Tool(verb:*)
+  local masked_prefixes=""
+  while IFS= read -r d; do
+    [ -z "$d" ] && continue
+    local prefix=""
+    if echo "$d" | grep -qE '^[A-Za-z]+\(\*\)$'; then
+      # Whole-tool deny: extract "Tool("
+      prefix=$(echo "$d" | sed -E 's/^([A-Za-z]+)\(\*\)$/\1(/')
+    elif echo "$d" | grep -qE '^[A-Za-z]+\([^):]+:\*\)$'; then
+      # Verb-deny: extract "Tool(verb:"
+      prefix=$(echo "$d" | sed -E 's/^([A-Za-z]+)\(([^:]+):\*\)$/\1(\2:/')
+    fi
+    if [ -n "$prefix" ]; then
+      masked_prefixes="${masked_prefixes}${prefix}"$'\n'
+    fi
+  done <<< "$denies"
+
+  while IFS= read -r a; do
+    [ -z "$a" ] && continue
+    while IFS= read -r mp; do
+      [ -z "$mp" ] && continue
+      case "$a" in
+        "$mp"*)
+          # The allow starts with a masked prefix. Skip exact-match-with-deny
+          # (that's "redundant", which is also bad but a separate concern).
+          # For now, flag any allow that's strictly more specific than the deny.
+          local content="${a#$mp}"
+          # Skip if content is just "*)" (means allow IS the deny — redundant, not masked)
+          if [ "$content" != "*)" ]; then
+            echo "[CRITICAL] check3-allow-masked-by-deny: $a — masked by a deny pattern with the same prefix and *. Allow is never reached."
+            CRITICAL=$((CRITICAL+1))
+          fi
+          ;;
+      esac
+    done <<< "$masked_prefixes"
+  done <<< "$allows"
+}
+
+check3
+
 echo ""
 echo "$CRITICAL critical, $WARN warning"
 [ "$CRITICAL" -eq 0 ]
