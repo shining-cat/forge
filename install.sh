@@ -377,22 +377,54 @@ if [ "$DRY_RUN" = false ]; then
 fi
 
 # ── Permissions ──
-# Allow the forge-context.sh script to be invoked by hooks without prompting.
-# The hooks use $HOME-expanded paths (see add_hook calls below), so we match
-# the absolute form. Leading `*` in Bash matchers is LITERAL, not a wildcard,
-# so patterns like `Bash(*forge-context.sh*)` would silently never match —
-# see forge-permission-lint check2.
+# Bake the safe-permissions baseline so fresh installs don't prompt on every
+# Forge action. Source of truth: core/references/forge-permissions.md.
+# $HOME and $VAULT_PATH are substituted by shell expansion below.
+# Validated by forge-permission-lint (run at end of install) — patterns that
+# would silently never match (see check1/check2/check3) fail the install.
+
+# Source forge.conf if present so the wellness conditional below works
+WELLNESS_ENABLED="${WELLNESS_ENABLED:-false}"
+if [ -f "$CLAUDE_DIR/forge.conf" ]; then
+  # shellcheck disable=SC1091
+  WELLNESS_ENABLED=$(grep -E '^WELLNESS_ENABLED=' "$CLAUDE_DIR/forge.conf" 2>/dev/null | head -1 | cut -d= -f2 || echo "false")
+fi
+
 PERMS_TO_ADD=(
+  # Forge scripts
   "Bash($HOME/.claude/scripts/forge-context.sh:*)"
+  "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
+  "Bash($HOME/.claude/scripts/statusline.sh:*)"
+  # Forge hooks
+  "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
+  "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
+  "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
+  # Forge config
+  "Read($HOME/.claude/forge.conf)"
+  "Edit($HOME/.claude/forge.conf)"
+  # Vault (recursive)
+  "Read($VAULT_PATH/**)"
+  "Write($VAULT_PATH/**)"
+  "Edit($VAULT_PATH/**)"
 )
 
+# Conditional: wellness coach (only if enabled in forge.conf)
+if [ "$WELLNESS_ENABLED" = "true" ]; then
+  PERMS_TO_ADD+=(
+    "Bash(python3:$HOME/.claude/skills/wellness-coach/hooks/*)"
+    "Bash($HOME/.claude/skills/wellness-coach/scripts/*)"
+  )
+fi
+
 SETTINGS=$(cat "$SETTINGS_FILE")
+ADDED_COUNT=0
 for perm in "${PERMS_TO_ADD[@]}"; do
   if ! echo "$SETTINGS" | jq -e ".permissions.allow // [] | index(\"$perm\")" &>/dev/null; then
     SETTINGS=$(echo "$SETTINGS" | jq ".permissions.allow = ((.permissions.allow // []) + [\"$perm\"])")
+    ADDED_COUNT=$((ADDED_COUNT + 1))
   fi
 done
-ok "Permissions"
+ok "Permissions ($ADDED_COUNT added, $((${#PERMS_TO_ADD[@]} - ADDED_COUNT)) already present)"
 
 # ── Hooks ──
 # Helper: add a hook entry if its command doesn't already exist in the event.

@@ -77,6 +77,8 @@ Skills reference capabilities from these marketplaces:
 
 Forge install state lives in `~/.claude/` (forge.conf, settings backup). The `forge-active` runtime marker lives in the vault at `${VAULT_PATH}/_shared/forge-active` instead — `~/.claude/` is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5), and the marker needs silent writes on every Forge entry/exit. Wellness preferences (`${VAULT_PATH}/_shared/wellness-preferences.json`) follow the same relocation pattern, for the same reason.
 
+The full set of `~/.claude/settings.json` permissions that `install.sh` writes — every script, hook, vault path, and conditional wellness pattern Forge needs — is catalogued in `core/references/forge-permissions.md`. That file is the source of truth for the install-time baseline; `forge-permission-lint.sh` validates the baked patterns at install end (fail-closed).
+
 See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md) for the per-project layout.
 
 ## Agent Roles
