@@ -118,6 +118,48 @@ check3() {
 
 check3
 
+# Check 4: Hook commands registered twice with tilde / $HOME / absolute home-equivalent forms.
+# Same (event, matcher, normalized command) registered multiple times → 2× firings.
+check4() {
+  local triples
+  triples=$(jq -r '
+    .hooks // {} | to_entries[] |
+    .key as $event |
+    .value[]? |
+    .matcher as $matcher |
+    .hooks[]? |
+    select(.type == "command") |
+    "\($event)\t\($matcher)\t\(.command)"
+  ' "$SETTINGS_FILE" 2>/dev/null)
+
+  # Track seen normalized keys; on collision, report the original command
+  local seen_keys=""
+  local seen_originals=""
+  while IFS= read -r triple; do
+    [ -z "$triple" ] && continue
+    local event matcher cmd
+    event=$(echo "$triple" | cut -f1)
+    matcher=$(echo "$triple" | cut -f2)
+    cmd=$(echo "$triple" | cut -f3-)
+
+    # Normalize: ~/X → /X, $HOME/X → /X, /Users/<anyone>/X → /X
+    # The leading character is whatever's left after stripping the home prefix.
+    local norm="$cmd"
+    norm=$(echo "$norm" | sed -E 's|^~/|/|; s|^\$HOME/|/|; s|^/Users/[^/]+/|/|')
+
+    local key="${event}|${matcher}|${norm}"
+    # Check if we've seen this normalized key before
+    if echo "$seen_keys" | grep -qxF "$key"; then
+      echo "[CRITICAL] check4-hook-tilde-home-dup: $event/$matcher: '$cmd' duplicates an earlier hook command (same command, different home-prefix form). Causes 2× firings."
+      CRITICAL=$((CRITICAL+1))
+    else
+      seen_keys="${seen_keys}${key}"$'\n'
+    fi
+  done <<< "$triples"
+}
+
+check4
+
 echo ""
 echo "$CRITICAL critical, $WARN warning"
 [ "$CRITICAL" -eq 0 ]

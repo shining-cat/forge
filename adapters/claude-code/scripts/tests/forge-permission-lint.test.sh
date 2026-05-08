@@ -61,5 +61,14 @@ out=$("$LINTER" --file "$FIXTURES/check3-good.json" 2>&1); rc=$?
 assert_exit "check3-good: exits 0" "0" "$rc"
 
 echo ""
+echo "Check 4 — Hook tilde+\$HOME duplicate"
+out=$("$LINTER" --file "$FIXTURES/check4-bad.json" 2>&1); rc=$?
+assert_exit "check4-bad: exits 1" "1" "$rc"
+assert_contains "check4-bad: reports the duplicate command" "forge-context.sh gate" "$out"
+
+out=$("$LINTER" --file "$FIXTURES/check4-good.json" 2>&1); rc=$?
+assert_exit "check4-good: exits 0" "0" "$rc"
+
+echo ""
 echo "Total: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]
