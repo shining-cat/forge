@@ -50,6 +50,21 @@ run() {
   fi
 }
 
+# prompt_or_default — read input from tty or fall back to a safe default.
+# Usage: var=$(prompt_or_default "<prompt text>" "<default if non-tty or empty>")
+# - tty: prints prompt, reads input, returns input or default if input is empty
+# - non-tty (CI / cron / piped stdin): silently returns default
+prompt_or_default() {
+  local prompt="$1" default="$2" answer
+  if [ -t 0 ]; then
+    printf "%s" "$prompt"
+    read -r answer
+    echo "${answer:-$default}"
+  else
+    echo "$default"
+  fi
+}
+
 # set_conf_key — update or append a key=value line in forge.conf in place
 set_conf_key() {
   local key="$1" val="$2" conf="$CLAUDE_DIR/forge.conf"
@@ -199,15 +214,15 @@ if [ -z "$VAULT_PATH" ]; then
 fi
 
 if [ -z "$VAULT_PATH" ]; then
-  VAULT_PATH="$HOME/Vault"
+  DEFAULT_VAULT="$HOME/Vault"
   if [ "$DRY_RUN" = true ]; then
+    VAULT_PATH="$DEFAULT_VAULT"
     info "Would prompt for vault location (default: $VAULT_PATH)"
   else
-    printf "${CYAN}[forge]${NC} Where should the vault live? [%s]: " "$VAULT_PATH"
-    read -r custom_path
-    if [ -n "$custom_path" ]; then
-      VAULT_PATH="${custom_path/#\~/$HOME}"
-    fi
+    custom_path=$(prompt_or_default \
+      "$(printf "${CYAN}[forge]${NC} Where should the vault live? [%s]: " "$DEFAULT_VAULT")" \
+      "$DEFAULT_VAULT")
+    VAULT_PATH="${custom_path/#\~/$HOME}"
   fi
 fi
 
@@ -278,8 +293,11 @@ if ! git -C "$VAULT_PATH" rev-parse --git-dir &>/dev/null; then
     printf "          - Survives laptop loss / disk failure\n"
     printf "          - Enables cross-machine work\n"
     printf "          - Powers vault-state line at session start (drift detection)\n"
-    printf "        Initialize git in the vault now? [Y/n]: "
-    read -r git_init_answer
+    # Non-tty default: 'n' (skip init — too consequential to auto-init silently).
+    # Tty empty input: case fallthrough below preserves the historical 'Y' default.
+    git_init_answer=$(prompt_or_default \
+      "$(printf "        Initialize git in the vault now? [Y/n]: ")" \
+      "n")
     case "${git_init_answer:-Y}" in
       [Yy]*|"")
         info "Initializing vault as git repo…"
@@ -291,8 +309,10 @@ if ! git -C "$VAULT_PATH" rev-parse --git-dir &>/dev/null; then
         hint "Add a remote later: git -C $VAULT_PATH remote add origin <url> && git push -u origin HEAD"
         ;;
       *)
-        # Persist decline flag via set_conf_key so it survives future install runs.
-        if [ "$DRY_RUN" = false ]; then
+        # Persist decline flag only for interactive declines.
+        # Non-tty fallback ('n' default) doesn't represent a real user choice —
+        # leave the flag unset so a future interactive install re-prompts.
+        if [ "$DRY_RUN" = false ] && [ -t 0 ]; then
           set_conf_key VAULT_GIT_DECLINED true
         fi
         info "Vault left unversioned per user choice."
