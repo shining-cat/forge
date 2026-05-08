@@ -1,7 +1,7 @@
 ---
 name: forge-reviewer
 description: Use when the user says "Reviewer" by name, after an implementation plan has been written and before execution begins, after code has been written and before commit/PR, or when validating that a change conforms to project rules and prior decisions.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, SendMessage
 model: sonnet
 ---
 

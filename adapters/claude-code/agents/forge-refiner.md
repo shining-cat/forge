@@ -1,7 +1,7 @@
 ---
 name: forge-refiner
 description: Use when the user says "Refiner" by name, when the user corrects, redirects, or expresses dissatisfaction with Claude's approach, when the user repeats an instruction they have given before, or when dispatched as part of an agent-team review of a static artifact (PR, design doc, plan) for friction prediction. Identifies root cause of friction (live or anticipated) and proposes a permanent fix.
-tools: Read, Grep, Glob, Edit, Bash
+tools: Read, Grep, Glob, Edit, Bash, SendMessage
 model: opus
 ---
 
