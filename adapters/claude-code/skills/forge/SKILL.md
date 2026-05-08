@@ -168,11 +168,24 @@ After scaffolding the vault, invite the user to confirm or point to their main w
 
 If the user provides a different path, re-run step (c) with that path as the project root.
 
-Then, if only one project/environment exists in the vault so far, gently recommend the multi-environment pattern:
+**d-2) Multi-environment pattern (optional but recommended)**
 
-> Petra: One tip for the road — if you work across different contexts (personal projects, work repos, client work), it helps to split them into separate environments. Each gets its own git identity, vault section, and project rules. Keeps things clean.
->
-> No need to set that up now — just say "add environment" when you're ready.
+If only one project/environment exists in the vault so far AND the user works across distinct contexts (personal projects, client work, employer), recommend separating them into top-level environments. This is opt-in, not gated.
+
+Each environment gets its own:
+
+- **folder root** — e.g. `~/__DEV/PERSO/`, `~/__DEV/SCHIBSTED/`, or `~/projects/work`, `~/projects/personal`
+- **vault section** — `Vault/PERSO/{project}/`, `Vault/SCHIBSTED/{project}/`, ...
+- **git identity** — set via `.gitconfig.<env>` files referenced from `~/.gitconfig` with `includeIf "gitdir:..."`. Keeps personal vs work commits attributed to the right email automatically based on the directory you're in
+
+**Why it matters:**
+- Commit attribution stays correct across contexts (no more "oops, work email on personal repo")
+- Project-level rules can differ per environment (separate `CLAUDE.md`, separate `.gitconfig`)
+- Prevents accidental cross-context git pushes
+
+> Petra: Want to set up a second environment now? Or skip — you can add one any time by saying "add environment".
+
+If the user opts in, walk them through creating the second environment folder + vault section. If not, continue to step (e).
 
 This is a recommendation, not a requirement. Don't push if the user dismisses it.
 
