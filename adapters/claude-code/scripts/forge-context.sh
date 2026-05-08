@@ -20,6 +20,11 @@ if [ -z "$VAULT_PATH" ]; then
 fi
 MARKER="$VAULT_PATH/_shared/forge-active"
 
+# Vault drift thresholds — recover() warns when any one is exceeded
+VAULT_DRIFT_COMMITS_AHEAD=5
+VAULT_DRIFT_DIRTY_FILES=10
+VAULT_DRIFT_DAYS_SINCE=7
+
 # Reconcile marker against most-recent-checkpoint frontmatter.
 # Emits a one-line warning to stderr if marker disagrees with truth.
 # Skips silently for missing/empty/__pending__ markers.
@@ -478,6 +483,20 @@ for pr in json.load(sys.stdin):
       [ "$vault_untracked_dirs" -gt 0 ] && echo "Untracked top-level dirs: $vault_untracked_dirs"
       [ "$vault_ahead" -gt 0 ] && echo "Unpushed commits: $vault_ahead"
       [ "$vault_behind" -gt 0 ] && echo "Behind origin: $vault_behind"
+    fi
+
+    # Drift warning: nudge when any threshold is exceeded.
+    local vault_last_commit_age_days=0
+    local last_commit_ts
+    last_commit_ts=$(git -C "$VAULT_PATH" log -1 --format=%ct 2>/dev/null || echo 0)
+    if [ "$last_commit_ts" -gt 0 ]; then
+      vault_last_commit_age_days=$(( ( $(date +%s) - last_commit_ts ) / 86400 ))
+    fi
+
+    if [ "$vault_dirty" -ge "$VAULT_DRIFT_DIRTY_FILES" ] \
+      || [ "$vault_ahead" -ge "$VAULT_DRIFT_COMMITS_AHEAD" ] \
+      || [ "$vault_last_commit_age_days" -ge "$VAULT_DRIFT_DAYS_SINCE" ]; then
+      echo "[!] Vault drift detected — commit + push when you reach a natural pause."
     fi
   elif ! grep -q '^VAULT_GIT_DECLINED=true' "$HOME/.claude/forge.conf" 2>/dev/null; then
     echo ""
