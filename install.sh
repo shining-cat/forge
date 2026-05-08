@@ -377,8 +377,13 @@ if [ "$DRY_RUN" = false ]; then
 fi
 
 # ── Permissions ──
+# Allow the forge-context.sh script to be invoked by hooks without prompting.
+# The hooks use $HOME-expanded paths (see add_hook calls below), so we match
+# the absolute form. Leading `*` in Bash matchers is LITERAL, not a wildcard,
+# so patterns like `Bash(*forge-context.sh*)` would silently never match —
+# see forge-permission-lint check2.
 PERMS_TO_ADD=(
-  'Bash(*forge-context.sh*)'
+  "Bash($HOME/.claude/scripts/forge-context.sh:*)"
 )
 
 SETTINGS=$(cat "$SETTINGS_FILE")
