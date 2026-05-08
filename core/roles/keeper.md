@@ -78,6 +78,18 @@ Refresh at: task add (new file in `tasks/open/`), task resolve (move to `tasks/r
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) require curation — this duty is genuinely Keeper work, not an auto-generated artifact.
 
+### Duty 6 — Vault hygiene awareness
+
+Surface vault drift at session start so the user knows when to commit + push. The Keeper relies on `forge-context.sh recover` (run automatically at session entry) to print the `--- Vault state ---` block with raw counts (dirty files, untracked dirs, commits ahead/behind), plus a one-line `[!] Vault drift detected — commit + push when you reach a natural pause.` warning when any threshold is exceeded:
+
+- `≥10` dirty files, OR
+- `≥5` commits ahead of origin, OR
+- `≥7` days since last commit
+
+This is **awareness only** — no tool gate, no Stop hook, no per-action nag. Vault commits are higher-cost than project-repo commits (often span multiple projects, need user judgment), so the Keeper nudges rather than blocks. Thresholds live as constants in `forge-context.sh` for easy tuning.
+
+The Keeper does NOT auto-stage, auto-commit, or auto-push the vault. Those decisions belong to the user.
+
 ## Vault interaction
 
 - **Reads:** previous decisions, previous checkpoints, INDEX files, project CLAUDE.md, `tasks/open/` for backlog refresh.
