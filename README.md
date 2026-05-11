@@ -78,10 +78,11 @@ The installer will:
 
 1. **Check prerequisites** — Claude Code, jq, git, python3, superpowers
 2. **Ask for vault location** — where to store your knowledge vault (default: `~/Vault`)
-3. **Copy skills** — 6 core skills + wellness coach files into `~/.claude/skills/`
-4. **Install hooks and scripts** — checkpoint tracking, compaction handling, statusline
-5. **Configure settings.json** — add hooks and permissions (creates backup first)
-6. **Patch paths** — vault location injected into all skills and scripts
+3. **Copy skills** — 7 core skills + wellness coach files into `~/.claude/skills/`
+4. **Install agent definitions** — 8 `forge-*` adapter files into `~/.claude/agents/` (architect, debugger, impl, keeper, refiner, release, reviewer, toolsmith)
+5. **Install hooks and scripts** — checkpoint tracking, compaction handling, statusline
+6. **Configure settings.json** — add hooks and permissions (creates backup first)
+7. **Patch paths** — vault location injected into all skills and scripts
 
 Options:
 ```bash

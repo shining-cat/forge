@@ -356,6 +356,18 @@ run cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
 run chmod +x "$WC_DST/scripts/"*.sh
 ok "Wellness coach files (activation offered during first /forge session)"
 
+# ─── Copy agent definitions ──────────────────────────────────────────────────
+echo ""
+info "Installing agent definitions..."
+
+AGENTS_DIR="$CLAUDE_DIR/agents"
+run mkdir -p "$AGENTS_DIR"
+
+for agent in forge-architect forge-debugger forge-impl forge-keeper forge-refiner forge-release forge-reviewer forge-toolsmith; do
+  run cp "$ADAPTER/agents/$agent.md" "$AGENTS_DIR/$agent.md"
+done
+ok "Agent definitions (8 forge-* adapters in ~/.claude/agents/)"
+
 # ─── Copy hooks & scripts ────────────────────────────────────────────────────
 echo ""
 info "Installing hooks and scripts..."
@@ -607,6 +619,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit-permissions,"
 echo "                 keeper, refiner, plan-reviewer"
+echo "  Agents:        forge-architect, forge-debugger, forge-impl, forge-keeper,"
+echo "                 forge-refiner, forge-release, forge-reviewer, forge-toolsmith"
 echo "  Wellness:      files ready — offered during onboarding"
 echo "  Vault:         $VAULT_PATH"
 echo "  Config:        ~/.claude/forge.conf"

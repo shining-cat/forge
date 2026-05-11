@@ -36,6 +36,7 @@ The forge is assembled from Claude Code building blocks:
 |----------|---------|
 | `~/.claude/skills/{name}/SKILL.md` | Skill definitions (forge, forge-checkpoint, forge-exit, forge-audit-permissions, keeper, plan-reviewer, refiner, wellness-coach) |
 | `~/.claude/skills/forge/references/` | Forge skill references (vocabulary.md, lifecycle.md, wellness-awareness.md) — loaded on-demand from main SKILL.md |
+| `~/.claude/agents/` | Subagent adapter definitions (forge-architect, forge-debugger, forge-impl, forge-keeper, forge-refiner, forge-release, forge-reviewer, forge-toolsmith) — dispatched via the Agent tool with `subagent_type: "forge-{role}"` |
 | `~/.claude/hooks/` | Hook scripts (approval-notifier.sh, forge-compaction.sh, forge-vault-plan-guard.sh) |
 | `~/.claude/scripts/` | Maintenance scripts (forge-context.sh, forge-permission-lint.sh, statusline.sh) — `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
