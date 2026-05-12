@@ -525,6 +525,44 @@ else
   ok "settings.json updated (backup: settings.json.forge-backup)"
 fi
 
+# ─── Sanitize inherited leading-* Bash patterns (safety net) ────────────────
+# Some upstream installers (notably the Vend Claude wizard) ship `Bash(*foo*)`
+# permission patterns. The leading * in Claude Code Bash matchers is interpreted
+# literally — these patterns match nothing, but Forge's permission lint will
+# fail on them. Surgically remove them so the user ends up with a clean install
+# even if they ran another tool first that left broken patterns behind.
+#
+# Until upstream fixes their installers, Forge acts as the safety net.
+if [ "$DRY_RUN" = false ]; then
+  BROKEN_COUNT=$(jq '[(.permissions.allow // []) + (.permissions.ask // []) + (.permissions.deny // []) | .[] | select(test("^Bash\\(\\*"))] | length' "$SETTINGS_FILE" 2>/dev/null || echo 0)
+  if [ "$BROKEN_COUNT" -gt 0 ]; then
+    echo ""
+    info "Detected $BROKEN_COUNT inherited \`Bash(*foo*)\` permission pattern(s)..."
+    hint "These come from a previous installer (most likely the Vend Claude wizard)."
+    hint "Leading * in Bash matchers is literal — these patterns match nothing,"
+    hint "and Forge's permission lint will fail on them."
+    hint "Backing up + sanitizing so the lint passes."
+    SANITIZE_BACKUP="$SETTINGS_FILE.pre-vendor-pattern-sanitize.$(date +%Y%m%d-%H%M%S)"
+    cp "$SETTINGS_FILE" "$SANITIZE_BACKUP"
+    if jq '
+      .permissions.allow //= [] |
+      .permissions.ask //= [] |
+      .permissions.deny //= [] |
+      .permissions.allow |= map(select(test("^Bash\\(\\*") | not)) |
+      .permissions.ask   |= map(select(test("^Bash\\(\\*") | not)) |
+      .permissions.deny  |= map(select(test("^Bash\\(\\*") | not))
+    ' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"; then
+      ok "Removed $BROKEN_COUNT broken pattern(s). Backup: $SANITIZE_BACKUP"
+      hint "If you need any of those operations to skip approval prompts,"
+      hint "ask the source installer to ship them in proper \`prefix*\` form."
+    else
+      rm -f "$SETTINGS_FILE.tmp"
+      warn "Sanitization failed (jq error) — settings.json left as-is."
+      hint "Backup at $SANITIZE_BACKUP. The lint step will surface the bad patterns."
+    fi
+  fi
+fi
+
 # ─── Install shell wrapper for Pattern A team substrate ──────────────────────
 echo ""
 info "Installing shell wrapper for agent teams..."
