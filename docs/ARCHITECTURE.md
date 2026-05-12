@@ -38,7 +38,8 @@ The forge is assembled from Claude Code building blocks:
 | `~/.claude/skills/forge/references/` | Forge skill references (vocabulary.md, lifecycle.md, wellness-awareness.md) — loaded on-demand from main SKILL.md |
 | `~/.claude/agents/` | Subagent adapter definitions (forge-architect, forge-debugger, forge-impl, forge-keeper, forge-refiner, forge-release, forge-reviewer, forge-toolsmith) — dispatched via the Agent tool with `subagent_type: "forge-{role}"` |
 | `~/.claude/hooks/` | Hook scripts (approval-notifier.sh, forge-compaction.sh, forge-vault-plan-guard.sh) |
-| `~/.claude/scripts/` | Maintenance scripts (forge-context.sh, forge-permission-lint.sh, statusline.sh) — `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
+| `~/.claude/scripts/` | Maintenance scripts (forge-context.sh, forge-permission-lint.sh) — `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
+| `~/.claude/statusline.sh` | Claude Code statusline component — deploys to `~/.claude/` root (not `scripts/`) to match `settings.json` `statusLine.command` path |
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
 | `${VAULT_PATH}/_shared/wellness-preferences.json` | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |

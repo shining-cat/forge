@@ -18,7 +18,12 @@ Forge `install.sh` writes a baseline allow-list into `~/.claude/settings.json` s
 |---|---|---|
 | `forge-context.sh` | `Bash($HOME/.claude/scripts/forge-context.sh:*)` | PreToolUse / PostToolUse / Stop hooks; manual `recover` subcommand at session start |
 | `forge-permission-lint.sh` | `Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)` | end of `install.sh` (fail-closed) + `/forge-audit-permissions` skill |
-| `statusline.sh` | `Bash($HOME/.claude/scripts/statusline.sh:*)` | Claude Code status line component |
+
+### Claude Code statusline (`~/.claude/`)
+
+| Script | Pattern | Used by |
+|---|---|---|
+| `statusline.sh` | `Bash($HOME/.claude/statusline.sh:*)` | Claude Code status line component — path matches `settings.json` `statusLine.command` (deploys to `~/.claude/` root, not `scripts/`) |
 
 ### Forge hooks (`~/.claude/hooks/`)
 

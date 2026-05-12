@@ -433,7 +433,7 @@ PERMS_TO_ADD=(
   # Forge scripts
   "Bash($HOME/.claude/scripts/forge-context.sh:*)"
   "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
-  "Bash($HOME/.claude/scripts/statusline.sh:*)"
+  "Bash($HOME/.claude/statusline.sh:*)"
   # Forge hooks
   "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
   "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
