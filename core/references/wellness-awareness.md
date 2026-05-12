@@ -4,6 +4,12 @@ The wellness-coach is an optional Forge module — bundled with Forge but disabl
 
 **Boundary:** Petra reads wellness state, the wellness coach knows nothing about Forge. Two separate authorities, no hierarchy. Petra never duplicates or overrides the coach's reminders.
 
+## Cross-window scope: wellness is global by design
+
+Forge's other hooks (braindump prompts, commit gates, checkpoint nags, push/PR nudges) are session-isolated — they only fire in the Claude Code window that ran `/forge`. Wellness is the explicit exception: break time is a *human-state* signal that doesn't depend on which window the user is typing in. If wellness only fired in the Forge window, the user could trivially evade breaks by switching to a sibling terminal.
+
+Concretely: wellness reads `wellness-preferences.json`, NOT the `forge-active` marker. Adapters implementing wellness-coach must preserve this — the coach's reminders fire wherever the user is working, not only in Forge sessions. Adapters MUST surface this design choice to the user during wellness onboarding so the asymmetry isn't a surprise post-install.
+
 ## What Forge Reads
 
 If `wellness-preferences.json` exists at `${VAULT_PATH}/_shared/` (or legacy `~/.claude/`), Forge reads two fields to calculate time until next break:

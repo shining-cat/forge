@@ -217,13 +217,25 @@ Check which project directories exist under the vault to determine valid environ
 - If the vault contains exactly one project → use it.
 - Otherwise → ask the user which project to activate.
 
-Once the project is unambiguously chosen, use the Write tool to overwrite `${VAULT_PATH}/_shared/forge-active` with the project name (e.g. `FINN`).
+Once the project is unambiguously chosen, use the Write tool to overwrite `${VAULT_PATH}/_shared/forge-active` with a JSON object recording session ownership:
+
+```json
+{
+  "session_id": "<value of $CLAUDE_CODE_SESSION_ID at session start>",
+  "project": "<the chosen project name, e.g. FINN>",
+  "started_at": "<output of `date +'%Y-%m-%dT%H:%M:%S%z'`>",
+  "tmux_pane": "<value of $TMUX_PANE if set, else null>"
+}
+```
+
+This format enables session-isolated hooks: only the Claude Code window whose `$CLAUDE_CODE_SESSION_ID` matches `session_id` will receive Forge hook side effects (braindump prompts, commit gates, checkpoint nags). Sibling windows reading the same marker file will see they don't own it and stay silent. (Wellness coach is intentionally exempt — see `wellness-awareness.md` for rationale.)
 
 **Marker convention** (used by `forge-context.sh`, `forge-compaction.sh`, `statusline.sh`):
 - File missing → Forge has never been activated on this machine
 - File exists but is empty / whitespace-only → Forge deactivated (set by `/forge-exit`)
 - File contains literal `__pending__` → Forge is launching, no project chosen yet (set by step 1a above)
-- File contains a project name → Forge active for that project (set by step 1b above or by an explicit project switch)
+- File contains valid JSON with `session_id` → Forge active, owned by that session (set by step 1b above)
+- File contains a plain project-name string → **legacy marker** from before the JSON migration; hooks treat as "owned by everyone" for backward compat. Re-invoking `/forge` upgrades it to JSON.
 
 ### 2. Load Vault Context
 

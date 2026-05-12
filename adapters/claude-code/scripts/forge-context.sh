@@ -25,16 +25,56 @@ VAULT_DRIFT_COMMITS_AHEAD=5
 VAULT_DRIFT_DIRTY_FILES=10
 VAULT_DRIFT_DAYS_SINCE=7
 
+# Read the marker file and return the project name.
+# Empty stdout if marker is missing/empty/__pending__.
+# Handles both JSON markers (new, session-isolated) and plain-string markers (legacy).
+extract_marker_project() {
+  [ ! -f "$MARKER" ] && return 0
+  local marker_text proj
+  marker_text=$(cat "$MARKER" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  case "$marker_text" in
+    ""|"__pending__") return 0 ;;
+  esac
+  # Try parse as JSON first
+  proj=$(echo "$marker_text" | jq -r '.project // empty' 2>/dev/null)
+  if [ -n "$proj" ]; then
+    echo "$proj"
+  else
+    # Legacy plain-string marker — first line is the project name
+    echo "$marker_text" | head -1
+  fi
+}
+
+# Returns 0 (true) if the current Claude Code session owns the active Forge marker,
+# 1 (false) if another session owns it OR no Forge is active.
+# Used to gate hooks (post-tool, gate, stop) so they only fire in the window that ran /forge.
+# Legacy plain-string markers (from before JSON migration) → return 0 to preserve old
+# behavior — sibling windows will continue to leak hooks until /forge is re-invoked.
+session_owns_forge() {
+  [ ! -f "$MARKER" ] && return 1
+  local marker_text marker_session current_session
+  marker_text=$(cat "$MARKER" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  case "$marker_text" in
+    ""|"__pending__") return 1 ;;
+  esac
+  marker_session=$(echo "$marker_text" | jq -r '.session_id // empty' 2>/dev/null)
+  # Legacy plain-string marker → preserve old global behavior
+  [ -z "$marker_session" ] && return 0
+  # JSON marker — compare session IDs
+  current_session="${CLAUDE_CODE_SESSION_ID:-}"
+  if [ -z "$current_session" ] && [ -n "${STDIN_JSON:-}" ]; then
+    current_session=$(echo "$STDIN_JSON" | jq -r '.session_id // empty' 2>/dev/null)
+  fi
+  [ "$marker_session" = "$current_session" ]
+}
+
 # Reconcile marker against most-recent-checkpoint frontmatter.
 # Emits a one-line warning to stderr if marker disagrees with truth.
 # Skips silently for missing/empty/__pending__ markers.
 reconcile_marker() {
-  if [ ! -f "$MARKER" ]; then
-    return 0
-  fi
   local marker_value
-  marker_value=$(head -1 "$MARKER" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-  if [ -z "$marker_value" ] || [ "$marker_value" = "__pending__" ]; then
+  marker_value=$(extract_marker_project)
+  if [ -z "$marker_value" ]; then
     return 0
   fi
   # Most recent checkpoint by mtime (proxy for `date:` frontmatter — good enough)
@@ -89,17 +129,15 @@ if [ ! -f "$MARKER" ]; then
 fi
 
 # ── Determine project name and paths ────────────────────────────────────
-PROJECT_NAME="$(head -1 "$MARKER" 2>/dev/null | tr -d '[:space:]')"
+# extract_marker_project handles JSON markers (new), legacy plain-string markers,
+# and the special __pending__ + empty/missing values (returns empty stdout).
+PROJECT_NAME="$(extract_marker_project)"
 
-# Empty marker = Forge deactivated (exit wrote empty file)
+# Empty result covers: marker missing, empty marker (deactivated by /forge-exit),
+# __pending__ (Forge launching, no project chosen yet — exit so non-reconcile
+# subcommands don't fall through to get_vault_dir "__pending__" and create stray
+# Vault/PERSO/__pending__/ dirs).
 if [ -z "$PROJECT_NAME" ]; then
-  exit 0
-fi
-
-# __pending__ = Forge is launching, no project chosen yet (set by skills/forge step 1a).
-# Treat the same as empty so non-reconcile subcommands don't fall through to
-# get_vault_dir "__pending__" and create stray Vault/PERSO/__pending__/ dirs.
-if [ "$PROJECT_NAME" = "__pending__" ]; then
   exit 0
 fi
 
@@ -187,6 +225,12 @@ get_braindump_age_minutes() {
 
 # ── Subcommand: post-tool (breadcrumb logging) ─────────────────────────
 do_post_tool() {
+  # Session-isolation gate: only fire in the window that owns Forge.
+  # Sibling Claude Code windows reading the same marker file exit silently here
+  # so they don't leak braindump prompts / push nudges. Legacy plain-string
+  # markers preserve old global behavior (helper returns true).
+  session_owns_forge || exit 0
+
   if [ -z "$STDIN_JSON" ]; then
     return
   fi
@@ -316,6 +360,10 @@ print(summary)
 
 # ── Subcommand: gate (conditional commit gate) ────────────────────────
 do_gate() {
+  # Session-isolation gate: don't block commits in sibling Claude Code windows
+  # that didn't run /forge themselves. See session_owns_forge().
+  session_owns_forge || exit 0
+
   if [ -z "$STDIN_JSON" ]; then
     exit 0
   fi
@@ -346,6 +394,10 @@ EOF
 
 # ── Subcommand: stop (staleness check on session end) ──────────────────
 do_stop() {
+  # Session-isolation gate: don't fire checkpoint nag in sibling Claude Code
+  # windows that didn't run /forge themselves. See session_owns_forge().
+  session_owns_forge || exit 0
+
   # Pip on strike — suppress nag. User cannot write a checkpoint while tool
   # use is blocked, and every response triggers another Stop hook fire,
   # producing a deadlock loop. Resume nagging when strike lifts naturally.
