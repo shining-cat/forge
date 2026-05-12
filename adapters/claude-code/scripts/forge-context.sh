@@ -108,39 +108,6 @@ is_pip_on_strike() {
   [ "$strike" = "true" ]
 }
 
-# ── Sourceable boundary ─────────────────────────────────────────────────
-# Everything below runs only when this file is executed as a script.
-# When sourced (e.g., from forge-compaction.sh to reuse `reconcile_marker`),
-# the resolver above and the function definition stay in scope, but no
-# stdin is consumed and no subcommand dispatch runs.
-if [ "${BASH_SOURCE[0]}" != "$0" ]; then
-  return 0
-fi
-
-# ── Read stdin once, store for all subcommands ──────────────────────────
-STDIN_JSON=""
-if [ ! -t 0 ]; then
-  STDIN_JSON="$(cat)"
-fi
-
-# ── Exit silently if Forge is not active ────────────────────────────────
-if [ ! -f "$MARKER" ]; then
-  exit 0
-fi
-
-# ── Determine project name and paths ────────────────────────────────────
-# extract_marker_project handles JSON markers (new), legacy plain-string markers,
-# and the special __pending__ + empty/missing values (returns empty stdout).
-PROJECT_NAME="$(extract_marker_project)"
-
-# Empty result covers: marker missing, empty marker (deactivated by /forge-exit),
-# __pending__ (Forge launching, no project chosen yet — exit so non-reconcile
-# subcommands don't fall through to get_vault_dir "__pending__" and create stray
-# Vault/PERSO/__pending__/ dirs).
-if [ -z "$PROJECT_NAME" ]; then
-  exit 0
-fi
-
 # Resolve vault directory for a project by scanning $VAULT_PATH/{env}/{project}/
 # case-insensitively. Skips underscore-prefixed env dirs (_shared, _templates).
 # Emits stderr warning + empty stdout if no match.
@@ -190,6 +157,42 @@ get_project_dir() {
   echo "[forge-context] no project repo found for '$project' under $HOME_DIR/__DEV/" >&2
   return 1
 }
+
+# ── Sourceable boundary ─────────────────────────────────────────────────
+# Everything below runs only when this file is executed as a script.
+# When sourced (e.g., from forge-compaction.sh, forge-session-end.sh, or
+# forge-exit-guard.sh to reuse the helpers above), VAULT_PATH/MARKER
+# resolution + all helper definitions (extract_marker_project,
+# session_owns_forge, reconcile_marker, is_pip_on_strike, get_vault_dir,
+# get_project_dir) stay in scope, but no stdin is consumed and no
+# subcommand dispatch runs.
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0
+fi
+
+# ── Read stdin once, store for all subcommands ──────────────────────────
+STDIN_JSON=""
+if [ ! -t 0 ]; then
+  STDIN_JSON="$(cat)"
+fi
+
+# ── Exit silently if Forge is not active ────────────────────────────────
+if [ ! -f "$MARKER" ]; then
+  exit 0
+fi
+
+# ── Determine project name and paths ────────────────────────────────────
+# extract_marker_project handles JSON markers (new), legacy plain-string markers,
+# and the special __pending__ + empty/missing values (returns empty stdout).
+PROJECT_NAME="$(extract_marker_project)"
+
+# Empty result covers: marker missing, empty marker (deactivated by /forge-exit),
+# __pending__ (Forge launching, no project chosen yet — exit so non-reconcile
+# subcommands don't fall through to get_vault_dir "__pending__" and create stray
+# Vault/PERSO/__pending__/ dirs).
+if [ -z "$PROJECT_NAME" ]; then
+  exit 0
+fi
 
 VAULT_DIR="$(get_vault_dir "$PROJECT_NAME")"
 PROJECT_DIR="$(get_project_dir "$PROJECT_NAME")"
