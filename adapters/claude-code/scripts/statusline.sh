@@ -59,7 +59,12 @@ if [ -n "$MARKER" ] && [ -f "$MARKER" ]; then
   elif [ "$marker_value" = "__pending__" ]; then
     FORGE_STATUS="[Forge | choosing…]"
   else
-    FORGE_STATUS=$("$HOME/.claude/scripts/forge-context.sh" status 2>/dev/null)
+    # Pipe $input through so forge-context.sh can read .session_id from stdin —
+    # CLAUDE_CODE_SESSION_ID is NOT inherited by the statusline subprocess, so
+    # without this pipe session_owns_forge falls through both signals and every
+    # window renders as ⚠ "(other window)". $input is the same JSON the
+    # statusline already consumed at line 3.
+    FORGE_STATUS=$(echo "$input" | "$HOME/.claude/scripts/forge-context.sh" status 2>/dev/null)
   fi
 fi
 
