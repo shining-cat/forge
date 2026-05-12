@@ -160,9 +160,9 @@ get_project_dir() {
 
 # ── Sourceable boundary ─────────────────────────────────────────────────
 # Everything below runs only when this file is executed as a script.
-# When sourced (e.g., from forge-compaction.sh, forge-session-end.sh, or
-# forge-exit-guard.sh to reuse the helpers above), VAULT_PATH/MARKER
-# resolution + all helper definitions (extract_marker_project,
+# When sourced (e.g., from forge-compaction.sh or forge-session-end.sh to
+# reuse the helpers above), VAULT_PATH/MARKER resolution + all helper
+# definitions (extract_marker_project,
 # session_owns_forge, reconcile_marker, is_pip_on_strike, get_vault_dir,
 # get_project_dir) stay in scope, but no stdin is consumed and no
 # subcommand dispatch runs.

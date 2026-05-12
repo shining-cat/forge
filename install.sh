@@ -385,7 +385,6 @@ run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/forge-exit-guard.sh" "$CLAUDE_DIR/hooks/"
 run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
 run cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
 run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
@@ -394,7 +393,6 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
              "$CLAUDE_DIR/hooks/forge-session-end.sh" \
-             "$CLAUDE_DIR/hooks/forge-exit-guard.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
              "$CLAUDE_DIR/scripts/forge-permission-lint.sh" \
              "$CLAUDE_DIR/statusline.sh"
@@ -509,8 +507,7 @@ SETTINGS=$(add_hook "PostCompact" "null" "$HOME/.claude/hooks/forge-compaction.s
 SETTINGS=$(add_hook "PostToolUse" "null" "$HOME/.claude/scripts/forge-context.sh post-tool" 5 "$SETTINGS")
 SETTINGS=$(add_hook "Stop" "null" "$HOME/.claude/scripts/forge-context.sh stop" 5 "$SETTINGS")
 SETTINGS=$(add_hook "SessionEnd" "null" "$HOME/.claude/hooks/forge-session-end.sh" 5 "$SETTINGS")
-SETTINGS=$(add_hook "UserPromptSubmit" "null" "$HOME/.claude/hooks/forge-exit-guard.sh" 5 "$SETTINGS")
-ok "Hooks (7 core hooks)"
+ok "Hooks (6 core hooks)"
 
 # ── Env vars for agent teams ──
 SETTINGS=$(echo "$SETTINGS" | jq '.env = ((.env // {}) + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})')
