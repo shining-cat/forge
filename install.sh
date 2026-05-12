@@ -52,13 +52,20 @@ run() {
 
 # prompt_or_default — read input from tty or fall back to a safe default.
 # Usage: var=$(prompt_or_default "<prompt text>" "<default if non-tty or empty>")
-# - tty: prints prompt, reads input, returns input or default if input is empty
+# - tty: prints prompt to /dev/tty, reads input from /dev/tty, returns input or default if empty
 # - non-tty (CI / cron / piped stdin): silently returns default
+#
+# /dev/tty is mandatory for both directions: the function is only ever called via
+# command substitution `var=$(prompt_or_default ...)` which captures stdout —
+# writing the prompt to stdout would route it into the captured value instead of
+# the user's terminal, leaving the wizard apparently hung. Reading from /dev/tty
+# is defensive symmetry; stdin happens to be the tty in the current call sites,
+# but a future caller might pipe stdin without realizing it.
 prompt_or_default() {
   local prompt="$1" default="$2" answer
   if [ -t 0 ]; then
-    printf "%s" "$prompt"
-    read -r answer
+    printf "%s" "$prompt" >/dev/tty
+    read -r answer </dev/tty
     echo "${answer:-$default}"
   else
     echo "$default"
