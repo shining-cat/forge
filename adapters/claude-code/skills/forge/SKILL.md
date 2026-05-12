@@ -86,6 +86,8 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
 
 > Forge includes an optional wellness coach — it tracks your work time and nudges you to take breaks. It has three persona styles, calendar awareness, weather-based outdoor suggestions, and configurable escalation (from gentle nudges to blocking tools until you step away).
 >
+> One thing to know: the wellness coach fires in every Claude Code window on this machine, not just the Forge one. That's intentional — break time is about you, not which terminal you're in.
+>
 > Want to activate it? You can always enable or disable it later.
 
 **If yes:**
@@ -203,13 +205,41 @@ Determine which environment and project are active based on the current working 
 
 Read `~/.claude/forge.conf` to get `VAULT_PATH`. The marker file lives at `${VAULT_PATH}/_shared/forge-active`.
 
-#### 1a. Mark Forge as launching (BEFORE disambiguation)
+#### 1a. Check existing marker for cross-session conflict (BEFORE overwriting)
+
+Read the existing `${VAULT_PATH}/_shared/forge-active`. Behavior depends on what's there:
+
+- **Missing / empty / `__pending__` / legacy plain-string** → no conflict, proceed to step 1b.
+- **JSON marker with `session_id` matching `$CLAUDE_CODE_SESSION_ID`** → re-entry in same session, proceed to step 1b (will overwrite with fresh marker).
+- **JSON marker with a DIFFERENT `session_id`** → potential cross-session conflict — run the staleness check below.
+
+**Staleness check (only when session_id differs):**
+
+1. Read the `tmux_pane` field from the existing marker (may be `null` or absent).
+2. **Primary signal — tmux pane existence.** If `tmux_pane` is non-null AND tmux is installed:
+   - Run: `tmux list-panes -F '#{pane_id}' -a 2>/dev/null | grep -q "^<pane_id>$"`
+   - Exit 0 (pane found) → "appears alive"
+   - Non-zero (pane gone) → "appears dead"
+3. **Fallback signal — marker mtime.** If `tmux_pane` is null/absent, or tmux not installed:
+   - Marker mtime within last 12 hours → "appears alive"
+   - Older than 12 hours → "appears dead"
+
+**If "appears alive":** Ask the user (use AskUserQuestion):
+
+> Question: "Another Forge session ({short_session_id}, project={existing_project}, started {started_at}) appears to still own the marker. Take over?"
+> Options: "Take over" (proceed to step 1b) / "Cancel" (stop session entry — do NOT overwrite the marker, do NOT continue the checklist)
+
+**If "appears dead":** Silent takeover — emit a one-line note (no prompt), then continue to step 1b:
+
+> "(Took over Forge from stale session, last active {age_hours}h ago.)"
+
+#### 1b. Mark Forge as launching (BEFORE disambiguation)
 
 Use the Write tool to create/overwrite `${VAULT_PATH}/_shared/forge-active` with the literal sentinel `__pending__`. This MUST happen before any project disambiguation question is asked.
 
 Why: it signals "Forge is launching, no project chosen yet" — distinct from missing (never installed) and empty (deactivated). Hooks suppress brain-dump nags and Keeper warnings during this state. Without this step, an auto-memory hint (e.g., "you were on FINN last time") could prematurely set the marker to the wrong project, causing Keeper hooks to fire against the wrong vault before the user has actually chosen.
 
-#### 1b. Disambiguate, then write the project name
+#### 1c. Disambiguate, then write the project name
 
 Check which project directories exist under the vault to determine valid environments and projects.
 
@@ -233,8 +263,8 @@ This format enables session-isolated hooks: only the Claude Code window whose `$
 **Marker convention** (used by `forge-context.sh`, `forge-compaction.sh`, `statusline.sh`):
 - File missing → Forge has never been activated on this machine
 - File exists but is empty / whitespace-only → Forge deactivated (set by `/forge-exit`)
-- File contains literal `__pending__` → Forge is launching, no project chosen yet (set by step 1a above)
-- File contains valid JSON with `session_id` → Forge active, owned by that session (set by step 1b above)
+- File contains literal `__pending__` → Forge is launching, no project chosen yet (set by step 1b above)
+- File contains valid JSON with `session_id` → Forge active, owned by that session (set by step 1c above)
 - File contains a plain project-name string → **legacy marker** from before the JSON migration; hooks treat as "owned by everyone" for backward compat. Re-invoking `/forge` upgrades it to JSON.
 
 ### 2. Load Vault Context

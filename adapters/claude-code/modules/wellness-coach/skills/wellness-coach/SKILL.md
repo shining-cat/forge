@@ -38,6 +38,8 @@ Auto-triggers when no preferences file exists. Show all 7 questions upfront as a
 **Intro message:**
 
 > I'm your wellness coach! I'll help you take better breaks while you work. Let me set up your preferences — 8 quick questions. You can change any answer at any step, and update your preferences anytime later.
+>
+> Heads up — I'll fire in every Claude Code window on this machine, even sibling windows that aren't running Forge. That's intentional: break time is about you, not which terminal you're in. If you'd rather I only fire in Forge sessions, file an issue in the Forge repo and we'll reconsider.
 
 **Progress card** (show and update after each answer):
 

@@ -43,7 +43,7 @@ The forge is assembled from Claude Code building blocks:
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
 | `${VAULT_PATH}/_shared/wellness-preferences.json` | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |
 | `~/.claude/forge.conf` | Per-install configuration (vault path, repo path, model assignments) |
-| `${VAULT_PATH}/_shared/forge-active` | Marker file (contains project name, empty when deactivated) — lives in the vault to avoid `~/.claude/` sensitive-zone permission prompts |
+| `${VAULT_PATH}/_shared/forge-active` | Session marker — JSON `{session_id, project, started_at, tmux_pane}` (active, owned by that session); empty (deactivated); `__pending__` (launching). Hooks gate on `session_id` so they only fire in the window that ran `/forge`. Lives in the vault to avoid `~/.claude/` sensitive-zone permission prompts |
 | `{vault}/` | Knowledge vault (see [Vault Structure](#vault-structure)) |
 
 ### External dependencies

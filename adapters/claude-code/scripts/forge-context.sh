@@ -588,7 +588,18 @@ do_status() {
   local indicator
   indicator=$(printf "${color}💾 %sm ago\033[0m" "$age")
 
-  echo "⚒ $PROJECT_NAME | 🌿 ${branch:-n/a} | $indicator"
+  # Ownership chip: ⚒ = this session owns the marker, ⚠ = another window owns it.
+  # Makes session-isolation visible — sibling Claude Code windows that didn't run /forge
+  # see the warning and know Forge hooks are gated off here. Legacy plain-string markers
+  # preserve old global behavior (helper returns true → ⚒ everywhere, like before).
+  local project_chip
+  if session_owns_forge; then
+    project_chip="⚒ $PROJECT_NAME"
+  else
+    project_chip=$(printf "\033[33m⚠ %s (other window)\033[0m" "$PROJECT_NAME")
+  fi
+
+  echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
 }
 
 # ── Dispatch ────────────────────────────────────────────────────────────
