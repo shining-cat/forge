@@ -349,7 +349,11 @@ PR sync results (from step 3) are shown first, then the context summary, then th
 
 **Time window check:** Check for upcoming interruptions to gauge available deep-work time. The **next interruption** is the soonest of:
 - Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — typically `${VAULT_PATH}/_shared/`, or `~/.claude/` legacy) (see `references/wellness-awareness.md`)
-- Next calendar meeting — if calendar is enabled (invoke skill `google-workspace:gws-calendar`). Skip events where the user's `responseStatus` is `"declined"` in the `attendees` array.
+- Next calendar meeting — **MUST invoke** skill `google-workspace:gws-calendar` when `calendar_enabled: true` in `wellness-preferences.json`. Not optional, not deferrable. Skip events where the user's `responseStatus` is `"declined"` in the `attendees` array.
+
+**Honest reporting (never fill with false comfort):** If a check is skipped or fails for any reason — calendar API down, gws-auth scope missing, wellness prefs absent, etc. — REPORT THE GAP, never synthesize a comforting default. Wrong: *"Next interruption: nothing scheduled (haven't checked calendar)"*. Right: *"Next interruption: wellness break in 25min. Calendar not yet checked — invoking gws-calendar now."* OR *"Calendar check failed (403 — gws-auth scopes missing). Run `/gws-auth` to refresh, otherwise meeting awareness is unavailable this session."*
+
+The first failure mode to refuse is the comforting one. "Nothing here" is a strong claim; if the verification step that produces it has been skipped, the honest output is the gap, never a default. This rule applies to ALL entry-summary lines (PRs, decisions, friction events, vault state, etc.) — defaults belong in code; verifications belong in the entry summary.
 
 **Team substrate check:** Inspect whether Pattern A agent teams can spawn in this session.
 - If `$TMUX` env var is set and non-empty → "Team substrate: ready" (claude is running inside tmux, teammates can spawn as panes).
@@ -410,6 +414,8 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 
 **Proactive Refiner:** The Refiner skill is always active. When the user corrects or redirects:
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
+
+**Honest reporting (never fill with false comfort):** When a verification step is skipped or fails — calendar check, vault git state, PR sync, decisions check, anything — REPORT THE GAP. Never synthesize a confident default. *"Nothing scheduled"*, *"no PRs"*, *"no recent friction"*, *"no decisions"*, *"clean state"* are STRONG CLAIMS that require the verification step to have actually run and returned that result. If the check was skipped or errored, say so explicitly: *"calendar not checked yet"*, *"PR sync failed (offline)"*, *"vault state check skipped"*. The user can act on a stated gap; they cannot recover from a fabricated default that turns out to be wrong (see 2026-05-13 friction-log entry).
 
 **Wrap-up state awareness:** Before suggesting "wrap here?" or "good place to stop?" mid-session, consult the wrap-up signal:
 
