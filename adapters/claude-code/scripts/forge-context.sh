@@ -694,6 +694,77 @@ do_status() {
   echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
 }
 
+# ── Subcommand: wrap-up-state ─────────────────────────────────────────
+# Returns Petra's wrap-up signal as one of:
+#   too_early    — session < WRAP_UP_TOO_EARLY_MIN; suppress wrap-up suggestions
+#   eod_window   — within WRAP_UP_EOD_WINDOW_MIN of preferred_end_of_day; PROACTIVELY nudge
+#   past_eod     — past preferred_end_of_day; nudge harder
+#   mid_session  — neither extreme; no nudge either way
+#   unknown      — no marker, no preferred_end_of_day, or stat failed; default to silent
+#
+# Reads:
+#   - $MARKER mtime as session-age proxy (when /forge entered)
+#   - $VAULT_PATH/_shared/wellness-preferences.json for preferred_end_of_day (HH:MM)
+#
+# Petra consults this from her SKILL.md "wrap-up state awareness" rule before
+# suggesting wrap-up mid-session.
+WRAP_UP_TOO_EARLY_MIN=60
+WRAP_UP_EOD_WINDOW_MIN=60
+
+do_wrap_up_state() {
+  # Session age — minutes since marker mtime (when /forge was entered)
+  if [ ! -f "$MARKER" ]; then
+    echo "unknown"
+    return 0
+  fi
+  local marker_mtime now session_age_min
+  marker_mtime=$(stat -f %m "$MARKER" 2>/dev/null || stat -c %Y "$MARKER" 2>/dev/null || echo 0)
+  now=$(date +%s)
+  if [ "$marker_mtime" -eq 0 ]; then
+    echo "unknown"
+    return 0
+  fi
+  session_age_min=$(( (now - marker_mtime) / 60 ))
+
+  # Too-early gate — session just started, no wrap-up talk
+  if [ "$session_age_min" -lt "$WRAP_UP_TOO_EARLY_MIN" ]; then
+    echo "too_early"
+    return 0
+  fi
+
+  # EOD window — needs preferred_end_of_day from wellness prefs
+  local prefs="$VAULT_PATH/_shared/wellness-preferences.json"
+  if [ ! -f "$prefs" ]; then
+    echo "mid_session"
+    return 0
+  fi
+  local eod
+  eod=$(jq -r '.preferred_end_of_day // ""' "$prefs" 2>/dev/null)
+  if [ -z "$eod" ] || [ "$eod" = "null" ]; then
+    echo "mid_session"
+    return 0
+  fi
+
+  # Compare current HH:MM to EOD HH:MM (minutes-since-midnight)
+  local now_hm eod_min now_min minutes_to_eod
+  now_hm=$(date +%H:%M)
+  eod_min=$(echo "$eod" | awk -F: '{print ($1*60)+$2}' 2>/dev/null)
+  now_min=$(echo "$now_hm" | awk -F: '{print ($1*60)+$2}' 2>/dev/null)
+  if [ -z "$eod_min" ] || [ -z "$now_min" ]; then
+    echo "mid_session"
+    return 0
+  fi
+  minutes_to_eod=$((eod_min - now_min))
+
+  if [ "$minutes_to_eod" -le 0 ]; then
+    echo "past_eod"
+  elif [ "$minutes_to_eod" -le "$WRAP_UP_EOD_WINDOW_MIN" ]; then
+    echo "eod_window"
+  else
+    echo "mid_session"
+  fi
+}
+
 # ── Subcommand: vault-sync ────────────────────────────────────────────
 # Walk the vault git status, group dirty files by top-level directory, suggest a
 # commit message per group. Default mode prints a report and exits. `--commit`
@@ -841,8 +912,9 @@ case "$SUBCMD" in
   reconcile-marker)  reconcile_marker ;;
   status)            do_status ;;
   vault-sync)        do_vault_sync "${@:2}" ;;
+  wrap-up-state)     do_wrap_up_state ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state}" >&2
     exit 1
     ;;
 esac

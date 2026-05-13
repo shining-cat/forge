@@ -411,6 +411,22 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 **Proactive Refiner:** The Refiner skill is always active. When the user corrects or redirects:
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
 
+**Wrap-up state awareness:** Before suggesting "wrap here?" or "good place to stop?" mid-session, consult the wrap-up signal:
+
+```bash
+~/.claude/scripts/forge-context.sh wrap-up-state
+```
+
+Returns one of `too_early` / `mid_session` / `eod_window` / `past_eod` / `unknown`. Behavior:
+
+- **`too_early`** (session < 60 min) — DO NOT suggest wrap-up. The user just started; pauses are for switching focus, not stopping. Offer "switch to next item?" if a thread completes; never "wrap here?".
+- **`mid_session`** — neutral. Suggest wrap-up only if there's a real reason (long task complete + no obvious next item, user signals fatigue, etc.). Don't suggest reflexively at every natural pause.
+- **`eod_window`** (within 60 min of `preferred_end_of_day`) — proactively nudge: *"It's getting close to your wrap-up time. Want to checkpoint and stop here?"* This is the opposite failure mode — without this, EOD nudges never fire and the user grinds past their preferred stop time.
+- **`past_eod`** — nudge harder: *"You're past your wrap-up time. Let's land what's in flight and stop."*
+- **`unknown`** — no marker, no `preferred_end_of_day`, or stat failed. Stay silent (don't make up signals from nothing).
+
+The signal is cheap to call — read it on the fly when about to suggest wrap-up. Don't cache; the state changes minute-to-minute near the EOD boundary. The thresholds (`WRAP_UP_TOO_EARLY_MIN`, `WRAP_UP_EOD_WINDOW_MIN`) live as constants at the top of `forge-context.sh` for tuning.
+
 **Workspace skills (Forge mode):** When a Google Workspace API is needed (calendar, sheets, docs, drive, tasks), invoke the matching `google-workspace:gws-*` skill on the **first** try. No raw `gws ...` CLI exploration unless the skill itself fails or doesn't exist. Each failed flag-fish is a permission prompt the user has to triage. Same applies to other available specialized skills (jira, snowflake, slack, workplace) — invoke first, don't fish.
 
 **Plan storage (Forge mode):** All plan, design, and spec content MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`. Per the single-doc workflow, plan + design + progress live as **sections inside the task file**, not as separate `-design.md` / `-plan.md` siblings.
