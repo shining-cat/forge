@@ -23,16 +23,20 @@ VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
 [ -n "$VAULT_PATH" ] || exit 0
 
 PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
+RUNTIME="$VAULT_PATH/_shared/wellness-runtime.json"
 [ -f "$PREFS" ] || exit 0
 
-# Read all needed fields in one jq call; defaults so missing fields don't crash
-read_data=$(jq -r '
+# Read all needed fields. Prefs fields (intervals) come from PREFS; runtime
+# fields (timestamps, strike_active) come from RUNTIME if present, else fall
+# back to PREFS (handles pre-split installs where everything was in one file).
+read_data=$(jq -r --slurpfile rt_arr <(jq '.' "$RUNTIME" 2>/dev/null || echo '{}') '
+  ($rt_arr[0] // {}) as $rt |
   [
-    .last_micro_break_timestamp // "",
-    .last_break_timestamp // "",
-    .micro_break_interval_minutes // 0,
-    .real_break_interval_minutes // 0,
-    .strike_active // false
+    ($rt.last_micro_break_timestamp // .last_micro_break_timestamp // ""),
+    ($rt.last_break_timestamp // .last_break_timestamp // ""),
+    (.micro_break_interval_minutes // 0),
+    (.real_break_interval_minutes // 0),
+    ($rt.strike_active // .strike_active // false)
   ] | @tsv
 ' "$PREFS" 2>/dev/null) || exit 0
 

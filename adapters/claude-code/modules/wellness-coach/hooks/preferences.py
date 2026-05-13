@@ -12,22 +12,19 @@ import sys
 import time
 from pathlib import Path
 
-def _resolve_prefs_path() -> Path:
-    """Resolve wellness-preferences.json location.
+def _resolve_shared_dir() -> Path:
+    """Resolve the vault's _shared/ directory (or legacy ~/.claude/ fallback).
 
-    Reads VAULT_PATH from ~/.claude/forge.conf and returns
-    {VAULT_PATH}/_shared/wellness-preferences.json.
-
-    Falls back to ~/.claude/wellness-preferences.json (with a stderr
-    warning) if forge.conf is missing or VAULT_PATH is unset, so the
-    wellness-coach module remains usable standalone.
+    Reads VAULT_PATH from ~/.claude/forge.conf and returns {VAULT_PATH}/_shared.
+    Falls back to ~/.claude/ (with a stderr warning) if forge.conf is missing or
+    VAULT_PATH is unset, so the wellness-coach module remains usable standalone.
     """
-    legacy = Path.home() / ".claude" / "wellness-preferences.json"
+    legacy = Path.home() / ".claude"
     forge_conf = Path.home() / ".claude" / "forge.conf"
     if not forge_conf.is_file():
         print(
             "[wellness-coach] forge.conf not found — using legacy path "
-            f"{legacy} (install Forge to silence prompts).",
+            f"{legacy}/wellness-preferences.json (install Forge to silence prompts).",
             file=sys.stderr,
         )
         return legacy
@@ -51,10 +48,26 @@ def _resolve_prefs_path() -> Path:
             file=sys.stderr,
         )
         return legacy
-    return Path(vault_path) / "_shared" / "wellness-preferences.json"
+    return Path(vault_path) / "_shared"
 
 
-PREFS_PATH = _resolve_prefs_path()
+_SHARED_DIR = _resolve_shared_dir()
+PREFS_PATH = _SHARED_DIR / "wellness-preferences.json"
+RUNTIME_PATH = _SHARED_DIR / "wellness-runtime.json"
+
+# Fields that live in wellness-runtime.json (auto-modified by the coach during
+# normal operation — gitignored to keep vault commits signal-only). Everything
+# else stays in wellness-preferences.json (tracked).
+RUNTIME_FIELDS = frozenset({
+    "last_break_timestamp",
+    "last_micro_break_timestamp",
+    "last_reminder_timestamp",
+    "strike_active",
+    "strike_cleared_at",
+    "snooze_count",
+    "break_history",
+    "resistance_pattern",
+})
 
 DEFAULT_PREFS = {
     "persona": "playful",
@@ -86,13 +99,18 @@ MIN_BREAK_DURATION_MINUTES = 5  # minimum duration to count as a real break
 
 
 def read_prefs():
-    """Read preferences. Returns None if file doesn't exist (onboarding needed).
-    Raises on corrupt file to distinguish from 'not onboarded'."""
+    """Read merged view of preferences + runtime state.
+
+    Combines wellness-preferences.json (tracked) and wellness-runtime.json (gitignored)
+    into a single dict for callers — the split is invisible above this layer.
+    Returns None if the prefs file doesn't exist (onboarding needed).
+    Missing/corrupt runtime file degrades gracefully (no fields from it).
+    """
     if not PREFS_PATH.exists():
         return None
     try:
         with open(PREFS_PATH, "r") as f:
-            return json.load(f)
+            merged = json.load(f)
     except json.JSONDecodeError as e:
         print(f"WARNING: wellness preferences file is corrupt: {e}", file=sys.stderr)
         print(f"  Path: {PREFS_PATH}", file=sys.stderr)
@@ -101,19 +119,45 @@ def read_prefs():
     except IOError as e:
         print(f"WARNING: cannot read wellness preferences: {e}", file=sys.stderr)
         return None
+    # Merge runtime fields if the runtime file exists. Runtime values override
+    # any matching keys in prefs (handles the migration window where a field
+    # still exists in both files — runtime is authoritative for runtime fields).
+    if RUNTIME_PATH.exists():
+        try:
+            with open(RUNTIME_PATH, "r") as f:
+                runtime = json.load(f)
+            if isinstance(runtime, dict):
+                merged.update(runtime)
+        except (json.JSONDecodeError, IOError):
+            pass  # silent — missing/corrupt runtime is non-fatal
+    return merged
 
 
-def write_prefs(prefs):
-    """Write preferences atomically. Only replaces the file on successful serialization."""
-    PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = PREFS_PATH.with_suffix(".tmp")
+def _atomic_write_json(path: Path, data: dict) -> None:
+    """Write JSON to path atomically (temp file + rename)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
     try:
         with open(tmp_path, "w") as f:
-            json.dump(prefs, f, indent=2)
+            json.dump(data, f, indent=2)
     except (IOError, TypeError, ValueError):
         tmp_path.unlink(missing_ok=True)
         raise
-    tmp_path.replace(PREFS_PATH)
+    tmp_path.replace(path)
+
+
+def write_prefs(combined):
+    """Write the merged dict, splitting prefs vs runtime fields into the two files.
+
+    Both files are written atomically (temp + rename). The runtime file is only
+    written if at least one runtime field is present — keeps it absent for
+    onboarding-only states where no runtime data exists yet.
+    """
+    runtime_data = {k: combined[k] for k in RUNTIME_FIELDS if k in combined}
+    prefs_data = {k: v for k, v in combined.items() if k not in RUNTIME_FIELDS}
+    _atomic_write_json(PREFS_PATH, prefs_data)
+    if runtime_data:
+        _atomic_write_json(RUNTIME_PATH, runtime_data)
 
 
 def minutes_since(timestamp_str):

@@ -24,27 +24,29 @@ if [ ! -f "$PREFS_FILE" ]; then
   exit 0
 fi
 
-NOW=$(date +"%Y-%m-%dT%H:%M:%S")
+# Use python3 with the preferences module for the prefs/runtime split.
+# read_modify_write handles atomic file ops + the split between
+# wellness-preferences.json and wellness-runtime.json transparently.
+PYTHONPATH="$HOME/.claude/skills/wellness-coach/hooks" python3 -c "
+from preferences import read_modify_write, now_iso
 
-# Use python3 for reliable JSON manipulation
-python3 -c "
-import json, sys
+# Closure captures was_striking before mutation — avoids persisting a transient
+# signal as a stored field (which would land in PREFS as untracked-by-design noise).
+state = {'was_striking': False}
 
-with open('$PREFS_FILE', 'r') as f:
-    prefs = json.load(f)
+def reset(prefs):
+    state['was_striking'] = prefs.get('strike_active', False)
+    now = now_iso()
+    prefs['strike_active'] = False
+    prefs['last_break_timestamp'] = now
+    prefs['snooze_count'] = 0
+    history = prefs.get('break_history', []) or []
+    history.append({'timestamp': now, 'type': 'real'})
+    prefs['break_history'] = history
+    return prefs
 
-was_striking = prefs.get('strike_active', False)
-prefs['strike_active'] = False
-prefs['last_break_timestamp'] = '$NOW'
-prefs['snooze_count'] = 0
-history = prefs.get('break_history', [])
-history.append({'timestamp': '$NOW', 'type': 'real'})
-prefs['break_history'] = history
-
-with open('$PREFS_FILE', 'w') as f:
-    json.dump(prefs, f, indent=2)
-
-if was_striking:
+read_modify_write(reset)
+if state['was_striking']:
     print('Strike cleared. Timers reset. You are good to go.')
 else:
     print('No active strike. Timers reset anyway.')

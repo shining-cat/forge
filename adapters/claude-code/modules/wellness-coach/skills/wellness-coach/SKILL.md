@@ -17,19 +17,36 @@ Wellness reads its own state file (`wellness-preferences.json`), not the Forge `
 
 **CRITICAL:** LLMs do not have reliable clocks. Whenever you need "the current time" to set a timestamp field in preferences, you MUST run `date +"%Y-%m-%dT%H:%M:%S"` and use the exact output. Never estimate, round, or guess the time.
 
+## Storage layout
+
+Preferences are split across two files in the same directory:
+
+- **`wellness-preferences.json`** (tracked in git) — user-set preferences: `persona`, `coach_name`, intervals, insistence, calendar/weather config, `personal_notes`, `energy_patterns`, `activity_monitor_*`, `preferred_end_of_day`.
+- **`wellness-runtime.json`** (gitignored) — auto-modified runtime state: `last_break_timestamp`, `last_micro_break_timestamp`, `last_reminder_timestamp`, `strike_active`, `strike_cleared_at`, `snooze_count`, `break_history`, `resistance_pattern`.
+
+Both files live in `${VAULT_PATH}/_shared/` (legacy fallback: `~/.claude/`). The Python helper (`preferences.py`) merges them on read and splits them on write — call sites that go through the helper see one combined dict.
+
 ## Startup Check
 
-On every conversation start, check if `${VAULT_PATH}/_shared/wellness-preferences.json` exists (legacy fallback: `~/.claude/wellness-preferences.json` — see `preferences.py` resolver):
+On every conversation start, check if `${VAULT_PATH}/_shared/wellness-preferences.json` exists. Always read BOTH files (preferences and runtime) and merge them — runtime fields override matching keys in prefs.
 
 ```bash
 VAULT_PATH=$(grep '^VAULT_PATH=' ~/.claude/forge.conf 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
-PREFS="${VAULT_PATH:+$VAULT_PATH/_shared}/wellness-preferences.json"
-[ -z "$VAULT_PATH" ] && PREFS="$HOME/.claude/wellness-preferences.json"
-cat "$PREFS" 2>/dev/null || echo "NO_PREFS"
+SHARED_DIR="${VAULT_PATH:+$VAULT_PATH/_shared}"
+[ -z "$SHARED_DIR" ] && SHARED_DIR="$HOME/.claude"
+PREFS="$SHARED_DIR/wellness-preferences.json"
+RUNTIME="$SHARED_DIR/wellness-runtime.json"
+
+if [ ! -f "$PREFS" ]; then
+  echo "NO_PREFS"
+else
+  # Merge prefs + runtime (runtime overrides matching keys)
+  jq -s '.[0] * .[1]' "$PREFS" <(cat "$RUNTIME" 2>/dev/null || echo '{}')
+fi
 ```
 
 - If `NO_PREFS` → start **Onboarding** (below)
-- If file exists → read it, note persona and settings, proceed normally
+- If files exist → use the merged view, note persona and settings, proceed normally
 
 ## Onboarding
 
