@@ -91,6 +91,21 @@ When anything moves, `do_recover` emits an `--- Auto-archive ---` summary sectio
 
 **Implication for task authors and the Keeper:** when a task ships, set `status: resolved` in its frontmatter and let the next session-entry audit do the move. If you want to archive immediately, run `git mv` manually (Keeper still handles the BACKLOG row).
 
+### Duty 7 — Vault sync (commit + push action)
+
+When the user asks to commit + push the vault (or invokes the `/forge-vault-sync` skill), invoke `forge-context.sh vault-sync` to print a categorized report of dirty files grouped by top-level directory with suggested commit messages. Surface the output verbatim — the script's formatting is canonical.
+
+For the interactive walkthrough, instruct the user to run `bash ~/.claude/scripts/forge-context.sh vault-sync --commit` in their real terminal (the script's `prompt_or_default` reads from the tty; running it via the Bash tool would hang on the prompts). Don't invoke `--commit` mode through the Bash tool.
+
+If the user wants Claude to mediate the interactive flow instead, walk them through manually: read each suggested commit message, ask Y/N, then run `git -C $VAULT_PATH add` + `git -C $VAULT_PATH commit -m "..."` per group via the Bash tool. Skip any group the user rejects.
+
+**Refusal cases the script handles** (relay them faithfully):
+- Vault not under git → suggest `git -C $VAULT_PATH init`
+- Vault clean → "Nothing to sync"
+- Pre-staged files exist → user must commit/unstage those first
+
+**Don't substitute the script's suggested commit messages** unless the user asks. The grouping heuristic + message convention are part of the discipline.
+
 ## Constraints
 
 - **Implicit acceptance is not a decision.** Confirm before logging.

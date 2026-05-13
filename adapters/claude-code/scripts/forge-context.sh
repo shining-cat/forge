@@ -694,6 +694,142 @@ do_status() {
   echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
 }
 
+# ── Subcommand: vault-sync ────────────────────────────────────────────
+# Walk the vault git status, group dirty files by top-level directory, suggest a
+# commit message per group. Default mode prints a report and exits. `--commit`
+# runs an interactive walkthrough: Y/N per group, runs git add+commit, then asks
+# to push. Skipped groups stay unstaged for the user to handle later.
+#
+# Bash-3.2 compatible (no associative arrays). Designed to be safe to re-run.
+do_vault_sync() {
+  local commit_mode=false
+  if [ "${1:-}" = "--commit" ]; then
+    commit_mode=true
+  fi
+
+  if [ ! -d "$VAULT_PATH/.git" ]; then
+    echo "Vault not under git ($VAULT_PATH). Run \`git -C $VAULT_PATH init\` to enable vault-sync."
+    return 0
+  fi
+
+  # Refuse if anything is already staged — vault-sync owns the staging area.
+  local pre_staged
+  pre_staged=$(git -C "$VAULT_PATH" diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$pre_staged" -gt 0 ]; then
+    echo "[!] $pre_staged file(s) already staged in the vault. vault-sync won't touch them."
+    echo "    Commit or unstage them first, then re-run."
+    return 1
+  fi
+
+  local dirty_short
+  dirty_short=$(git -C "$VAULT_PATH" status --short 2>/dev/null)
+  if [ -z "$dirty_short" ]; then
+    echo "Vault clean. Nothing to sync."
+    return 0
+  fi
+
+  # Extract paths from `git status --short` output, handling renames (" R old -> new").
+  local dirty_paths
+  dirty_paths=$(echo "$dirty_short" | awk '{
+    $1=""; sub(/^[[:space:]]+/, "")
+    if (/ -> /) sub(/.*-> /, "")
+    print
+  }')
+
+  # Compute unique top-level dirs in first-seen order.
+  local toplevels
+  toplevels=$(echo "$dirty_paths" | awk -F/ '
+    NF==1 { key="(root)" }
+    NF>1  { key=$1 }
+    !seen[key]++ { print key }
+  ')
+
+  echo "=== Vault sync ==="
+  if [ "$commit_mode" = false ]; then
+    echo "Report mode. Re-run with --commit to interactively commit + push."
+  fi
+
+  local total_committed=0
+
+  while IFS= read -r toplevel; do
+    [ -z "$toplevel" ] && continue
+    echo ""
+    echo "--- Group: $toplevel ---"
+
+    local files
+    if [ "$toplevel" = "(root)" ]; then
+      files=$(echo "$dirty_paths" | awk -F/ 'NF==1 {print}')
+    else
+      files=$(echo "$dirty_paths" | awk -F/ -v k="$toplevel" 'NF>1 && $1==k {print}')
+    fi
+
+    echo "$files" | sed '/^$/d' | sed 's/^/  /'
+
+    # Suggested commit message — based on top-level dir + first-file path shape.
+    local suggested_msg first_file project_path
+    case "$toplevel" in
+      _shared)    suggested_msg="shared: update cross-project vault state" ;;
+      _templates) suggested_msg="templates: update vault templates" ;;
+      _meta)      suggested_msg="meta: update vault metadata" ;;
+      "(root)")   suggested_msg="vault: root-level updates" ;;
+      *)
+        first_file=$(echo "$files" | head -1)
+        # If path looks like ENV/PROJECT/..., scope is ENV/PROJECT.
+        if echo "$first_file" | grep -q '^[^/]\+/[^/]\+/'; then
+          project_path=$(echo "$first_file" | cut -d/ -f1-2)
+          suggested_msg="$project_path: vault updates"
+        else
+          suggested_msg="$toplevel: vault updates"
+        fi
+        ;;
+    esac
+    echo "  → suggested commit: \"$suggested_msg\""
+
+    if [ "$commit_mode" = true ]; then
+      local answer
+      answer=$(prompt_or_default "  Commit this group? [Y/n]: " "Y")
+      case "${answer:-Y}" in
+        [Yy]*|"")
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            git -C "$VAULT_PATH" add "$f" 2>/dev/null
+          done <<< "$files"
+          if git -C "$VAULT_PATH" commit -m "$suggested_msg" >/dev/null 2>&1; then
+            echo "  ✓ committed"
+            total_committed=$((total_committed + 1))
+          else
+            echo "  ✗ commit failed (see git status)"
+          fi
+          ;;
+        *)
+          echo "  skipped"
+          ;;
+      esac
+    fi
+  done <<< "$toplevels"
+
+  if [ "$commit_mode" = true ] && [ "$total_committed" -gt 0 ]; then
+    echo ""
+    local push_answer
+    push_answer=$(prompt_or_default "Push $total_committed commit(s) to origin? [Y/n]: " "Y")
+    case "${push_answer:-Y}" in
+      [Yy]*|"")
+        if git -C "$VAULT_PATH" push 2>&1; then
+          echo "✓ pushed"
+        else
+          echo "✗ push failed — run \`git -C $VAULT_PATH push\` manually"
+        fi
+        ;;
+      *)
+        echo "skipped push — $total_committed commit(s) staged locally"
+        ;;
+    esac
+  fi
+
+  echo ""
+  echo "================="
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -704,8 +840,9 @@ case "$SUBCMD" in
   recover)           do_recover ;;
   reconcile-marker)  reconcile_marker ;;
   status)            do_status ;;
+  vault-sync)        do_vault_sync "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync}" >&2
     exit 1
     ;;
 esac

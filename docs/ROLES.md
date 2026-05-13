@@ -60,6 +60,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 - **Writes:** decision logs, checkpoints (`current-checkpoint.md`), scope alerts, INDEX updates, BACKLOG (rows sorted within clusters by `updated:` frontmatter)
 - **On every checkpoint write:** silently reconciles GitHub PRs
 - **At every session entry:** auto-archives task files with `status: resolved` from `tasks/open/` to `tasks/resolved/`. Standalone task/issue files move alone; `umbrella.md` moves the whole containing subfolder atomically; sub-tasks inside an umbrella subfolder stay in place until the umbrella itself resolves. The recovery output emits an `--- Auto-archive ---` summary listing what was moved. Keeper does NOT auto-edit BACKLOG — the summary signals which rows to remove on the next BACKLOG curation. (See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md#auto-archive-keeper-duty) for the full convention.)
+- **On request:** runs the `/forge-vault-sync` skill (or `forge-context.sh vault-sync`) to surface dirty vault files grouped by top-level directory, with a suggested commit message per group. Default is a read-only report; the user runs `vault-sync --commit` in a real terminal for the interactive Y/N walkthrough + push. Refuses when files are already staged.
 
 ---
 

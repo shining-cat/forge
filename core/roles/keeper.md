@@ -96,6 +96,24 @@ After moving, emit a summary section listing what was archived. Do NOT auto-edit
 
 **Status field is the explicit signal.** When a task author marks `status: resolved` (matching the standardized done-state across all three task shapes — `task.md`, `issue.md`, `umbrella.md`), the next session entry archives it. Adapters wire this into their session-entry / recovery primitive.
 
+### Duty 7 — Vault sync (action side)
+
+Duties 1–6 surface and curate vault state; Duty 7 is the close-the-loop action. When the user asks to commit + push the vault (or invokes a vault-sync skill), the Keeper offers a categorized view of dirty vault files grouped by top-level directory (`PERSO/{project}/`, `_shared/`, `_templates/`, etc.) with a suggested commit message per group.
+
+Two modes:
+
+- **Report (default):** print the grouped view + suggested messages. Read-only. The user can use it for orientation without committing.
+- **Interactive:** for each group, ask the user to confirm or skip. Stage + commit accepted groups; leave skipped ones unstaged. After all groups, ask whether to push.
+
+The interactive mode runs in a real shell (it reads from the tty via the adapter's prompt helper); when the Keeper is invoked through an agent that doesn't have a tty, surface the report and have the user run the interactive flow themselves.
+
+**Refusal cases the Keeper must respect:**
+- Vault not under git: nothing to do; suggest `git -C $VAULT_PATH init`.
+- Vault clean: silent OK ("Nothing to sync.").
+- Pre-staged work exists: refuse — tell the user to commit or unstage first. The Keeper owns the staging area only when it's empty.
+
+**Don't substitute commit messages silently.** The script's grouping + message convention is part of the discipline. Override only when the user explicitly asks for a different message.
+
 ### Duty 6 — Vault hygiene awareness
 
 Surface vault drift at session start so the user knows when to commit + push. The Keeper relies on `forge-context.sh recover` (run automatically at session entry) to print the `--- Vault state ---` block with raw counts (dirty files, untracked dirs, commits ahead/behind), plus a one-line `[!] Vault drift detected — commit + push when you reach a natural pause.` warning when any threshold is exceeded:

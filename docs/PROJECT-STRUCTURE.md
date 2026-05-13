@@ -134,6 +134,27 @@ When the Keeper sees `status: resolved` in a task's frontmatter, the next sessio
 
 The session-entry recovery output emits an `--- Auto-archive ---` summary listing what was moved. The Keeper does NOT auto-edit the BACKLOG — the summary signals which rows to remove on the next BACKLOG curation.
 
+### Vault sync (commit + push action)
+
+When the vault accumulates uncommitted work, invoke `/forge-vault-sync` (or run `bash ~/.claude/scripts/forge-context.sh vault-sync` directly) to get a categorized view. The output groups dirty files by top-level directory (`_shared/`, `_templates/`, `{ENV}/{PROJECT}/`) and suggests one commit per group, with a sensible default message based on the directory name and file shape.
+
+**Two modes:**
+
+- **Report (default):** read-only. Useful for orientation: "what's dirty in the vault and what would I commit?"
+- **Interactive (`--commit` flag):** walks each group, asks Y/N to commit, runs the commits, then asks whether to push. Skipped groups stay unstaged for you to handle later. Run from a real terminal — the prompts read from the tty.
+
+```bash
+# Report
+bash ~/.claude/scripts/forge-context.sh vault-sync
+
+# Interactive commit + push
+bash ~/.claude/scripts/forge-context.sh vault-sync --commit
+```
+
+**Refusal cases:** vault not under git, vault clean, or pre-staged files already exist (commit or unstage them first — vault-sync owns the staging area only when it's empty).
+
+**Companion to auto-archive:** auto-archive handles the OPEN side (resolved tasks moving out of `tasks/open/`); vault-sync handles the CLOSE side (committing the resulting vault state).
+
 ## Templates available
 
 The vault includes templates for recurring file shapes. Source of truth lives in `core/vault-templates/` in the forge repo; install copies them to `Vault/_templates/` for immediate use in Obsidian.

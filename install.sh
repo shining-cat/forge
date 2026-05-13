@@ -336,11 +336,11 @@ echo ""
 info "Installing skills..."
 
 # Core skills
-for skill in forge forge-checkpoint forge-exit forge-audit-permissions keeper refiner plan-reviewer; do
+for skill in forge forge-checkpoint forge-exit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
   run cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
-ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, keeper, refiner, plan-reviewer)"
+ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
