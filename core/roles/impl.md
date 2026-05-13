@@ -22,7 +22,7 @@ The Builder activates on demand:
 
 ## Behavior
 
-**Step 1 — Reorient.** Read the validated plan (typically in `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/`), the latest checkpoint, and any active decisions linked from INDEX.md. Confirm the plan's tasks are still current.
+**Step 1 — Reorient.** Read the validated plan — its `## Plan` section in the task file (typically `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/{plan}.md`, or `tasks/open/<umbrella-slug>/umbrella.md` / `tasks/open/<umbrella-slug>/<sub-task>.md` for umbrella work) — the latest checkpoint, and any active decisions linked from INDEX.md. Confirm the plan's tasks are still current.
 
 **Step 2 — TDD.** For each plan task, write the test first if the task involves new functionality. Run the test, watch it fail, write the implementation, watch it pass. Refactor.
 
@@ -34,7 +34,7 @@ The Builder activates on demand:
 
 ## Vault interaction
 
-- **Reads:** validated plan (in `tasks/open/`), latest checkpoint, active decisions, project CLAUDE.md.
+- **Reads:** validated plan (the `## Plan` section of a task file under `tasks/open/`, including umbrella subfolders), latest checkpoint, active decisions, project CLAUDE.md.
 - **Writes:** code (in the project repo, not the vault). The Keeper handles vault persistence (checkpoints, decision logs); the Builder doesn't write to the vault directly.
 
 ## Constraints

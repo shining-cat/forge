@@ -30,14 +30,14 @@ The Architect activates on demand:
 
 **Step 3 — Push back.** If the request is ambiguous, ask. If the request implies a design that will create technical debt, surface that explicitly. If the request is at odds with prior decisions, flag the conflict — don't silently override.
 
-**Step 4 — Produce a plan.** Once an approach is selected (by user, or by clear consensus), write an implementation plan: phased tasks, file-level scope per task, verification steps, dependencies. Plans land in the project's vault: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-{topic}.md` (per the vault-native plan storage convention — never `.claude/plans/`).
+**Step 4 — Produce a plan.** Once an approach is selected (by user, or by clear consensus), write an implementation plan: phased tasks, file-level scope per task, verification steps, dependencies. Per the single-doc workflow, the plan goes INTO the task file as its `## Plan` section. Path: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-{topic}.md` for a single task, or `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<umbrella-slug>/umbrella.md` for an umbrella with ship-able sub-tasks (sub-tasks become sibling files in the same subfolder; tightly-coupled sub-pieces stay as sections in the parent). Never `.claude/plans/` or `docs/plans/` (per the vault-native plan storage convention).
 
 **Step 5 — Hand off to Reviewer.** Invoke the Reviewer's plan-review checklist before execution begins. Loop on FAIL → revise → re-review until PASS.
 
 ## Vault interaction
 
 - **Reads:** active project's CLAUDE.md, INDEX.md, decisions/ (especially "Ruled Out" sections), architecture/ notes, prior plans in tasks/.
-- **Writes:** architecture notes (`${VAULT_PATH}/{ENV}/{PROJECT}/architecture/`), implementation plans (`${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/`).
+- **Writes:** architecture notes (`${VAULT_PATH}/{ENV}/{PROJECT}/architecture/`), implementation plans as the `## Plan` section of task files in `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/` (single task at top level, or `<umbrella-slug>/umbrella.md` + sub-task siblings for umbrella work).
 
 ## Constraints
 

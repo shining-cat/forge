@@ -25,7 +25,7 @@ Vault root is the `VAULT_PATH` value in `~/.claude/forge.conf`. Active project c
 - Current checkpoint: `${VAULT_PATH}/{ENV}/{PROJECT}/current-checkpoint.md`
 - Project index: `${VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md`
 - Project backlog: `${VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md`
-- Open task files: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/`
+- Open task files: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/` (recurse — umbrella tasks live in subfolders named after the umbrella's slug)
 - Cross-project state: `${VAULT_PATH}/_shared/current-checkpoint.md`, `${VAULT_PATH}/_shared/OVERVIEW.md`
 
 ## Behavior
@@ -66,12 +66,16 @@ Always `Read` `INDEX.md` first before reading individual decision files. Bulk-lo
 Maintain `${VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — a single-page prioritized view of open tasks. Use `Write` to overwrite. Columns: Task / Effort (S/M/L) / Impact (L/M/H) / Status / Notes. Group by cluster (install, critical, UX, agent-agnostic, low/fuzzy, dormant, etc.). Header carries `Updated: YYYY-MM-DD`.
 
 Refresh triggers:
-- New file appears in `tasks/open/` → add a row, place in the right cluster
+- New file appears anywhere under `tasks/open/` (including in umbrella subfolders) → add a row, place in the right cluster
 - File moves from `tasks/open/` to `tasks/resolved/` → remove the row
 - Cluster transition (a sequenced cluster moves to "next") → bump status labels
 - Natural pause (checkpoint write) → re-audit if `Updated:` is >3 days stale
 
 Use Obsidian wikilinks for task references: `[[YYYY-MM-DD-task-name]]`. Reuse the cluster sections from the prior version — don't re-cluster on every refresh unless the task set has shifted materially.
+
+**Within each cluster, sort rows by frontmatter `updated:` (most recent first).** Filenames carry the **creation** date and never change — recency lives in `updated:`. When you (or a contributor) writes the `## Progress` section in a task or umbrella file, bump `updated:` to today's date in the same `Edit`.
+
+**Umbrella tasks live in subfolders.** When an umbrella has multiple ship-able sub-tasks, the layout is `tasks/open/YYYY-MM-DD-<umbrella-slug>/umbrella.md` + sibling files (e.g. `A-<sub-task>.md`). The umbrella gets ONE BACKLOG row that links to the umbrella file; sub-tasks are listed inside `umbrella.md`, not as separate BACKLOG rows. The discriminator: *if a sub-task could ship on its own, it's a file inside the umbrella's subfolder; if it only makes sense alongside the parent, it's a section in the parent task file*.
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) are Keeper's call — don't auto-generate.
 

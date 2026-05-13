@@ -413,10 +413,12 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 
 **Workspace skills (Forge mode):** When a Google Workspace API is needed (calendar, sheets, docs, drive, tasks), invoke the matching `google-workspace:gws-*` skill on the **first** try. No raw `gws ...` CLI exploration unless the skill itself fails or doesn't exist. Each failed flag-fish is a permission prompt the user has to triage. Same applies to other available specialized skills (jira, snowflake, slack, workplace) — invoke first, don't fish.
 
-**Plan storage (Forge mode):** All plan, design, and spec files MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`.
+**Plan storage (Forge mode):** All plan, design, and spec content MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`. Per the single-doc workflow, plan + design + progress live as **sections inside the task file**, not as separate `-design.md` / `-plan.md` siblings.
 
-- **Project work** (FINN, SimpleHIIT, forge, etc.): `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md` (and matching `-plan.md` for the implementation plan when separate).
-- **Cross-project / shared work**: `{VAULT_PATH}/_shared/tasks/open/YYYY-MM-DD-<topic>.md`.
+- **Single task** (most cases): `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md` — Design and Plan are sections inside this file (see `_templates/task.md`).
+- **Umbrella with ship-able sub-tasks**: `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<umbrella-slug>/umbrella.md` + sibling sub-task files (e.g. `A-<sub-task>.md`) inside the same subfolder (see `_templates/umbrella.md`). Discriminator: if a piece could ship on its own, it's a sub-task file; if not, it's a section in the parent.
+- **Cross-project / shared work**: `{VAULT_PATH}/_shared/tasks/open/YYYY-MM-DD-<topic>.md` (or umbrella subfolder if multi-ship).
+- Filenames carry the **creation** date and never change. Recency lives in the `updated:` frontmatter field — Keeper bumps it when adding a `## Progress` entry.
 - This overrides the default `docs/plans/...` instruction in the superpowers `brainstorming` and `writing-plans` skills. The Forge override is enforced by a PreToolUse hook (`forge-vault-plan-guard.sh`) — Claude cannot write to `docs/plans/` or `.claude/plans/` while Forge is active.
 
 **Backlog (per-project view):** Each project maintains a single-page prioritized view at `{VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — Keeper-curated table of open tasks with Effort / Impact / Status / Notes columns, grouped by cluster. Replaces scrolling through `tasks/open/` for prioritization decisions.

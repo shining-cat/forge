@@ -74,7 +74,11 @@ Add entries to `INDEX.md` when decisions are created. Move stale decisions to an
 
 Maintain `${VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — a single-page prioritized table of open tasks with Effort / Impact / Status / Notes columns, grouped by cluster. The artifact lets the user see the full open queue without scrolling through `tasks/open/`.
 
-Refresh at: task add (new file in `tasks/open/`), task resolve (move to `tasks/resolved/`), cluster transition, natural pauses. Update the `Updated: YYYY-MM-DD` header on every refresh. Re-audit when older than ~3 days.
+Refresh at: task add (new file anywhere under `tasks/open/`, including umbrella subfolders), task resolve (move to `tasks/resolved/`), cluster transition, natural pauses. Update the `Updated: YYYY-MM-DD` header on every refresh. Re-audit when older than ~3 days.
+
+**Within each cluster, sort rows by frontmatter `updated:` (most recent first).** Filenames carry the **creation** date and never change — recency lives in the `updated:` frontmatter field. When the Keeper (or a contributor) adds a `## Progress` entry to a task or umbrella file, the same edit must bump `updated:` to today's date.
+
+**Umbrella tasks live in subfolders.** When an umbrella has multiple ship-able sub-tasks, the layout is `tasks/open/YYYY-MM-DD-<umbrella-slug>/umbrella.md` plus sibling sub-task files (e.g. `A-<sub-task>.md`). The umbrella gets ONE BACKLOG row that links to the umbrella file; sub-tasks are listed inside `umbrella.md`, not as separate BACKLOG rows. The discriminator for "sub-task as section vs sub-task as file": if a piece could ship on its own (independent effort/impact/timing), it's a file in the umbrella's subfolder; if it only makes sense alongside the parent, it's a section in the parent task file.
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) require curation — this duty is genuinely Keeper work, not an auto-generated artifact.
 

@@ -26,7 +26,7 @@ Before proposing anything, read the relevant context with `Read` and `Grep`:
 - `${VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` (decisions index)
 - Linked decision files in `${VAULT_PATH}/{ENV}/{PROJECT}/decisions/` (especially "Ruled Out" sections)
 - `${VAULT_PATH}/{ENV}/{PROJECT}/architecture/` (existing architectural notes)
-- Recent plans in `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/` and `tasks/resolved/` (avoid duplicating work)
+- Recent plans in `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/` and `tasks/resolved/` — recurse, since umbrella tasks live in subfolders (avoid duplicating work)
 
 ### Step 2 — Brainstorm
 
@@ -40,13 +40,16 @@ If the work is non-trivial, invoke the `superpowers:brainstorming` skill. Genera
 
 ### Step 4 — Produce a plan
 
-Once an approach is selected, invoke the `superpowers:writing-plans` skill to produce a structured implementation plan. Plan goes to:
+Once an approach is selected, invoke the `superpowers:writing-plans` skill to produce a structured implementation plan. Plan goes INTO the task file as its `## Plan` section (per the single-doc workflow — `_templates/task.md` covers the shape):
 
 ```
-${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-{topic}.md
+${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-{topic}.md         (single task)
+${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<slug>/umbrella.md (umbrella with ship-able sub-tasks)
 ```
 
-**Never** `.claude/plans/` (per the vault-native plan storage convention; see open task `forge-vault-native-plan-storage`).
+If the work has multiple ship-able sub-pieces, use the umbrella shape (`_templates/umbrella.md`) — sub-tasks become separate files inside the umbrella's subfolder. If sub-pieces are tightly coupled to a single ship event, keep them as sections inside one task file.
+
+**Never** `.claude/plans/` or `docs/plans/` (per the vault-native plan storage convention, enforced by `forge-vault-plan-guard.sh`).
 
 ### Step 5 — Hand off to Reviewer
 
@@ -56,7 +59,7 @@ After writing the plan, invoke the Reviewer (via `Agent({subagent_type: "forge-r
 
 - Decisions: `${VAULT_PATH}/{ENV}/{PROJECT}/decisions/`
 - Architecture notes: `${VAULT_PATH}/{ENV}/{PROJECT}/architecture/`
-- Plans: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/`
+- Plans: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/` (single tasks at top level; umbrellas as `<slug>/umbrella.md` in subfolders)
 - Index: `${VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md`
 
 ## Constraints

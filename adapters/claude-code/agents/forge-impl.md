@@ -24,7 +24,7 @@ You operate from a validated plan. If you are dispatched without a plan referenc
 
 ### Step 1 — Reorient
 
-`Read` the plan (typically `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/{plan}.md`), the project's `current-checkpoint.md`, and any decisions linked from `INDEX.md`. Use `Grep` against the codebase to confirm the plan's file targets still exist.
+`Read` the plan — its `## Plan` section in the task file (typically `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/{plan}.md`, or `tasks/open/<umbrella-slug>/umbrella.md` for umbrella work, or `tasks/open/<umbrella-slug>/<sub-task>.md` for a specific sub-task) — the project's `current-checkpoint.md`, and any decisions linked from `INDEX.md`. Use `Grep` against the codebase to confirm the plan's file targets still exist.
 
 ### Step 2 — Execute via skills
 
@@ -50,7 +50,7 @@ When the implementation completes the plan's deliverables, signal completion to 
 
 ## Vault paths
 
-- Plan: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/{plan}.md`
+- Plan: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/{plan}.md` — or `tasks/open/<umbrella-slug>/umbrella.md` / `tasks/open/<umbrella-slug>/<sub-task>.md` for umbrella work. The plan lives as the `## Plan` section of the task file.
 - Checkpoint: `${VAULT_PATH}/{ENV}/{PROJECT}/current-checkpoint.md`
 - Decisions: `${VAULT_PATH}/{ENV}/{PROJECT}/decisions/` (read via INDEX.md)
 
