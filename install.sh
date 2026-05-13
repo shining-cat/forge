@@ -602,17 +602,29 @@ else
     warn "$SHELL_RC already defines 'claude' (alias or function) — wrapper may conflict."
     hint "Review existing definition before sourcing the wrapper."
   fi
-  if [ "$DRY_RUN" = true ]; then
-    info "Would append source line to $SHELL_RC"
-  else
-    cat >> "$SHELL_RC" <<EOF
+  WRAPPER_OPT_IN=$(prompt_or_default \
+    "$(printf "${CYAN}[forge]${NC} Append shell wrapper source line to %s? [Y/n]: " "$SHELL_RC")" \
+    "Y")
+  case "${WRAPPER_OPT_IN:-Y}" in
+    [Yy]*|"")
+      if [ "$DRY_RUN" = true ]; then
+        info "Would append source line to $SHELL_RC"
+      else
+        cat >> "$SHELL_RC" <<EOF
 
 # Forge shell wrapper — auto-tmux for Pattern A agent teams (added by forge install.sh)
 [ -f ~/.claude/forge-shell-init.sh ] && source ~/.claude/forge-shell-init.sh
 EOF
-    ok "Wrapper sourced in $SHELL_RC"
-    hint "Open a new terminal (or 'source $SHELL_RC') for the wrapper to take effect."
-  fi
+        ok "Wrapper sourced in $SHELL_RC"
+        hint "Open a new terminal (or 'source $SHELL_RC') for the wrapper to take effect."
+      fi
+      ;;
+    *)
+      warn "Skipped — wrapper not sourced. Pattern A team substrate disabled."
+      hint "To enable later, add this line to $SHELL_RC manually:"
+      hint "  [ -f ~/.claude/forge-shell-init.sh ] && source ~/.claude/forge-shell-init.sh"
+      ;;
+  esac
 fi
 
 # ─── Patch vault paths in SKILL.md files ──────────────────────────────────────
