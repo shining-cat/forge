@@ -609,6 +609,9 @@ for pr in json.load(sys.stdin):
   # uncommitted moves to commit).
   do_auto_archive
 
+  # Install drift — surface if Forge runtime is behind the source repo.
+  do_check_install_drift
+
   # Vault state — surfaces drift in the vault repo itself (not the project repo).
   # Loss of laptop = loss of all decisions/checkpoints/plans if the vault never gets pushed.
   if [ -d "$VAULT_PATH/.git" ]; then
@@ -692,6 +695,78 @@ do_status() {
   fi
 
   echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
+}
+
+# ── Install drift check ───────────────────────────────────────────────
+# Surface "Forge install is N commits behind upstream" at session entry so users
+# know to re-run install.sh. Cached-state only (no network) — pairs with the
+# explicit `check-install` subcommand below for an active fetch+check.
+#
+# Reads FORGE_REPO from forge.conf. Silent when in sync AND fetched in last 7 days.
+do_check_install_drift() {
+  local forge_repo
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+  [ -z "$forge_repo" ] && return 0
+  [ -d "$forge_repo/.git" ] || return 0
+
+  local behind ahead
+  behind=$(git -C "$forge_repo" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)
+  ahead=$(git -C "$forge_repo" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+
+  # Stale-fetch warning — user hasn't `git fetch`'d in a week.
+  local fetch_head="$forge_repo/.git/FETCH_HEAD"
+  local fetch_age_days=99999
+  if [ -f "$fetch_head" ]; then
+    local fetch_mtime now
+    fetch_mtime=$(stat -f %m "$fetch_head" 2>/dev/null || stat -c %Y "$fetch_head" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    fetch_age_days=$(( (now - fetch_mtime) / 86400 ))
+  fi
+
+  if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$fetch_age_days" -lt 7 ]; then
+    return 0  # silent — in sync and recently fetched
+  fi
+
+  echo ""
+  echo "--- Install state ---"
+  if [ "$behind" -gt 0 ]; then
+    echo "[!] Forge install is $behind commit(s) behind upstream."
+    echo "    Update: (cd $forge_repo && git pull && ./install.sh)"
+  fi
+  if [ "$ahead" -gt 0 ]; then
+    echo "    Local: $ahead commit(s) ahead of upstream (maintainer-side work)."
+  fi
+  if [ "$fetch_age_days" -ge 7 ] && [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+    echo "Last upstream fetch: $fetch_age_days days ago."
+    echo "    Refresh: git -C $forge_repo fetch  (then re-run /forge to recheck)"
+  fi
+}
+
+# ── Subcommand: check-install ─────────────────────────────────────────
+# Explicit "fetch + report" — call this when the user wants an active drift
+# check (vs the cached check baked into do_recover). Useful as a slash-command
+# target or shell alias when you've been working a while and want a fresh read.
+do_check_install() {
+  local forge_repo
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+  if [ -z "$forge_repo" ] || [ ! -d "$forge_repo/.git" ]; then
+    echo "FORGE_REPO not configured or not a git repo — nothing to check."
+    return 0
+  fi
+
+  echo "Fetching from upstream..."
+  if ! git -C "$forge_repo" fetch --quiet 2>&1; then
+    echo "[!] git fetch failed (offline? auth?). Falling back to cached state."
+  fi
+  do_check_install_drift
+  # If we just fetched and result is silent, do_check_install_drift returned
+  # nothing — surface a confirmation so the user knows the check ran.
+  local behind ahead
+  behind=$(git -C "$forge_repo" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)
+  ahead=$(git -C "$forge_repo" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+  if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+    echo "Forge install is in sync with upstream."
+  fi
 }
 
 # ── Subcommand: wrap-up-state ─────────────────────────────────────────
@@ -913,8 +988,9 @@ case "$SUBCMD" in
   status)            do_status ;;
   vault-sync)        do_vault_sync "${@:2}" ;;
   wrap-up-state)     do_wrap_up_state ;;
+  check-install)     do_check_install ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install}" >&2
     exit 1
     ;;
 esac
