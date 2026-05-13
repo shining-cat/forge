@@ -79,6 +79,18 @@ Use Obsidian wikilinks for task references: `[[YYYY-MM-DD-task-name]]`. Reuse th
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) are Keeper's call — don't auto-generate.
 
+### Duty 6 — Auto-archive resolved tasks (session entry)
+
+`forge-context.sh do_recover` runs `do_auto_archive` automatically at every session entry. The function scans `tasks/open/**/*.md` (under both the active project's vault dir and `_shared/`) and routes any file with frontmatter `status: resolved` to `tasks/resolved/`:
+
+- **Standalone task or issue** (top-level file in `tasks/open/`): `git mv` the file
+- **Umbrella** (`umbrella.md` inside a subfolder): `git mv` the whole subfolder (preserving sub-task history)
+- **Sub-task inside an umbrella subfolder** (file alongside `umbrella.md`, not named `umbrella.md`): SKIP — sub-tasks stay in their umbrella subfolder until the umbrella itself resolves, then the whole folder moves atomically
+
+When anything moves, `do_recover` emits an `--- Auto-archive ---` summary section listing what was moved. The Keeper does NOT auto-edit BACKLOG — the summary signals which rows to remove on the next BACKLOG curation. Failed moves emit a warning to stderr and continue with the rest.
+
+**Implication for task authors and the Keeper:** when a task ships, set `status: resolved` in its frontmatter and let the next session-entry audit do the move. If you want to archive immediately, run `git mv` manually (Keeper still handles the BACKLOG row).
+
 ## Constraints
 
 - **Implicit acceptance is not a decision.** Confirm before logging.

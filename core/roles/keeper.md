@@ -82,6 +82,20 @@ Refresh at: task add (new file anywhere under `tasks/open/`, including umbrella 
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) require curation — this duty is genuinely Keeper work, not an auto-generated artifact.
 
+### Duty 6 — Auto-archive resolved tasks (session entry)
+
+At every session entry, batch-move task files with frontmatter `status: resolved` from `tasks/open/` to `tasks/resolved/`. Routing by file shape:
+
+- **Standalone task or issue** (top-level file in `tasks/open/`): move the file.
+- **Umbrella** (the file named `umbrella.md` inside a subfolder of `tasks/open/`): move the whole containing subfolder atomically (preserves sub-task history).
+- **Sub-task inside an umbrella subfolder** (file alongside `umbrella.md`, not named `umbrella.md`): SKIP. Sub-tasks stay in their umbrella subfolder until the umbrella itself resolves; then the whole folder moves.
+
+Scope: scans both the active project's vault dir (`{ENV}/{PROJECT}/tasks/open/`) and `_shared/tasks/open/`. Requires the vault to be under git (auto-archive without git would lose moves silently).
+
+After moving, emit a summary section listing what was archived. Do NOT auto-edit BACKLOG — the summary signals which rows the Keeper should remove on the next BACKLOG curation. On failed moves: warn and continue, don't fail the whole session entry.
+
+**Status field is the explicit signal.** When a task author marks `status: resolved` (matching the standardized done-state across all three task shapes — `task.md`, `issue.md`, `umbrella.md`), the next session entry archives it. Adapters wire this into their session-entry / recovery primitive.
+
 ### Duty 6 — Vault hygiene awareness
 
 Surface vault drift at session start so the user knows when to commit + push. The Keeper relies on `forge-context.sh recover` (run automatically at session entry) to print the `--- Vault state ---` block with raw counts (dirty files, untracked dirs, commits ahead/behind), plus a one-line `[!] Vault drift detected — commit + push when you reach a natural pause.` warning when any threshold is exceeded:

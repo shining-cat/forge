@@ -425,6 +425,90 @@ EOF
 }
 
 # ── Subcommand: recover (session start reconstruction) ─────────────────
+# Auto-archive: move task files with `status: resolved` frontmatter from tasks/open/
+# to tasks/resolved/. Routes by file shape:
+#   - top-level *.md in tasks/open/   → standalone task; mv file
+#   - umbrella.md inside subfolder    → umbrella; mv whole subfolder
+#   - other file inside subfolder     → sub-task in umbrella; SKIP (per the convention
+#                                       that resolved sub-tasks stay alongside open
+#                                       siblings until the umbrella itself resolves)
+#
+# Scans both the active project's vault dir and _shared. Silent when nothing pending.
+# Requires VAULT_PATH/.git (auto-archive without git would lose the moves silently).
+do_auto_archive() {
+  [ -d "$VAULT_PATH/.git" ] || return 0
+
+  local roots=()
+  [ -d "$VAULT_DIR/tasks/open" ] && roots+=("$VAULT_DIR")
+  [ -d "$VAULT_PATH/_shared/tasks/open" ] && roots+=("$VAULT_PATH/_shared")
+  [ ${#roots[@]} -eq 0 ] && return 0
+
+  local moved_count=0
+  local moved_list=""
+  local root open_dir resolved_dir f status base parent_dir parent_base
+
+  for root in "${roots[@]}"; do
+    open_dir="$root/tasks/open"
+    resolved_dir="$root/tasks/resolved"
+    mkdir -p "$resolved_dir"
+
+    # Use find with -print0 in case any path contains spaces (vault paths can)
+    while IFS= read -r -d '' f; do
+      # Parse `status:` from frontmatter (between the first two `---` lines).
+      # Strip optional surrounding quotes/whitespace.
+      status=$(awk '
+        /^---[[:space:]]*$/ { c++; if (c==2) exit; next }
+        c==1 && /^status:/ {
+          sub(/^status:[[:space:]]*/, "")
+          gsub(/^["'"'"']|["'"'"']$/, "")
+          gsub(/[[:space:]]+$/, "")
+          print
+          exit
+        }
+      ' "$f" 2>/dev/null)
+
+      [ "$status" = "resolved" ] || continue
+
+      base=$(basename "$f")
+      parent_dir=$(dirname "$f")
+      parent_base=$(basename "$parent_dir")
+
+      if [ "$base" = "umbrella.md" ] && [ "$parent_dir" != "$open_dir" ]; then
+        # Umbrella — move whole containing subfolder.
+        # Try git mv first (preserves single-rename in status); fall back to plain mv
+        # if anything inside is untracked (git mv fails partial-fail on mixed states).
+        if git -C "$VAULT_PATH" mv "${parent_dir#$VAULT_PATH/}" "${resolved_dir#$VAULT_PATH/}/$parent_base" 2>/dev/null \
+          || mv "$parent_dir" "$resolved_dir/$parent_base" 2>/dev/null; then
+          moved_count=$((moved_count + 1))
+          moved_list="${moved_list}  - ${parent_base}/ (umbrella, whole folder)"$'\n'
+        else
+          echo "[auto-archive] WARN: failed to mv umbrella subfolder $parent_base/" >&2
+        fi
+      elif [ "$parent_dir" = "$open_dir" ]; then
+        # Standalone task or issue at top level. Same try-git-then-plain pattern —
+        # uncommitted task files are valid (status:resolved set during the same session
+        # the work shipped, before the commit lands).
+        if git -C "$VAULT_PATH" mv "${f#$VAULT_PATH/}" "${resolved_dir#$VAULT_PATH/}/$base" 2>/dev/null \
+          || mv "$f" "$resolved_dir/$base" 2>/dev/null; then
+          moved_count=$((moved_count + 1))
+          moved_list="${moved_list}  - $base"$'\n'
+        else
+          echo "[auto-archive] WARN: failed to mv standalone task $base" >&2
+        fi
+      fi
+      # else: sub-task inside an umbrella subfolder (not named umbrella.md) — skip per punt
+    done < <(find "$open_dir" -type f -name '*.md' -print0 2>/dev/null)
+  done
+
+  if [ "$moved_count" -gt 0 ]; then
+    echo ""
+    echo "--- Auto-archive ---"
+    echo "Moved $moved_count resolved task(s) to tasks/resolved/:"
+    printf "%s" "$moved_list"
+    echo "Update BACKLOG to remove these rows."
+  fi
+}
+
 do_recover() {
   echo "=== FORGE RECOVERY — $PROJECT_NAME ==="
 
@@ -519,6 +603,11 @@ for pr in json.load(sys.stdin):
       fi
     fi
   fi
+
+  # Auto-archive resolved tasks before reporting vault state — so the dirty count
+  # downstream reflects the post-archive moves (signal to user that there are
+  # uncommitted moves to commit).
+  do_auto_archive
 
   # Vault state — surfaces drift in the vault repo itself (not the project repo).
   # Loss of laptop = loss of all decisions/checkpoints/plans if the vault never gets pushed.

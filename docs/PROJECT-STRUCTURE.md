@@ -81,6 +81,59 @@ Use the `repo-` prefix for all symlinked content to make it visually distinct fr
 | `tasks/open/` | Open project-level tasks | First task logged |
 | `tasks/resolved/` | Completed project-level tasks | First task resolved |
 
+## Task file shapes (single-doc workflow)
+
+Forge uses a **single-doc workflow** for task files: one growing file per task, with sections (What/Why → Design → Plan → Progress → Resolution) added as the work evolves. No more separate `-design.md` / `-plan.md` siblings — design and plan live as sections inside the parent task file.
+
+Three coexisting shapes, each fitting a different work pattern:
+
+| Shape | Use when | Sub-items live as | Title prefix | Done status |
+|-------|----------|-------------------|--------------|-------------|
+| **`task.md`** | One ship event, linear evolution | sections (Design, Plan, Progress) | "Do X" | `resolved` |
+| **`issue.md`** | Reactive stabilisation; sub-items are small fixes discovered over time | inline `## Sub-issues` section | "Stabilise X" | `resolved` (interim: `stabilising`) |
+| **`umbrella.md`** | Pre-planned breakdown; sub-pieces ship independently with their own effort/impact/timing | separate sub-task files in a subfolder named after the umbrella's slug | "X umbrella" | `resolved` (resolves when all sub-tasks done) |
+
+### Discriminator: which shape do I use?
+
+> *Is the sub-piece independently ship-able as a feature?* → **umbrella** (sub-task as a file in the subfolder)
+> *Is it a small reactive fix in a stabilisation pattern?* → **issue** (sub-issue as a section)
+> *Is there one ship event with linear evolution?* → **task** (single doc with section sequence)
+
+### Filename convention
+
+- Filenames carry the **creation date** as a `YYYY-MM-DD-<slug>.md` prefix.
+- **Filenames are never renamed** — recency lives in the `updated:` frontmatter field, not the filename.
+- BACKLOG sorts rows within each cluster by `updated:` (most recent first); the Keeper bumps `updated:` when adding a `## Progress` entry to a task.
+- Wikilinks resolve by basename across the vault — keep filenames unique vault-wide. Inside an umbrella subfolder, sub-task files stay descriptive (e.g. `A-wrap-up-timing.md`, not `A.md`) for the same reason.
+
+### Umbrella subfolder layout
+
+```
+tasks/open/YYYY-MM-DD-<umbrella-slug>/
+├── umbrella.md           ← the umbrella file itself (this is what the BACKLOG row links to)
+├── A-<sub-task-1>.md     ← independently ship-able sub-task
+├── B-<sub-task-2>.md
+└── ...
+```
+
+The umbrella gets ONE BACKLOG row. Sub-tasks are listed inside `umbrella.md`, not as separate BACKLOG rows.
+
+### Status vocabulary (standardised across all three shapes)
+
+`open` → `designed` → `plan-ready` → `in-progress` → `resolved`
+
+Issue uses `stabilising` as the interim state (instead of `open`/`designed`/etc.) and `resolved` as the final state — same final state as task and umbrella.
+
+### Auto-archive (Keeper duty)
+
+When the Keeper sees `status: resolved` in a task's frontmatter, the next session entry auto-archives it:
+
+- Standalone `task.md` or `issue.md` → moved to `tasks/resolved/` (flat).
+- `umbrella.md` (with `status: resolved`) → the whole containing subfolder is moved to `tasks/resolved/` atomically.
+- Sub-task inside an umbrella subfolder → stays in place; archived only when the umbrella itself resolves.
+
+The session-entry recovery output emits an `--- Auto-archive ---` summary listing what was moved. The Keeper does NOT auto-edit the BACKLOG — the summary signals which rows to remove on the next BACKLOG curation.
+
 ## Templates available
 
 The vault includes templates for recurring file shapes. Source of truth lives in `core/vault-templates/` in the forge repo; install copies them to `Vault/_templates/` for immediate use in Obsidian.
@@ -90,7 +143,8 @@ The vault includes templates for recurring file shapes. Source of truth lives in
 | `checkpoint.md` | Writing the per-project `current-checkpoint.md` (usually via `/forge-checkpoint`, not by hand) |
 | `decision.md` | Logging a validated decision (one decision per file, lives in `{project}/decisions/`) |
 | `architecture.md` | Documenting an architectural pattern or design doc (lives in `{project}/architecture/`) |
-| `task.md` | Bounded work item with a single goal (lives in `{project}/tasks/open/`, moves to `resolved/` when done) |
-| `issue.md` | Stabilisation log — multiple sub-issues accumulating around one component over time (per 2026-04-16 stabilisation-task-format decision) |
+| `task.md` | Bounded work item with a single ship event (single-doc shape — sections evolve over the task's life). Lives in `{project}/tasks/open/`. |
+| `issue.md` | Reactive stabilisation log — multiple sub-issues accumulating around one component over time (per 2026-04-16 stabilisation-task-format decision). |
+| `umbrella.md` | Pre-planned breakdown into independently ship-able sub-tasks. Lives in `{project}/tasks/open/<umbrella-slug>/umbrella.md` with sibling sub-task files in the same folder. |
 | `friction-entry.md` | Snippet for appending a new entry to `_shared/friction-log.md` (no frontmatter — it's a section, not a file) |
 | `project-index.md` | Starter `INDEX.md` for a new project (about, decisions, tasks links, standing notes) |
