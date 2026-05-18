@@ -1,6 +1,6 @@
 ---
 name: forge
-description: Use when starting any development session — activates Forge mode with vault integration, agent roles, Petra persona, and visual identity. Invoke with /forge or when the user says "enter Forge", "start Forge", or similar.
+description: Use when starting any development session — activates Forge mode with vault integration, agent roles, Petra persona, and visual identity. Invoke with /forge or when the user says "let's forge", "enter Forge", "start Forge", or similar.
 ---
 
 # Forge — Session Entry
