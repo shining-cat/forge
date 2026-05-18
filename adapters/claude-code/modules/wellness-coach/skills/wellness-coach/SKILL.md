@@ -358,6 +358,8 @@ During an active strike, the PreToolUse hook (`wellness-timer.py`) exempts a spe
 
 All other tool calls (`Read` / `Write` / `Edit` on non-state files, arbitrary `Bash`, `Skill` invocations of other skills, etc.) remain blocked until the strike is cleared. If a path you need isn't on the list above, the strike will block it — file an issue in the Forge repo.
 
+**Integration with `/forge-exit`:** the forge-exit flow invokes `wellness-reset.sh --full-reset` as its Step 0, before any checkpoint write or marker deactivation. This relies on the scripts-dir exemption above — if Pip is on strike when the user invokes `/forge-exit`, the wellness reset runs anyway, clearing the strike so the rest of the exit can proceed.
+
 When the wellness-coach skill is invoked during an active strike:
 
 **Flow:**
