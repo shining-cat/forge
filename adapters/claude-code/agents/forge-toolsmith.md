@@ -32,7 +32,7 @@ The friction log is the **primary input**. If there's no clear signal in the log
 
 ### Step 2 — Read the existing skill (if revising)
 
-If you're revising rather than creating, `Read` the current skill at `~/.claude/skills/{skill}/SKILL.md` AND the source at `~/__DEV/PERSO/forge/adapters/claude-code/skills/{skill}/SKILL.md`. Don't redesign in isolation — understand what works, what doesn't.
+If you're revising rather than creating, `Read` the current skill at `~/.claude/skills/{skill}/SKILL.md` AND the source at `$FORGE_REPO/adapters/claude-code/skills/{skill}/SKILL.md` (where `FORGE_REPO` is the value from `~/.claude/forge.conf`). Don't redesign in isolation — understand what works, what doesn't.
 
 ### Step 3 — Author the skill
 
@@ -60,7 +60,7 @@ The `description` frontmatter is the trigger contract — Claude uses it to deci
 **Spec-runtime sync rule:** every change to a skill must update both the repo source and the installed copy. Use `Edit` (not `Write`, to preserve any local modifications) to update both:
 
 ```
-~/__DEV/PERSO/forge/adapters/claude-code/skills/{skill}/SKILL.md
+$FORGE_REPO/adapters/claude-code/skills/{skill}/SKILL.md    # from forge.conf
 ~/.claude/skills/{skill}/SKILL.md
 ```
 

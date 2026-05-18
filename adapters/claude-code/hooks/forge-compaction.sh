@@ -36,7 +36,7 @@ fi
 if [ "$PHASE" = "pre" ]; then
   # Check checkpoint staleness — warn but don't block
   # PreCompact fires when context is nearly full, so requiring Claude actions here creates deadlock
-  CHECKPOINT_DIR="$HOME/__DEV/Vault"
+  CHECKPOINT_DIR="$VAULT_PATH"
 
   # Determine which checkpoint file to check based on project
   case "$PROJECT" in
