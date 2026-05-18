@@ -50,6 +50,49 @@ run() {
   fi
 }
 
+# Tracks how many user-modified files we backed up during this run.
+# Surfaced in the final summary so the user sees the count + can find them.
+BACKUP_COUNT=0
+
+# safe_cp — backup-then-copy if destination differs from source.
+# Used for runtime files that ship from the repo but may have been customized
+# by the user (skills/hooks/scripts/templates). On re-runs of install.sh,
+# any local modification is preserved as `<dest>.pre-update.<timestamp>` BEFORE
+# being overwritten. Default cp is destructive; this is the safety net.
+#
+# Behavior:
+#   - dest missing             → plain cp (first install)
+#   - dest identical to src    → plain cp (no-op, no backup)
+#   - dest exists AND differs  → backup dest to <dest>.pre-update.<ts>, then cp
+#
+# Supports file→file and file→dir destinations (dest resolved via basename if dir).
+# For glob sources, call safe_cp in a for-loop — keeps the logic single-file per call.
+# Honors --dry-run by printing what would happen without writing anything.
+safe_cp() {
+  local src="$1" dst="$2"
+  # Resolve actual destination path when dst is a directory
+  local actual_dst="$dst"
+  if [ -d "$dst" ]; then
+    actual_dst="${dst%/}/$(basename "$src")"
+  fi
+  if [ "$DRY_RUN" = true ]; then
+    if [ -f "$actual_dst" ] && ! cmp -s "$src" "$actual_dst" 2>/dev/null; then
+      printf "${DIM}    would back up modified: %s${NC}\n" "$actual_dst"
+    fi
+    printf "${DIM}    would run: cp %s %s${NC}\n" "$src" "$dst"
+    return 0
+  fi
+  if [ -f "$actual_dst" ] && ! cmp -s "$src" "$actual_dst" 2>/dev/null; then
+    local ts backup
+    ts=$(date +%Y%m%d-%H%M%S)
+    backup="${actual_dst}.pre-update.${ts}"
+    cp "$actual_dst" "$backup"
+    warn "Backed up modified $(basename "$actual_dst") → $(basename "$backup")"
+    BACKUP_COUNT=$((BACKUP_COUNT + 1))
+  fi
+  cp "$src" "$dst"
+}
+
 # prompt_or_default — read input from tty or fall back to a safe default.
 # Usage: var=$(prompt_or_default "<prompt text>" "<default if non-tty or empty>")
 # - tty: prints prompt to /dev/tty, reads input from /dev/tty, returns input or default if empty
@@ -279,7 +322,7 @@ run mkdir -p "$VAULT_PATH/_shared/tasks/open" \
              "$VAULT_PATH/_templates" \
              "$VAULT_PATH/_meta"
 
-run cp "$FORGE_ROOT/core/vault-templates/"* "$VAULT_PATH/_templates/"
+for tpl in "$FORGE_ROOT/core/vault-templates/"*; do safe_cp "$tpl" "$VAULT_PATH/_templates/"; done
 ok "Vault structure at $VAULT_PATH"
 
 # ─── Encourage vault git-init ────────────────────────────────────────────────
@@ -338,7 +381,7 @@ info "Installing skills..."
 # Core skills
 for skill in forge forge-checkpoint forge-exit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
-  run cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
+  safe_cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
 ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
@@ -355,11 +398,11 @@ WC_SRC="$ADAPTER/modules/wellness-coach"
 WC_DST="$SKILLS_DIR/wellness-coach"
 
 run mkdir -p "$WC_DST/hooks" "$WC_DST/scripts" "$WC_DST/src"
-run cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
-run cp "$WC_SRC/README.md" "$WC_DST/"
-run cp "$WC_SRC/hooks/"*.py "$WC_DST/hooks/"
-run cp "$WC_SRC/scripts/"* "$WC_DST/scripts/"
-run cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
+safe_cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
+safe_cp "$WC_SRC/README.md" "$WC_DST/"
+for hook in "$WC_SRC/hooks/"*.py; do safe_cp "$hook" "$WC_DST/hooks/"; done
+for script in "$WC_SRC/scripts/"*; do safe_cp "$script" "$WC_DST/scripts/"; done
+safe_cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
 run chmod +x "$WC_DST/scripts/"*.sh
 ok "Wellness coach files (activation offered during first /forge session)"
 
@@ -381,14 +424,14 @@ info "Installing hooks and scripts..."
 
 run mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
 
-run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
-run cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
-run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
+safe_cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
@@ -576,7 +619,7 @@ info "Installing shell wrapper for agent teams..."
 WRAPPER_FILE="$CLAUDE_DIR/forge-shell-init.sh"
 WRAPPER_SOURCE="$ADAPTER/scripts/forge-shell-init.sh"
 
-run cp "$WRAPPER_SOURCE" "$WRAPPER_FILE"
+safe_cp "$WRAPPER_SOURCE" "$WRAPPER_FILE"
 ok "Wrapper installed at $WRAPPER_FILE"
 
 # Detect user's shell rc file
@@ -688,6 +731,10 @@ echo "  Wellness:      files ready — offered during onboarding"
 echo "  Vault:         $VAULT_PATH"
 echo "  Config:        ~/.claude/forge.conf"
 echo "  Backup:        ~/.claude/settings.json.forge-backup"
+if [ "$BACKUP_COUNT" -gt 0 ]; then
+  echo "  Pre-update:    $BACKUP_COUNT user-modified file(s) backed up as <file>.pre-update.<timestamp>"
+  echo "                 (re-run-safe: customizations preserved, not lost)"
+fi
 echo ""
 echo "  Team substrate (Pattern A agent teams):"
 if command -v tmux &>/dev/null; then
