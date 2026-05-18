@@ -186,7 +186,7 @@ case "$SUBCMD_PEEK" in
   set-marker)
     # No stdin read, no guards. do_set_marker only needs $MARKER.
     ;;
-  append-braindump|vault-sync|wrap-up-state|check-install|status|reconcile-marker|recover)
+  append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
     if [ ! -f "$MARKER" ]; then exit 0; fi
     PROJECT_NAME="$(extract_marker_project)"
@@ -198,8 +198,16 @@ case "$SUBCMD_PEEK" in
     BREADCRUMBS_FILE="$VAULT_DIR/breadcrumbs.log"
     ;;
   *)
-    # Hook subcommands (post-tool, gate, stop) and unknown subcommands —
-    # read stdin if present, then apply guards.
+    # Hook subcommands (post-tool, gate, stop) + status (called by
+    # statusline.sh with session_id JSON piped in via `echo "$input" | ...`)
+    # + unknown subcommands — read stdin if present, then apply guards.
+    #
+    # NOTE: `status` MUST live in this branch — statusline.sh's subprocess
+    # context does NOT inherit $CLAUDE_CODE_SESSION_ID from Claude Code's
+    # parent, so session_owns_forge depends on STDIN_JSON for the comparison.
+    # Putting status in the no-stdin branch causes the ⚠ "(other window)"
+    # chip to render in every window. See 2026-05-12 friction-log entry
+    # (3-bug statusline stack) — this is the regression-guard comment.
     if [ ! -t 0 ]; then
       STDIN_JSON="$(cat)"
     fi
