@@ -44,6 +44,8 @@ The forge is assembled from Claude Code building blocks:
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
 | `${VAULT_PATH}/_shared/wellness-preferences.json` | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |
 | `~/.claude/forge.conf` | Per-install configuration (vault path, repo path, model assignments) |
+| `~/.claude/forge-shell-init.sh` | Shell wrapper sourced by the user's `~/.zshrc` / `~/.bashrc`. Wraps interactive `claude` invocations in tmux so Pattern A agent teams can spawn as panes without user pre-setup. Auto-bypasses when not interactive, already inside tmux, or tmux is missing. Manual bypass: `FORGE_NO_TMUX_WRAP=1` |
+| `~/.claude/forge-tmux.conf` | tmux config consumed by `forge-shell-init.sh` via `tmux -f`. Sources the user's own `~/.tmux.conf` first (if any) then forces `set -g mouse on` so wheel/trackpad events scroll tmux's own buffer — without it, xterm-family terminals translate wheel events to arrow keys on the alt-screen, which Claude Code receives as junk input |
 | `${VAULT_PATH}/_shared/forge-active` | Session marker — JSON `{session_id, project, started_at, tmux_pane}` (active, owned by that session); empty (deactivated); `__pending__` (launching). Hooks gate on `session_id` so they only fire in the window that ran `/forge`. Lives in the vault to avoid `~/.claude/` sensitive-zone permission prompts |
 | `{vault}/` | Knowledge vault (see [Vault Structure](#vault-structure)) |
 

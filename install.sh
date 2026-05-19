@@ -622,6 +622,15 @@ WRAPPER_SOURCE="$ADAPTER/scripts/forge-shell-init.sh"
 safe_cp "$WRAPPER_SOURCE" "$WRAPPER_FILE"
 ok "Wrapper installed at $WRAPPER_FILE"
 
+# tmux config consumed by the wrapper — sources user's ~/.tmux.conf then forces
+# `mouse on` so wheel events scroll tmux's own buffer instead of being translated
+# to arrow keys by the alt-screen (which Claude Code receives as junk input).
+TMUX_CONF_FILE="$CLAUDE_DIR/forge-tmux.conf"
+TMUX_CONF_SOURCE="$ADAPTER/scripts/forge-tmux.conf"
+
+safe_cp "$TMUX_CONF_SOURCE" "$TMUX_CONF_FILE"
+ok "tmux config installed at $TMUX_CONF_FILE"
+
 # Detect user's shell rc file
 SHELL_RC=""
 case "${SHELL##*/}" in
