@@ -18,9 +18,10 @@ claude() {
   fi
 
   local session_name="claude-$$"
+  local tmux_conf="$HOME/.claude/forge-tmux.conf"
   if [ "${TERM_PROGRAM:-}" = "iTerm.app" ]; then
-    exec tmux -CC new -s "$session_name" "command claude $*"
+    exec tmux -f "$tmux_conf" -CC new -s "$session_name" "command claude $*"
   else
-    exec tmux new -s "$session_name" "command claude $*"
+    exec tmux -f "$tmux_conf" new -s "$session_name" "command claude $*"
   fi
 }
