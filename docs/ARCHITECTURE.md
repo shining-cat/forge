@@ -89,7 +89,7 @@ See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md) for the per-project layout.
 
 Roles are behaviours, not separate agents. Output uses two layers:
 
-- **Block header** — `[Forge | {PROJECT}]` on its own line at the top of every response. Use the project name, `forge` for forge-level work, or `No project selected`.
+- **Block header** — `[Forge: ENV/Project | HH:MM]` on its own line at the top of every response. ENV is the vault env folder (`PRO`, `PERSO`, etc.); use the project name and `forge` for forge-level work. The `inject-current-time.sh` UserPromptSubmit hook supplies both the current HH:MM and the literal expected prefix string at every prompt, so the header doesn't depend on Claude assembling it from memory — the hook reads the active marker, resolves ENV from vault structure, and injects e.g. `[Forge active for forge — begin your response with: ​`[Forge: PERSO/forge | 16:11]​`]` as authoritative context.
 - **Role voice** — lighter per-paragraph attribution. `Petra:` for conversational voice. `[Keeper]`, `[Refiner]`, etc. for role status tags. Not every paragraph needs attribution.
 
 | Role | Backed by | Responsibility |
