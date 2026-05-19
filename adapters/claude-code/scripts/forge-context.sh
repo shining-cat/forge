@@ -19,11 +19,19 @@ if [ -z "$VAULT_PATH" ]; then
   exit 1
 fi
 MARKER="$VAULT_PATH/_shared/forge-active"
+STOP_COUNT_FILE="$VAULT_PATH/_shared/forge-session-stops"
 
 # Vault drift thresholds — recover() warns when any one is exceeded
 VAULT_DRIFT_COMMITS_AHEAD=5
 VAULT_DRIFT_DIRTY_FILES=10
 VAULT_DRIFT_DAYS_SINCE=7
+
+# Checkpoint-nag suppression (do_stop) — both gates must pass for the nag to fire.
+# Reframes the nag from "clock-driven" ("X minutes since checkpoint") to
+# "activity-driven" ("work done in this session that isn't recorded"). Covers
+# end-of-day → start-of-day, lunch pauses, conference talks, etc.
+NAG_SUPPRESS_GRACE_MIN=30        # A — first N min of any fresh session entry: no nag
+NAG_SUPPRESS_ACTIVITY_STOPS=10   # C — until N Stop events in this session: no nag
 
 # Read the marker file and return the project name.
 # Empty stdout if marker is missing/empty/__pending__.
@@ -43,6 +51,47 @@ extract_marker_project() {
     # Legacy plain-string marker — first line is the project name
     echo "$marker_text" | head -1
   fi
+}
+
+# Returns the marker's `started_at` field as a Unix epoch (seconds), or empty
+# if unavailable / unparseable. Used by do_stop's A+C suppression to compute
+# session age and detect fresh sessions for counter reset.
+get_marker_started_at_epoch() {
+  [ ! -f "$MARKER" ] && return 0
+  local started_at_iso
+  started_at_iso=$(jq -r '.started_at // empty' "$MARKER" 2>/dev/null)
+  [ -z "$started_at_iso" ] && return 0
+  # set-marker writes ISO 8601 like 2026-05-19T15:20:05+0200 (date '+%Y-%m-%dT%H:%M:%S%z').
+  # macOS date -j parses with the matching format spec.
+  date -j -f '%Y-%m-%dT%H:%M:%S%z' "$started_at_iso" '+%s' 2>/dev/null || true
+}
+
+# Increment the per-session Stop counter and echo the new value.
+# State file shape (two lines): cached_started_at\ncount\n
+# When the marker's started_at differs from the cached one, treats it as a new
+# session and resets to 0 before incrementing.
+# Returns 0 (echoed) if the marker has no started_at — in that case the gate
+# can't make a useful decision and the caller should treat as "passes through".
+increment_stop_count() {
+  local current_started_at cached_started_at cached_count
+  current_started_at=$(jq -r '.started_at // empty' "$MARKER" 2>/dev/null)
+  if [ -z "$current_started_at" ]; then
+    echo "0"
+    return 0
+  fi
+
+  if [ -f "$STOP_COUNT_FILE" ]; then
+    cached_started_at=$(awk 'NR==1' "$STOP_COUNT_FILE" 2>/dev/null)
+    cached_count=$(awk 'NR==2' "$STOP_COUNT_FILE" 2>/dev/null)
+  fi
+
+  if [ "${cached_started_at:-}" != "$current_started_at" ]; then
+    cached_count=0
+  fi
+
+  cached_count=$(( ${cached_count:-0} + 1 ))
+  printf '%s\n%d\n' "$current_started_at" "$cached_count" > "$STOP_COUNT_FILE"
+  echo "$cached_count"
 }
 
 # Returns 0 (true) if the current Claude Code session owns the active Forge marker,
@@ -427,6 +476,28 @@ do_stop() {
   # use is blocked, and every response triggers another Stop hook fire,
   # producing a deadlock loop. Resume nagging when strike lifts naturally.
   if is_pip_on_strike; then
+    exit 0
+  fi
+
+  # A+C nag suppression — reframe nag from clock-driven to activity-driven so
+  # end-of-day → start-of-day, lunch pauses, etc. don't fire spurious nags.
+  # Both gates must pass for the original mtime check to even run.
+  local started_at_epoch now_epoch session_age_min stop_count
+  started_at_epoch=$(get_marker_started_at_epoch)
+  now_epoch=$(date '+%s')
+  # Always increment the per-session counter so it reflects reality even when
+  # A suppresses (so C is accurate the moment grace expires).
+  stop_count=$(increment_stop_count)
+
+  if [ -n "$started_at_epoch" ]; then
+    session_age_min=$(( (now_epoch - started_at_epoch) / 60 ))
+    # A — entry grace: first N min of any fresh session: no nag
+    if [ "$session_age_min" -lt "$NAG_SUPPRESS_GRACE_MIN" ]; then
+      exit 0
+    fi
+  fi
+  # C — activity gate: until N Stop events in this session: no nag
+  if [ "$stop_count" -lt "$NAG_SUPPRESS_ACTIVITY_STOPS" ]; then
     exit 0
   fi
 
