@@ -379,15 +379,15 @@ echo ""
 info "Installing skills..."
 
 # Core skills
-for skill in forge forge-checkpoint forge-exit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+for skill in forge forge-checkpoint forge-exit forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
   safe_cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
-ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
+ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md; do
   run rm -f "$SKILLS_DIR/forge/references/$ref"
   run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
 done
@@ -431,6 +431,7 @@ safe_cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-classify-friction.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
@@ -440,6 +441,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/inject-current-time.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
              "$CLAUDE_DIR/scripts/forge-permission-lint.sh" \
+             "$CLAUDE_DIR/scripts/forge-classify-friction.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"

@@ -26,6 +26,10 @@ setup() {
 ### 2026-05-14 — header drift again
 - Forge mode header not present
 - Root cause: nothing injects it; agent forgets
+
+## 2026-05-15 — legacy level-2 entry, permission prompt on jq
+- Hand-written historical entry uses ## not ###
+- Root cause: missing Bash(jq:*) allowlist
 EOF
   export FORGE_CONF_OVERRIDE="$TMP_CONF"
 }
@@ -43,8 +47,8 @@ rc=$?
 [ -f "$TMP/_shared/friction-classified.json" ] && { echo "  ✓ classified.json created"; PASS=$((PASS+1)); } || { echo "  ✗ classified.json missing"; FAIL=$((FAIL+1)); }
 
 echo ""
-echo "Check 2 — heuristic classification: 'permission prompt' → allowlist-patch"
-out=$(jq -r '.entries[] | select(.description | test("permission prompt")) | .pattern' "$TMP/_shared/friction-classified.json")
+echo "Check 2 — heuristic classification: 'permission prompt on rg' → allowlist-patch"
+out=$(jq -r '.entries[] | select(.description | test("permission prompt on rg")) | .pattern' "$TMP/_shared/friction-classified.json")
 [ "$out" = "allowlist-patch" ] && { echo "  ✓ classified as allowlist-patch"; PASS=$((PASS+1)); } || { echo "  ✗ wrong classification: $out"; FAIL=$((FAIL+1)); }
 
 echo ""
@@ -57,10 +61,16 @@ echo "Check 4 — heuristic classification: 'header drift' → hook-injection"
 out=$(jq -r '.entries[] | select(.description | test("header drift")) | .pattern' "$TMP/_shared/friction-classified.json")
 [ "$out" = "hook-injection" ] && { echo "  ✓ classified as hook-injection"; PASS=$((PASS+1)); } || { echo "  ✗ wrong classification: $out"; FAIL=$((FAIL+1)); }
 
+echo ""
+echo "Check 5 — accepts both ## and ### header levels (4 entries total)"
+count=$(jq '.entries | length' "$TMP/_shared/friction-classified.json")
+[ "$count" = "4" ] && { echo "  ✓ both ## and ### levels parsed (count=4)"; PASS=$((PASS+1)); } || { echo "  ✗ wrong entry count: $count (expected 4)"; FAIL=$((FAIL+1)); }
+out=$(jq -r '.entries[] | select(.description | test("legacy level-2")) | .pattern' "$TMP/_shared/friction-classified.json")
+[ "$out" = "allowlist-patch" ] && { echo "  ✓ ##-level entry classified correctly"; PASS=$((PASS+1)); } || { echo "  ✗ ##-level entry wrong/missing: $out"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""
-echo "Check 5 — non-header lines absorbed into body, malformed header NOT parsed as entry"
+echo "Check 6 — non-header lines absorbed into body, malformed header NOT parsed as entry"
 setup
 cat >> "$TMP/_shared/friction-log.md" <<'EOF'
 
@@ -71,7 +81,7 @@ EOF
 rc=$?
 [ $rc -eq 0 ] && { echo "  ✓ exit 0"; PASS=$((PASS+1)); } || { echo "  ✗ exit $rc on malformed input"; FAIL=$((FAIL+1)); }
 count=$(jq '.entries | length' "$TMP/_shared/friction-classified.json")
-[ "$count" = "3" ] && { echo "  ✓ malformed header skipped (entry count still 3)"; PASS=$((PASS+1)); } || { echo "  ✗ wrong entry count: $count (expected 3)"; FAIL=$((FAIL+1)); }
+[ "$count" = "4" ] && { echo "  ✓ malformed header skipped (entry count still 4)"; PASS=$((PASS+1)); } || { echo "  ✗ wrong entry count: $count (expected 4)"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""

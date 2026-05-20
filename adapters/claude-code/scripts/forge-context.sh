@@ -1364,7 +1364,8 @@ do_bootstrap_classify() {
     return 0
   fi
 
-  # Parse: each entry starts with ### YYYY-MM-DD — description
+  # Parse: each entry starts with ## or ### YYYY-MM-DD — description.
+  # Historical hand-written entries use ##; future append-friction entries use ###. Accept both.
   local entries_json="[]"
   local current_date="" current_desc="" current_body=""
 
@@ -1394,7 +1395,7 @@ do_bootstrap_classify() {
 
   local line
   while IFS= read -r line; do
-    if [[ "$line" =~ ^###[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+—[[:space:]]+(.+)$ ]]; then
+    if [[ "$line" =~ ^###?[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+—[[:space:]]+(.+)$ ]]; then
       process_entry
       current_date="${BASH_REMATCH[1]}"
       current_desc="${BASH_REMATCH[2]}"
