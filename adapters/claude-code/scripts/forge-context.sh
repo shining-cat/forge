@@ -58,6 +58,32 @@ extract_marker_project() {
   fi
 }
 
+# Given a project name, scan $VAULT_PATH/*/{project}/ to determine which ENV
+# (top-level vault subdirectory) contains it. Echoes the ENV name on stdout,
+# empty if not found or ambiguous. Marker JSON does not store ENV — this is
+# the canonical way to resolve project→ENV.
+extract_marker_env() {
+  local project="$1"
+  [ -z "$project" ] && return 0
+  [ -z "${VAULT_PATH:-}" ] && return 0
+  local match=""
+  local count=0
+  local d env
+  for d in "$VAULT_PATH"/*/"$project"; do
+    [ -d "$d" ] || continue
+    env=$(basename "$(dirname "$d")")
+    case "$env" in
+      _*) continue ;;  # skip _shared, _templates, _meta
+    esac
+    match="$env"
+    count=$((count + 1))
+  done
+  if [ "$count" = "1" ]; then
+    echo "$match"
+  fi
+  return 0
+}
+
 # Returns the marker's `started_at` field as a Unix epoch (seconds), or empty
 # if unavailable / unparseable. Used by do_stop's A+C suppression to compute
 # session age and detect fresh sessions for counter reset.
@@ -1229,10 +1255,22 @@ do_append_friction() {
 
   # Auto-create stub task if recurrence == 1 and action-ref is a real path
   if [ "$recurrence" = "1" ] && [ "$action_ref" != "needs_new_pattern" ]; then
-    # Auto-prefix relative tasks/ paths with _shared/ (friction is a shared concern)
+    # Auto-prefix relative tasks/ paths. Prefer the active Forge project subtree
+    # so friction events stay with their project (e.g., forge-on-forge friction
+    # lands in PERSO/forge/tasks/, not _shared/tasks/). Fall back to _shared/
+    # when no marker is active or project→ENV can't be resolved — that path
+    # works for users who don't run forge-on-forge.
     local resolved_ref="$action_ref"
     if [[ "$action_ref" == tasks/* ]]; then
-      resolved_ref="_shared/$action_ref"
+      local marker_project marker_env
+      marker_project=$(extract_marker_project)
+      marker_env=""
+      [ -n "$marker_project" ] && marker_env=$(extract_marker_env "$marker_project")
+      if [ -n "$marker_project" ] && [ -n "$marker_env" ]; then
+        resolved_ref="$marker_env/$marker_project/$action_ref"
+      else
+        resolved_ref="_shared/$action_ref"
+      fi
     fi
     local stub_path="$VAULT_PATH/$resolved_ref"
     if [ ! -f "$stub_path" ]; then

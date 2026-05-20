@@ -128,5 +128,78 @@ assert_file_contains "needs_new_pattern entry written" "$TMP/_shared/friction-lo
 teardown
 
 echo ""
+echo "Check 5 — active marker with resolvable ENV: stub auto-prefixed with {ENV}/{project}/"
+setup_tmp_vault
+# Create the project subtree so extract_marker_env can resolve it
+mkdir -p "$TMP/PERSO/forge"
+# Write a JSON marker pointing to PERSO/forge
+cat > "$TMP/_shared/forge-active" <<'EOF'
+{"session_id":"test-session","project":"forge","started_at":"2026-05-20T10:00:00+0200","tmux_pane":null}
+EOF
+"$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "marker-driven prefix" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "tasks/open/2026-05-20-marker-test.md" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 0" "0" "$rc"
+[ -f "$TMP/PERSO/forge/tasks/open/2026-05-20-marker-test.md" ] && { echo "  ✓ stub created under PERSO/forge/"; PASS=$((PASS+1)); } || { echo "  ✗ stub not at PERSO/forge/tasks/open/"; FAIL=$((FAIL+1)); }
+[ ! -f "$TMP/_shared/tasks/open/2026-05-20-marker-test.md" ] && { echo "  ✓ stub NOT created under _shared/ (correctly skipped)"; PASS=$((PASS+1)); } || { echo "  ✗ stub leaked to _shared/"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
+echo "Check 6 — no marker: stub falls back to _shared/ (existing behavior preserved)"
+setup_tmp_vault
+# Marker missing — no extract_marker_project hit
+"$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "no-marker fallback" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "tasks/open/2026-05-20-nomarker-test.md" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 0" "0" "$rc"
+[ -f "$TMP/_shared/tasks/open/2026-05-20-nomarker-test.md" ] && { echo "  ✓ stub fell back to _shared/"; PASS=$((PASS+1)); } || { echo "  ✗ fallback failed"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
+echo "Check 7 — marker active but project subtree missing: falls back to _shared/"
+setup_tmp_vault
+# Marker set but no $TMP/*/forge directory exists → extract_marker_env returns empty
+cat > "$TMP/_shared/forge-active" <<'EOF'
+{"session_id":"test-session","project":"ghost-project","started_at":"2026-05-20T10:00:00+0200","tmux_pane":null}
+EOF
+"$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "unresolvable project" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "tasks/open/2026-05-20-ghost-test.md" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 0" "0" "$rc"
+[ -f "$TMP/_shared/tasks/open/2026-05-20-ghost-test.md" ] && { echo "  ✓ fell back to _shared/ when ENV unresolvable"; PASS=$((PASS+1)); } || { echo "  ✗ fallback failed"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
+echo "Check 8 — action-ref already absolute (starts with ENV/): not re-prefixed"
+setup_tmp_vault
+mkdir -p "$TMP/PERSO/forge"
+cat > "$TMP/_shared/forge-active" <<'EOF'
+{"session_id":"test-session","project":"forge","started_at":"2026-05-20T10:00:00+0200","tmux_pane":null}
+EOF
+"$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "absolute action-ref" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "PERSO/forge/tasks/open/2026-05-20-absolute-test.md" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 0" "0" "$rc"
+[ -f "$TMP/PERSO/forge/tasks/open/2026-05-20-absolute-test.md" ] && { echo "  ✓ absolute path respected"; PASS=$((PASS+1)); } || { echo "  ✗ absolute path mishandled"; FAIL=$((FAIL+1)); }
+[ ! -f "$TMP/PERSO/forge/PERSO/forge/tasks/open/2026-05-20-absolute-test.md" ] && { echo "  ✓ no double-prefix"; PASS=$((PASS+1)); } || { echo "  ✗ double-prefix detected"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
