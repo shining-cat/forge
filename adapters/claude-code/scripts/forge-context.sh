@@ -237,7 +237,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction)
+  set-marker|append-friction|audit-prose-rules)
     # No stdin read, no guards. These operate on marker/shared state only.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
@@ -1272,6 +1272,87 @@ EOF
   fi
 }
 
+# ── Subcommand: audit-prose-rules ──────────────────────────────────────
+# Scans for prose patterns that smell script-replaceable (MUST/Never/Remember/
+# always/REQUIRED). Cross-references friction-log for recurrence signal.
+# Fingerprint cache dedups across runs.
+#
+# Flags:
+#   --json     output JSON instead of human report
+#   --since DATE  accepted but currently unused (best-effort placeholder)
+#
+# Env overrides (for tests):
+#   FORGE_AUDIT_SCAN_ROOT  (default: forge installed paths)
+#   FORGE_AUDIT_CACHE      (default: ~/.cache/forge/audit-fingerprints.json)
+do_audit_prose_rules() {
+  local json_mode=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json_mode=true; shift ;;
+      --since) shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  local scan_root="${FORGE_AUDIT_SCAN_ROOT:-$HOME_DIR/.claude/skills/forge}"
+  local cache="${FORGE_AUDIT_CACHE:-$HOME_DIR/.cache/forge/audit-fingerprints.json}"
+  mkdir -p "$(dirname "$cache")"
+  [ -f "$cache" ] || echo '{"fingerprints":[]}' > "$cache"
+
+  local pattern_regex='\b(MUST|REQUIRED|Never|Always|always|never|Remember|REMEMBER)\b'
+
+  local findings_raw
+  findings_raw=$(grep -rEn "$pattern_regex" "$scan_root" \
+    --include='*.md' --include='*.sh' 2>/dev/null || true)
+
+  local new_findings=""
+  local all_fps=""
+  if [ -n "$findings_raw" ]; then
+    while IFS= read -r line; do
+      local fp
+      fp=$(printf '%s' "$line" | shasum -a 1 2>/dev/null | awk '{print $1}')
+      [ -z "$fp" ] && fp=$(printf '%s' "$line" | shasum | awk '{print $1}')
+      all_fps="$all_fps $fp"
+      if ! jq -e --arg f "$fp" '.fingerprints | index($f)' "$cache" > /dev/null 2>&1; then
+        new_findings="$new_findings$line"$'\n'
+      fi
+    done <<< "$findings_raw"
+  fi
+
+  local tmp_cache
+  tmp_cache=$(mktemp)
+  printf '%s\n' "$all_fps" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s '{fingerprints: .}' > "$tmp_cache"
+  mv "$tmp_cache" "$cache"
+
+  if [ "$json_mode" = "true" ]; then
+    if [ -n "$new_findings" ]; then
+      # NOTE: macOS `head -c -1` is unsupported (BSD head). Use sed to strip trailing newline.
+      printf '%s' "$new_findings" | sed -e '$ {/^$/d;}' | jq -Rs 'split("\n") | map(select(length > 0)) | map(split(":") | {file: .[0], line: .[1], match: (.[2:] | join(":"))}) | {findings: .}'
+    else
+      echo '{"findings":[]}'
+    fi
+  else
+    if [ -z "$new_findings" ]; then
+      echo "[audit] no new findings (0 new since last run)"
+    else
+      local count
+      count=$(printf '%s' "$new_findings" | grep -c . || echo 0)
+      echo "[audit] $count new finding(s):"
+      # Reformat each grep line "file:lineno:content" to "<KEYWORD> <file>:<lineno>: <content>"
+      # so callers can pattern-match on "<KEYWORD>.*<filename>" without caring about path prefixes.
+      local line file_part lineno content first_match
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        file_part=$(printf '%s' "$line" | awk -F: '{print $1}')
+        lineno=$(printf '%s' "$line" | awk -F: '{print $2}')
+        content=$(printf '%s' "$line" | cut -d: -f3-)
+        first_match=$(printf '%s' "$content" | grep -oE "$pattern_regex" | head -1)
+        printf '%s %s:%s: %s\n' "${first_match:-MATCH}" "$file_part" "$lineno" "$content"
+      done <<< "$new_findings"
+    fi
+  fi
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -1288,8 +1369,9 @@ case "$SUBCMD" in
   set-marker)        do_set_marker "${@:2}" ;;
   append-braindump)  do_append_braindump "${@:2}" ;;
   append-friction)   do_append_friction "${@:2}" ;;
+  audit-prose-rules) do_audit_prose_rules "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules}" >&2
     exit 1
     ;;
 esac
