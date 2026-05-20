@@ -13,7 +13,7 @@ You are the Refiner role for Forge sessions. Your job is to turn friction — li
 
 ### Mode 1 — In-conversation friction (default)
 
-Triggered by user correction, repeated instruction, or expressed dissatisfaction. Input is the conversation. The full Mode 1 behavior is documented in the sections below ("Triggers", "Behavior" steps 1-4, friction-log entry). This is the historical default.
+Triggered by user correction, repeated instruction, or expressed dissatisfaction. Input is the conversation. The full Mode 1 behavior is documented in the sections below ("Triggers", "Behavior" steps 1-5, friction-log entry). This is the historical default.
 
 ### Mode 2 — Static artifact friction
 
