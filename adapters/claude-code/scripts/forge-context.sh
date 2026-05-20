@@ -636,14 +636,14 @@ do_recover() {
     if [ -n "$remote" ]; then
       echo ""
       echo "--- PRs ---"
-      local repo pr_json
-      if echo "$remote" | grep -q "github.schibsted.io"; then
-        repo="$(echo "$remote" | sed 's|.*github.schibsted.io[:/]||;s|\.git$||')"
-        pr_json="$(GH_HOST=github.schibsted.io gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
-      else
-        repo="$(echo "$remote" | sed 's|.*github.com[:/]||;s|\.git$||')"
-        pr_json="$(GH_HOST=github.com gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
-      fi
+      # Extract host from remote URL — works for github.com and any GitHub
+      # Enterprise instance without hardcoding hostnames. Supports both SSH
+      # (git@host:org/repo.git) and HTTPS (https://host/org/repo.git) forms.
+      local host repo pr_json
+      host="$(echo "$remote" | sed -nE 's#^(https?://|git@)([^/:]+)[/:].*#\2#p')"
+      [ -z "$host" ] && host="github.com"
+      repo="$(echo "$remote" | sed "s|.*${host}[:/]||;s|\.git$||")"
+      pr_json="$(GH_HOST="$host" gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
       if [ -n "$pr_json" ] && [ "$pr_json" != "[]" ]; then
         echo "$pr_json" | python3 -c "
 import sys,json
