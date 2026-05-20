@@ -72,6 +72,27 @@ prompt_or_default() {
   fi
 }
 
+# install_skill_md — copy a SKILL.md, substituting {{VAULT}} → $VAULT_PATH.
+# Skills that reference the vault from runtime guidance (keeper, refiner,
+# forge-checkpoint) embed {{VAULT}} placeholders so the source file stays
+# portable. Falls through to plain cp when no placeholder is present.
+install_skill_md() {
+  local src="$1" dst="$2"
+  if [ "$DRY_RUN" = true ]; then
+    if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+      printf "${DIM}    would install: %s → %s (with {{VAULT}} → %s)${NC}\n" "$src" "$dst" "$VAULT_PATH"
+    else
+      printf "${DIM}    would install: %s → %s${NC}\n" "$src" "$dst"
+    fi
+    return
+  fi
+  if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+    sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$dst"
+  else
+    cp "$src" "$dst"
+  fi
+}
+
 # set_conf_key — update or append a key=value line in forge.conf in place
 set_conf_key() {
   local key="$1" val="$2" conf="$CLAUDE_DIR/forge.conf"
@@ -338,7 +359,7 @@ info "Installing skills..."
 # Core skills
 for skill in forge forge-checkpoint forge-exit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
-  run cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
+  install_skill_md "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
 ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
