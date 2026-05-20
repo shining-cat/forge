@@ -65,13 +65,13 @@ Claude Code treats `~/.claude/` as a protected directory with mandatory permissi
 
 ```jsonc
 "Write(.claude/forge-active)"                                  // ❌ chip text matches but still prompts
-"Write(/Users/shiva.bernhard@m10s.io/.claude/forge-active)"   // ❌ same
+"Write(/Users/.../.claude/forge-active)"                       // ❌ same
 "Edit(**/.claude/forge-active)"                                // ❌ same (and even ** doesn't help here)
 ```
 
 **Why it bites:** the four pitfalls above (single `*`, leading `*` in Bash, deny precedence, CWD-relative chip text) all suggest the model "right-shape pattern → match → no prompt." Inside `~/.claude/` that pipeline is bypassed by an upstream sensitive-zone check. The pattern is loaded, the chip matches, the matcher would have allowed — but the request is gated separately and prompts anyway.
 
-**Verified 2026-04-29:** identical-shape patterns work in vault paths and fail in `~/.claude/`. See design doc `~/__DEV/PERSO/forge/.claude/plans/2026-04-29-marker-relocation-design.md` for the case study (the `forge-active` marker, originally at `~/.claude/forge-active`, kept prompting through every pattern shape until it was relocated to `${VAULT_PATH}/_shared/forge-active`).
+**Verified 2026-04-29:** identical-shape patterns work in vault paths and fail in `~/.claude/`. Case study: the `forge-active` marker, originally at `~/.claude/forge-active`, kept prompting through every pattern shape until it was relocated to `${VAULT_PATH}/_shared/forge-active`.
 
 **The fix:** for runtime state files that need silent writes, place them outside `~/.claude/` — typically in the vault, which is freely allowlistable. Reserve `~/.claude/` for files Claude Code itself manages (settings.json, hooks/, skills/, scripts/) where the prompt friction is acceptable because those files change rarely.
 

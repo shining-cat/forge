@@ -99,7 +99,7 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
 
    Patterns to add (substituting the user's actual home directory):
    - `Bash(~/.claude/skills/wellness-coach/scripts/*)` and `Bash(<HOME>/.claude/skills/wellness-coach/scripts/*)`
-   - Where `<HOME>` is the user's actual home directory (e.g. `/Users/shiva.bernhard@m10s.io`)
+   - Where `<HOME>` is the user's actual home directory (e.g. `/Users/<your-username>`)
 
    Wellness preferences live at `${VAULT_PATH}/_shared/wellness-preferences.json` — covered by the existing vault allowlist, no per-file permission needed.
 3. Add these hooks if not present:
