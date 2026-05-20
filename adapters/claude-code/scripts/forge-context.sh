@@ -237,7 +237,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|audit-prose-rules)
+  set-marker|append-friction|audit-prose-rules|bootstrap-classify)
     # No stdin read, no guards. These operate on marker/shared state only.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
@@ -1353,25 +1353,83 @@ do_audit_prose_rules() {
   fi
 }
 
+# ── Subcommand: bootstrap-classify ──────────────────────────────────────
+# One-shot. Reads existing friction-log.md, runs keyword-heuristic
+# classification, writes friction-classified.json. Used to retro-fit the
+# friction-meta-framework onto historical entries that pre-date append-friction.
+do_bootstrap_classify() {
+  if [ ! -f "$FRICTION_LOG" ]; then
+    echo "[bootstrap-classify] no friction-log at $FRICTION_LOG; nothing to do"
+    echo '{"entries":[]}' > "$FRICTION_CLASSIFIED"
+    return 0
+  fi
+
+  # Parse: each entry starts with ### YYYY-MM-DD — description
+  local entries_json="[]"
+  local current_date="" current_desc="" current_body=""
+
+  process_entry() {
+    [ -z "$current_date" ] && return
+    [ -z "$current_desc" ] && return
+    local combined="$current_desc $current_body"
+    local pattern="needs_new_pattern"
+    # Heuristics (case-insensitive)
+    if echo "$combined" | grep -qiE 'permission prompt|allowlist|approval prompt'; then
+      pattern="allowlist-patch"
+    elif echo "$combined" | grep -qiE 'hook (fired|misfire|wrongly)|nag (fired|during entry)'; then
+      pattern="marker-state-guard"
+    elif echo "$combined" | grep -qiE 'header|format drift|verbatim|reproduce'; then
+      pattern="hook-injection"
+    elif echo "$combined" | grep -qiE 'compound command|heredoc|wrapper|subcommand'; then
+      pattern="wrapper-subcommand"
+    elif echo "$combined" | grep -qiE 'template|frontmatter|structured (text|format)'; then
+      pattern="template-slot"
+    fi
+    entries_json=$(echo "$entries_json" | jq \
+      --arg d "$current_date" \
+      --arg desc "$current_desc" \
+      --arg p "$pattern" \
+      '. += [{date: $d, description: $desc, pattern: $p, recurrence: 1, action_ref: "needs_new_pattern", validation_failed: false, original_pattern: $p}]')
+  }
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^###[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+—[[:space:]]+(.+)$ ]]; then
+      process_entry
+      current_date="${BASH_REMATCH[1]}"
+      current_desc="${BASH_REMATCH[2]}"
+      current_body=""
+    else
+      current_body="$current_body $line"
+    fi
+  done < "$FRICTION_LOG"
+  process_entry
+
+  echo "$entries_json" | jq '{entries: .}' > "$FRICTION_CLASSIFIED"
+  local count
+  count=$(echo "$entries_json" | jq 'length')
+  echo "[bootstrap-classify] classified $count entries → $FRICTION_CLASSIFIED"
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
 case "$SUBCMD" in
-  post-tool)         do_post_tool ;;
-  gate)              do_gate ;;
-  stop)              do_stop ;;
-  recover)           do_recover ;;
-  reconcile-marker)  reconcile_marker ;;
-  status)            do_status ;;
-  vault-sync)        do_vault_sync "${@:2}" ;;
-  wrap-up-state)     do_wrap_up_state ;;
-  check-install)     do_check_install ;;
-  set-marker)        do_set_marker "${@:2}" ;;
-  append-braindump)  do_append_braindump "${@:2}" ;;
-  append-friction)   do_append_friction "${@:2}" ;;
-  audit-prose-rules) do_audit_prose_rules "${@:2}" ;;
+  post-tool)           do_post_tool ;;
+  gate)                do_gate ;;
+  stop)                do_stop ;;
+  recover)             do_recover ;;
+  reconcile-marker)    reconcile_marker ;;
+  status)              do_status ;;
+  vault-sync)          do_vault_sync "${@:2}" ;;
+  wrap-up-state)       do_wrap_up_state ;;
+  check-install)       do_check_install ;;
+  set-marker)          do_set_marker "${@:2}" ;;
+  append-braindump)    do_append_braindump "${@:2}" ;;
+  append-friction)     do_append_friction "${@:2}" ;;
+  audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
+  bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify}" >&2
     exit 1
     ;;
 esac
