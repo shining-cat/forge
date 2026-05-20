@@ -550,7 +550,7 @@ else
 fi
 
 # ─── Sanitize inherited leading-* Bash patterns (safety net) ────────────────
-# Some upstream installers (notably the Vend Claude wizard) ship `Bash(*foo*)`
+# Some upstream installers ship `Bash(*foo*)`
 # permission patterns. The leading * in Claude Code Bash matchers is interpreted
 # literally — these patterns match nothing, but Forge's permission lint will
 # fail on them. Surgically remove them so the user ends up with a clean install
@@ -562,7 +562,7 @@ if [ "$DRY_RUN" = false ]; then
   if [ "$BROKEN_COUNT" -gt 0 ]; then
     echo ""
     info "Detected $BROKEN_COUNT inherited \`Bash(*foo*)\` permission pattern(s)..."
-    hint "These come from a previous installer (most likely the Vend Claude wizard)."
+    hint "These typically come from a previous third-party installer."
     hint "Leading * in Bash matchers is literal — these patterns match nothing,"
     hint "and Forge's permission lint will fail on them."
     hint "Backing up + sanitizing so the lint passes."
