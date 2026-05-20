@@ -8,7 +8,8 @@ set -euo pipefail
 HOME_DIR="$HOME"
 
 # Resolve marker path from forge.conf VAULT_PATH
-FORGE_CONF="$HOME_DIR/.claude/forge.conf"
+# Allow tests to override the config path
+FORGE_CONF="${FORGE_CONF_OVERRIDE:-$HOME_DIR/.claude/forge.conf}"
 if [ ! -f "$FORGE_CONF" ]; then
   echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
   exit 1
@@ -20,6 +21,10 @@ if [ -z "$VAULT_PATH" ]; then
 fi
 MARKER="$VAULT_PATH/_shared/forge-active"
 STOP_COUNT_FILE="$VAULT_PATH/_shared/forge-session-stops"
+FRICTION_LOG="$VAULT_PATH/_shared/friction-log.md"
+FRICTION_CLASSIFIED="$VAULT_PATH/_shared/friction-classified.json"
+# Catalog defaults to source-of-truth; tests can override
+FORGE_PATTERN_CATALOG="${FORGE_PATTERN_CATALOG:-$HOME_DIR/.claude/skills/forge/references/script-replacement-patterns.md}"
 
 # Vault drift thresholds — recover() warns when any one is exceeded
 VAULT_DRIFT_COMMITS_AHEAD=5
@@ -51,6 +56,32 @@ extract_marker_project() {
     # Legacy plain-string marker — first line is the project name
     echo "$marker_text" | head -1
   fi
+}
+
+# Given a project name, scan $VAULT_PATH/*/{project}/ to determine which ENV
+# (top-level vault subdirectory) contains it. Echoes the ENV name on stdout,
+# empty if not found or ambiguous. Marker JSON does not store ENV — this is
+# the canonical way to resolve project→ENV.
+extract_marker_env() {
+  local project="$1"
+  [ -z "$project" ] && return 0
+  [ -z "${VAULT_PATH:-}" ] && return 0
+  local match=""
+  local count=0
+  local d env
+  for d in "$VAULT_PATH"/*/"$project"; do
+    [ -d "$d" ] || continue
+    env=$(basename "$(dirname "$d")")
+    case "$env" in
+      _*) continue ;;  # skip _shared, _templates, _meta
+    esac
+    match="$env"
+    count=$((count + 1))
+  done
+  if [ "$count" = "1" ]; then
+    echo "$match"
+  fi
+  return 0
 }
 
 # Returns the marker's `started_at` field as a Unix epoch (seconds), or empty
@@ -232,8 +263,8 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker)
-    # No stdin read, no guards. do_set_marker only needs $MARKER.
+  set-marker|append-friction|audit-prose-rules|bootstrap-classify)
+    # No stdin read, no guards. These operate on marker/shared state only.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -1135,23 +1166,322 @@ do_append_braindump() {
   printf '\n%s\n' "$content" >> "$BRAINDUMP_FILE"
 }
 
+# ── Subcommand: append-friction (structured friction-log entry + JSON index) ──
+# Writes to both friction-log.md (human-readable) and friction-classified.json
+# (machine-readable). Validates --pattern against catalog; on invalid pattern,
+# falls back to pattern=unknown + validation_failed=true tag, writes anyway,
+# returns non-zero exit.
+#
+# Auto-creates stub task at --action-ref when --recurrence == 1.
+#
+# Args (all required unless noted):
+#   --date YYYY-MM-DD
+#   --description "..."
+#   --pattern <slug-from-catalog|needs_new_pattern>
+#   --recurrence <N>
+#   --action-ref "tasks/open/<slug>.md|needs_new_pattern"
+do_append_friction() {
+  local date_arg="" desc="" pattern="" recurrence="" action_ref=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --date)         date_arg="$2"; shift 2 ;;
+      --description)  desc="$2"; shift 2 ;;
+      --pattern)      pattern="$2"; shift 2 ;;
+      --recurrence)   recurrence="$2"; shift 2 ;;
+      --action-ref)   action_ref="$2"; shift 2 ;;
+      *) echo "[append-friction] unknown arg: $1" >&2; exit 2 ;;
+    esac
+  done
+
+  for v in date_arg desc pattern recurrence action_ref; do
+    if [ -z "${!v}" ]; then
+      echo "[append-friction] missing required arg: --${v//_/-}" >&2
+      exit 2
+    fi
+  done
+
+  # Validate pattern against catalog (or accept escape value)
+  local validation_failed=false
+  local original_pattern="$pattern"
+  if [ "$pattern" != "needs_new_pattern" ] && [ "$pattern" != "unknown" ]; then
+    if [ ! -f "$FORGE_PATTERN_CATALOG" ]; then
+      echo "[append-friction] WARN: catalog not found at $FORGE_PATTERN_CATALOG; accepting pattern unchecked" >&2
+    else
+      if ! grep -qE "^## ${pattern}\$" "$FORGE_PATTERN_CATALOG"; then
+        echo "[append-friction] FAIL: pattern '$pattern' not in catalog; falling back to 'unknown'" >&2
+        validation_failed=true
+        pattern="unknown"
+      fi
+    fi
+  fi
+
+  # Ensure files exist
+  mkdir -p "$(dirname "$FRICTION_LOG")"
+  [ -f "$FRICTION_LOG" ] || : > "$FRICTION_LOG"
+  if [ ! -f "$FRICTION_CLASSIFIED" ]; then
+    echo '{"entries":[]}' > "$FRICTION_CLASSIFIED"
+  fi
+
+  # Append to friction-log.md (human-readable)
+  {
+    printf '\n### %s — %s\n' "$date_arg" "$desc"
+    printf -- '- **Pattern:** %s\n' "$pattern"
+    printf -- '- **Recurrence:** %s\n' "$recurrence"
+    printf -- '- **Action:** %s\n' "$action_ref"
+    if [ "$validation_failed" = "true" ]; then
+      printf -- '- **Validation:** failed (original pattern: %s)\n' "$original_pattern"
+    fi
+  } >> "$FRICTION_LOG"
+
+  # Append to friction-classified.json (machine-readable)
+  tmp_json=$(mktemp)
+  jq -c --arg d "$date_arg" \
+     --arg desc "$desc" \
+     --arg p "$pattern" \
+     --arg op "$original_pattern" \
+     --argjson r "$recurrence" \
+     --arg a "$action_ref" \
+     --argjson vf "$validation_failed" \
+     '.entries += [{
+        date: $d,
+        description: $desc,
+        pattern: $p,
+        recurrence: $r,
+        action_ref: $a,
+        validation_failed: $vf,
+        original_pattern: $op
+     }]' "$FRICTION_CLASSIFIED" > "$tmp_json"
+  mv "$tmp_json" "$FRICTION_CLASSIFIED"
+
+  # Auto-create stub task if recurrence == 1 and action-ref is a real path
+  if [ "$recurrence" = "1" ] && [ "$action_ref" != "needs_new_pattern" ]; then
+    # Auto-prefix relative tasks/ paths. Prefer the active Forge project subtree
+    # so friction events stay with their project (e.g., forge-on-forge friction
+    # lands in PERSO/forge/tasks/, not _shared/tasks/). Fall back to _shared/
+    # when no marker is active or project→ENV can't be resolved — that path
+    # works for users who don't run forge-on-forge.
+    local resolved_ref="$action_ref"
+    if [[ "$action_ref" == tasks/* ]]; then
+      local marker_project marker_env
+      marker_project=$(extract_marker_project)
+      marker_env=""
+      [ -n "$marker_project" ] && marker_env=$(extract_marker_env "$marker_project")
+      if [ -n "$marker_project" ] && [ -n "$marker_env" ]; then
+        resolved_ref="$marker_env/$marker_project/$action_ref"
+      else
+        resolved_ref="_shared/$action_ref"
+      fi
+    fi
+    local stub_path="$VAULT_PATH/$resolved_ref"
+    if [ ! -f "$stub_path" ]; then
+      mkdir -p "$(dirname "$stub_path")"
+      cat > "$stub_path" <<EOF
+---
+created: $date_arg
+updated: $date_arg
+project: forge
+type: task
+status: needs-triage
+tags: [friction-stub, $pattern]
+---
+
+# $desc
+
+## What / Why
+
+Auto-created from friction-log entry. Classified as **$pattern**. See [[script-replacement-patterns]] for pattern details and [[friction-classifier]] for the routing logic.
+
+**Original friction:** $desc
+
+## Plan
+
+(triage required — flesh out the fix per the pattern's How-it-works)
+
+## Progress
+
+## Resolution
+EOF
+    fi
+  fi
+
+  # Exit code: non-zero if validation failed (write-then-flag)
+  if [ "$validation_failed" = "true" ]; then
+    exit 1
+  fi
+}
+
+# ── Subcommand: audit-prose-rules ──────────────────────────────────────
+# Scans for prose patterns that smell script-replaceable (MUST/Never/Remember/
+# always/REQUIRED). Cross-references friction-log for recurrence signal.
+# Fingerprint cache dedups across runs.
+#
+# Flags:
+#   --json     output JSON instead of human report
+#   --since DATE  accepted but currently unused (best-effort placeholder)
+#
+# Env overrides (for tests):
+#   FORGE_AUDIT_SCAN_ROOT  (default: forge installed paths)
+#   FORGE_AUDIT_CACHE      (default: ~/.cache/forge/audit-fingerprints.json)
+do_audit_prose_rules() {
+  local json_mode=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json_mode=true; shift ;;
+      --since) shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  local scan_root="${FORGE_AUDIT_SCAN_ROOT:-$HOME_DIR/.claude/skills/forge}"
+  local cache="${FORGE_AUDIT_CACHE:-$HOME_DIR/.cache/forge/audit-fingerprints.json}"
+  mkdir -p "$(dirname "$cache")"
+  [ -f "$cache" ] || echo '{"fingerprints":[]}' > "$cache"
+
+  local pattern_regex='\b(MUST|REQUIRED|Never|Always|always|never|Remember|REMEMBER)\b'
+
+  local findings_raw
+  findings_raw=$(grep -rEn "$pattern_regex" "$scan_root" \
+    --include='*.md' --include='*.sh' 2>/dev/null || true)
+
+  local new_findings=""
+  local all_fps=""
+  if [ -n "$findings_raw" ]; then
+    while IFS= read -r line; do
+      local fp
+      fp=$(printf '%s' "$line" | shasum -a 1 2>/dev/null | awk '{print $1}')
+      [ -z "$fp" ] && fp=$(printf '%s' "$line" | shasum | awk '{print $1}')
+      all_fps="$all_fps $fp"
+      if ! jq -e --arg f "$fp" '.fingerprints | index($f)' "$cache" > /dev/null 2>&1; then
+        new_findings="$new_findings$line"$'\n'
+      fi
+    done <<< "$findings_raw"
+  fi
+
+  # Regenerate cache from the CURRENT scan, not by union with previous.
+  # If a finding's prose is later edited or removed, its fingerprint drops out
+  # and a re-introduction will re-fire as a new finding — intentional.
+  local tmp_cache
+  tmp_cache=$(mktemp)
+  if [ -n "$all_fps" ]; then
+    printf '%s\n' "$all_fps" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s '{fingerprints: .}' > "$tmp_cache"
+  else
+    echo '{"fingerprints":[]}' > "$tmp_cache"
+  fi
+  mv "$tmp_cache" "$cache"
+
+  if [ "$json_mode" = "true" ]; then
+    if [ -n "$new_findings" ]; then
+      # NOTE: macOS `head -c -1` is unsupported (BSD head). Use sed to strip trailing newline.
+      printf '%s' "$new_findings" | sed -e '$ {/^$/d;}' | jq -Rs 'split("\n") | map(select(length > 0)) | map(split(":") | {file: .[0], line: .[1], match: (.[2:] | join(":"))}) | {findings: .}'
+    else
+      echo '{"findings":[]}'
+    fi
+  else
+    if [ -z "$new_findings" ]; then
+      echo "[audit] no new findings (0 new since last run)"
+    else
+      local count
+      # `grep -c .` returns 1 on zero matches AND prints "0". Combined with `|| echo 0`
+      # under set -e, that produced "0\n0". Use wc -l on non-empty input directly.
+      count=$(printf '%s\n' "$new_findings" | sed -e '$ {/^$/d;}' | grep -c . 2>/dev/null || true)
+      [ -z "$count" ] && count=0
+      echo "[audit] $count new finding(s):"
+      # Reformat each grep line "file:lineno:content" to "<KEYWORD> <file>:<lineno>: <content>"
+      # so callers can pattern-match on "<KEYWORD>.*<filename>" without caring about path prefixes.
+      local line file_part lineno content first_match
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        file_part=$(printf '%s' "$line" | awk -F: '{print $1}')
+        lineno=$(printf '%s' "$line" | awk -F: '{print $2}')
+        content=$(printf '%s' "$line" | cut -d: -f3-)
+        first_match=$(printf '%s' "$content" | grep -oE "$pattern_regex" | head -1)
+        printf '%s %s:%s: %s\n' "${first_match:-MATCH}" "$file_part" "$lineno" "$content"
+      done <<< "$new_findings"
+    fi
+  fi
+}
+
+# ── Subcommand: bootstrap-classify ──────────────────────────────────────
+# One-shot. Reads existing friction-log.md, runs keyword-heuristic
+# classification, writes friction-classified.json. Used to retro-fit the
+# friction-meta-framework onto historical entries that pre-date append-friction.
+do_bootstrap_classify() {
+  if [ ! -f "$FRICTION_LOG" ]; then
+    echo "[bootstrap-classify] no friction-log at $FRICTION_LOG; nothing to do"
+    echo '{"entries":[]}' > "$FRICTION_CLASSIFIED"
+    return 0
+  fi
+
+  # Parse: each entry starts with ## or ### YYYY-MM-DD — description.
+  # Historical hand-written entries use ##; future append-friction entries use ###. Accept both.
+  local entries_json="[]"
+  local current_date="" current_desc="" current_body=""
+
+  process_entry() {
+    [ -z "$current_date" ] && return
+    [ -z "$current_desc" ] && return
+    local combined="$current_desc $current_body"
+    local pattern="needs_new_pattern"
+    # Heuristics (case-insensitive)
+    if echo "$combined" | grep -qiE 'permission prompt|allowlist|approval prompt'; then
+      pattern="allowlist-patch"
+    elif echo "$combined" | grep -qiE 'hook (fired|misfire|wrongly)|nag (fired|during entry)'; then
+      pattern="marker-state-guard"
+    elif echo "$combined" | grep -qiE 'header|format drift|verbatim|reproduce'; then
+      pattern="hook-injection"
+    elif echo "$combined" | grep -qiE 'compound command|heredoc|wrapper|subcommand'; then
+      pattern="wrapper-subcommand"
+    elif echo "$combined" | grep -qiE 'template|frontmatter|structured (text|format)'; then
+      pattern="template-slot"
+    fi
+    entries_json=$(echo "$entries_json" | jq \
+      --arg d "$current_date" \
+      --arg desc "$current_desc" \
+      --arg p "$pattern" \
+      '. += [{date: $d, description: $desc, pattern: $p, recurrence: 1, action_ref: "needs_new_pattern", validation_failed: false, original_pattern: $p}]')
+  }
+
+  local line
+  while IFS= read -r line; do
+    # Accept em-dash (—) OR ASCII hyphen (-) as separator: append-friction emits em-dash,
+    # but historical hand-written entries often use a plain hyphen.
+    if [[ "$line" =~ ^###?[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+[—-][[:space:]]+(.+)$ ]]; then
+      process_entry
+      current_date="${BASH_REMATCH[1]}"
+      current_desc="${BASH_REMATCH[2]}"
+      current_body=""
+    else
+      current_body="$current_body $line"
+    fi
+  done < "$FRICTION_LOG"
+  process_entry
+
+  echo "$entries_json" | jq '{entries: .}' > "$FRICTION_CLASSIFIED"
+  local count
+  count=$(echo "$entries_json" | jq 'length')
+  echo "[bootstrap-classify] classified $count entries → $FRICTION_CLASSIFIED"
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
 case "$SUBCMD" in
-  post-tool)         do_post_tool ;;
-  gate)              do_gate ;;
-  stop)              do_stop ;;
-  recover)           do_recover ;;
-  reconcile-marker)  reconcile_marker ;;
-  status)            do_status ;;
-  vault-sync)        do_vault_sync "${@:2}" ;;
-  wrap-up-state)     do_wrap_up_state ;;
-  check-install)     do_check_install ;;
-  set-marker)        do_set_marker "${@:2}" ;;
-  append-braindump)  do_append_braindump "${@:2}" ;;
+  post-tool)           do_post_tool ;;
+  gate)                do_gate ;;
+  stop)                do_stop ;;
+  recover)             do_recover ;;
+  reconcile-marker)    reconcile_marker ;;
+  status)              do_status ;;
+  vault-sync)          do_vault_sync "${@:2}" ;;
+  wrap-up-state)       do_wrap_up_state ;;
+  check-install)       do_check_install ;;
+  set-marker)          do_set_marker "${@:2}" ;;
+  append-braindump)    do_append_braindump "${@:2}" ;;
+  append-friction)     do_append_friction "${@:2}" ;;
+  audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
+  bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify}" >&2
     exit 1
     ;;
 esac

@@ -13,7 +13,7 @@ You are the Refiner role for Forge sessions. Your job is to turn friction — li
 
 ### Mode 1 — In-conversation friction (default)
 
-Triggered by user correction, repeated instruction, or expressed dissatisfaction. Input is the conversation. The full Mode 1 behavior is documented in the sections below ("Triggers", "Behavior" steps 1-4, friction-log entry). This is the historical default.
+Triggered by user correction, repeated instruction, or expressed dissatisfaction. Input is the conversation. The full Mode 1 behavior is documented in the sections below ("Triggers", "Behavior" steps 1-5, friction-log entry). This is the historical default.
 
 ### Mode 2 — Static artifact friction
 
@@ -75,25 +75,37 @@ Match the fix to the root cause:
 
 Present the proposal clearly: what changes, where, and why.
 
-### Step 3 — Log the friction event
+### Step 3 — Classify the friction (strongly recommended)
 
-Use `Edit` to append to `${VAULT_PATH}/_shared/friction-log.md`. Append-only — never overwrite existing entries.
+Before logging, classify the event against the pattern catalog using `forge-classify-friction.sh`:
 
-Entry format:
+- Interactive (when uncertain): `~/.claude/scripts/forge-classify-friction.sh --interactive --description "<event>"`
+- Pre-answered (when category is obvious): `~/.claude/scripts/forge-classify-friction.sh --json-input <(echo '{...}') --description "<event>"`
 
-```markdown
-### YYYY-MM-DD — {brief title}
-- **Project / Environment:** {project} / {env}
-- **What happened:** {one sentence}
-- **Root cause:** {category from the table above}
-- **Fix applied:** {what was changed, or "pending user approval"}
+The output gives `pattern` (one of `hook-injection`, `wrapper-subcommand`, `marker-state-guard`, `allowlist-patch`, `template-slot`, or `needs_new_pattern`) and `action_sketch`.
+
+If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the Step 4 call below — the framework handles it via write-then-flag. Do not block on classification: roles must never be stuck on ambiguity.
+
+### Step 4 — Log the friction event via the gated subcommand
+
+Use `Bash` to invoke the gated subcommand. Never bypass with bare `Edit` / `>>` appends to `friction-log.md`.
+
+```bash
+~/.claude/scripts/forge-context.sh append-friction \
+  --date $(date +%Y-%m-%d) \
+  --description "<event>" \
+  --pattern <pattern-from-step-3> \
+  --recurrence <N> \
+  --action-ref "tasks/open/<YYYY-MM-DD-slug>.md"
 ```
+
+The subcommand validates `--pattern` against the catalog, writes to both `friction-log.md` (human) and `friction-classified.json` (machine), and auto-creates a stub task at `--action-ref` when `--recurrence == 1`. On invalid pattern, it falls back to `pattern: unknown` + `validation_failed: true` and returns non-zero — the log is written either way.
 
 Always log the event, even if no fix is applied yet. The log is the historical record.
 
-### Step 4 — Apply the fix (after explicit user approval)
+### Step 5 — Apply the fix (after explicit user approval)
 
-Once the user approves, make the change with `Edit`, then update the friction log entry's "Fix applied" line with what shipped.
+Once the user approves, make the change with `Edit`, then record the resolution in the linked action task — the stub at `--action-ref` from Step 4 — using `Edit`. Do not hand-edit the friction log entry; the gated subcommand is the only write path to `friction-log.md`.
 
 ## Vault paths
 
@@ -119,7 +131,8 @@ Common paths:
 | "The user just misspoke" | If you need to guess, ask. Don't dismiss corrections. |
 | "This is a one-off, no need to log" | One-offs reveal patterns. Log it. |
 | "The fix is obvious, just do it" | Never modify rules without approval. Present first. |
-| "I'll update the friction log later" | Write it now. Later = forgotten. |
+| "I'll update the friction log later" | Write it now via `append-friction`. Later = forgotten. |
+| "I'll just `Edit` friction-log.md directly" | The subcommand is the only write path. Bare edits break the machine-readable JSON. |
 
 ## Team-mode notes (when run as an agent-team teammate)
 

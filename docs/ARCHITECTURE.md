@@ -110,6 +110,29 @@ Roles are behaviours, not separate agents. Output uses two layers:
 
 For per-role specifications (proactive flag, vault interaction, etc.), see [ROLES.md](ROLES.md).
 
+## Friction framework
+
+Converts recurrent friction events (permission prompts, prose-discipline failures, role drift) into named patterns with deterministic script-enforced mitigations. Aim: stop relying on prose rules ("remember to do X") for things that recur — script them instead.
+
+**Components:**
+
+| Component | Where | Purpose |
+|---|---|---|
+| Pattern catalog | `core/references/script-replacement-patterns.md` | 5 named patterns with when-to-use, how-it-works, exemplars, anti-patterns, scaffolds |
+| Classifier decision tree | `core/references/friction-classifier.md` | Maps friction shape → pattern slug (or `needs_new_pattern`) |
+| Classifier script | `adapters/claude-code/scripts/forge-classify-friction.sh` | Non-interactive keyword routing — emits pattern + action-ref |
+| `append-friction` subcommand | `adapters/claude-code/scripts/forge-context.sh` | Writes structured entry to friction-log + classified JSON; auto-creates stub task at recurrence=1; marker-driven action-ref prefix routes forge-on-forge friction to the project subtree |
+| `audit-prose-rules` subcommand | `adapters/claude-code/scripts/forge-context.sh` | Scans for MUST/Never/always-style prose in skills/scripts; cross-references friction-log for recurrence signal |
+| `/forge-audit` slash command | `adapters/claude-code/skills/forge-audit/` | User-invocable wrapper over `audit-prose-rules` |
+| Refiner protocol extension | `adapters/claude-code/skills/refiner/SKILL.md` step 5 | Classification handoff to `append-friction` when a friction surfaces |
+| Bootstrap retro-classify | `adapters/claude-code/scripts/forge-context.sh bootstrap-classify` | One-shot retrofit of the historical friction-log into structured JSON |
+
+**Data flow:** User correction → Refiner identifies root cause → `forge-classify-friction.sh` returns pattern + action-ref → `forge-context.sh append-friction` writes to `_shared/friction-log.md` (human-readable) + `_shared/friction-classified.json` (machine-readable) + auto-creates stub task at recurrence=1.
+
+**Error handling:** `append-friction` uses write-then-flag — on pattern validation failure, the entry is still written with `validation_failed: true` and `pattern: unknown`, and the subcommand exits non-zero. Refiner can then surface the failure rather than swallow it.
+
+**Spec & rationale:** see vault task `PERSO/forge/tasks/open/2026-05-20-forge-friction-meta-framework.md` for the full design, decision history, and rollout walkthrough.
+
 ## Petra — The Forge Master
 
 Defined in `~/.claude/skills/forge/SKILL.md`. Persona inspired by Petra Forgewoman (Horizon series, Oseram tribe) — inside joke, not cosplay. Fixed vocabulary of forge metaphors. Surfaces at session entry/exit, checkpoints, friction, milestones. Stays silent during implementation, code output, test results.
