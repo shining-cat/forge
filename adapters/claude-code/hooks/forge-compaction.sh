@@ -35,21 +35,19 @@ fi
 
 if [ "$PHASE" = "pre" ]; then
   # Check checkpoint staleness — warn but don't block
-  # PreCompact fires when context is nearly full, so requiring Claude actions here creates deadlock
-  CHECKPOINT_DIR="$VAULT_PATH"
-
-  # Determine which checkpoint file to check based on project
-  case "$PROJECT" in
-    FINN|DBA|TORI|BLOCKET)
-      CHECKPOINT_FILE="$CHECKPOINT_DIR/SCHIBSTED/$PROJECT/current-checkpoint.md"
-      ;;
-    Forge|forge)
-      CHECKPOINT_FILE="$CHECKPOINT_DIR/PERSO/forge/current-checkpoint.md"
-      ;;
-    *)
-      CHECKPOINT_FILE="$CHECKPOINT_DIR/PERSO/$PROJECT/current-checkpoint.md"
-      ;;
-  esac
+  # PreCompact fires when context is nearly full, so requiring Claude actions here creates deadlock.
+  #
+  # Resolve checkpoint path dynamically via get_vault_dir (defined in forge-context.sh).
+  # Sourcing is safe — the BASH_SOURCE guard inside forge-context.sh short-circuits
+  # the subcommand dispatch but still defines the helpers we need.
+  if [ ! -f "$HOME/.claude/scripts/forge-context.sh" ]; then
+    echo "[forge-compaction] forge-context.sh missing — cannot resolve checkpoint path, skipping staleness check" >&2
+    exit 0
+  fi
+  # shellcheck disable=SC1091
+  source "$HOME/.claude/scripts/forge-context.sh"
+  VAULT_DIR="$(get_vault_dir "$PROJECT")" || true
+  CHECKPOINT_FILE="$VAULT_DIR/current-checkpoint.md"
 
   NEEDS_WARNING=false
   if [ -f "$CHECKPOINT_FILE" ]; then
