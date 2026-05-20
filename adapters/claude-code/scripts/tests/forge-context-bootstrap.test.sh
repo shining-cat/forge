@@ -60,15 +60,18 @@ out=$(jq -r '.entries[] | select(.description | test("header drift")) | .pattern
 teardown
 
 echo ""
-echo "Check 5 — malformed entries skipped, run continues"
+echo "Check 5 — non-header lines absorbed into body, malformed header NOT parsed as entry"
 setup
 cat >> "$TMP/_shared/friction-log.md" <<'EOF'
 
 malformed entry no header
+### not-a-date — should-not-be-parsed
 EOF
 "$FORGE_CONTEXT" bootstrap-classify 2>/dev/null
 rc=$?
-[ $rc -eq 0 ] && { echo "  ✓ tolerates malformed entries"; PASS=$((PASS+1)); } || { echo "  ✗ exit $rc on malformed input"; FAIL=$((FAIL+1)); }
+[ $rc -eq 0 ] && { echo "  ✓ exit 0"; PASS=$((PASS+1)); } || { echo "  ✗ exit $rc on malformed input"; FAIL=$((FAIL+1)); }
+count=$(jq '.entries | length' "$TMP/_shared/friction-classified.json")
+[ "$count" = "3" ] && { echo "  ✓ malformed header skipped (entry count still 3)"; PASS=$((PASS+1)); } || { echo "  ✗ wrong entry count: $count (expected 3)"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""

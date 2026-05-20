@@ -1392,6 +1392,7 @@ do_bootstrap_classify() {
       '. += [{date: $d, description: $desc, pattern: $p, recurrence: 1, action_ref: "needs_new_pattern", validation_failed: false, original_pattern: $p}]')
   }
 
+  local line
   while IFS= read -r line; do
     if [[ "$line" =~ ^###[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+—[[:space:]]+(.+)$ ]]; then
       process_entry
