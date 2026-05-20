@@ -1357,9 +1357,16 @@ do_audit_prose_rules() {
     done <<< "$findings_raw"
   fi
 
+  # Regenerate cache from the CURRENT scan, not by union with previous.
+  # If a finding's prose is later edited or removed, its fingerprint drops out
+  # and a re-introduction will re-fire as a new finding — intentional.
   local tmp_cache
   tmp_cache=$(mktemp)
-  printf '%s\n' "$all_fps" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s '{fingerprints: .}' > "$tmp_cache"
+  if [ -n "$all_fps" ]; then
+    printf '%s\n' "$all_fps" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s '{fingerprints: .}' > "$tmp_cache"
+  else
+    echo '{"fingerprints":[]}' > "$tmp_cache"
+  fi
   mv "$tmp_cache" "$cache"
 
   if [ "$json_mode" = "true" ]; then
@@ -1374,7 +1381,10 @@ do_audit_prose_rules() {
       echo "[audit] no new findings (0 new since last run)"
     else
       local count
-      count=$(printf '%s' "$new_findings" | grep -c . || echo 0)
+      # `grep -c .` returns 1 on zero matches AND prints "0". Combined with `|| echo 0`
+      # under set -e, that produced "0\n0". Use wc -l on non-empty input directly.
+      count=$(printf '%s\n' "$new_findings" | sed -e '$ {/^$/d;}' | grep -c . 2>/dev/null || true)
+      [ -z "$count" ] && count=0
       echo "[audit] $count new finding(s):"
       # Reformat each grep line "file:lineno:content" to "<KEYWORD> <file>:<lineno>: <content>"
       # so callers can pattern-match on "<KEYWORD>.*<filename>" without caring about path prefixes.
@@ -1433,7 +1443,9 @@ do_bootstrap_classify() {
 
   local line
   while IFS= read -r line; do
-    if [[ "$line" =~ ^###?[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+—[[:space:]]+(.+)$ ]]; then
+    # Accept em-dash (—) OR ASCII hyphen (-) as separator: append-friction emits em-dash,
+    # but historical hand-written entries often use a plain hyphen.
+    if [[ "$line" =~ ^###?[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+[—-][[:space:]]+(.+)$ ]]; then
       process_entry
       current_date="${BASH_REMATCH[1]}"
       current_desc="${BASH_REMATCH[2]}"

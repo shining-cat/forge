@@ -734,8 +734,8 @@ else
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit-permissions,"
-echo "                 keeper, refiner, plan-reviewer"
+echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions,"
+echo "                 forge-vault-sync, keeper, refiner, plan-reviewer"
 echo "  Agents:        forge-architect, forge-debugger, forge-impl, forge-keeper,"
 echo "                 forge-refiner, forge-release, forge-reviewer, forge-toolsmith"
 echo "  Wellness:      files ready — offered during onboarding"

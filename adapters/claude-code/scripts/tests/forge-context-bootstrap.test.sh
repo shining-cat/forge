@@ -85,5 +85,28 @@ count=$(jq '.entries | length' "$TMP/_shared/friction-classified.json")
 teardown
 
 echo ""
+echo "Check 7 — accepts ASCII hyphen separator (historical hand-written entries)"
+# Regression: header regex used to require literal em-dash (—) only; hand-written
+# entries with plain ASCII hyphen were silently absorbed into the previous entry's body.
+setup
+cat > "$TMP/_shared/friction-log.md" <<'EOF'
+# Friction Log
+
+### 2026-05-10 - permission prompt on rg invocation
+- ASCII hyphen separator (hand-written style)
+
+### 2026-05-11 — header injection issue
+- Em-dash separator (append-friction style)
+EOF
+"$FORGE_CONTEXT" bootstrap-classify > /dev/null 2>&1
+rc=$?
+[ $rc -eq 0 ] && { echo "  ✓ exit 0"; PASS=$((PASS+1)); } || { echo "  ✗ exit $rc"; FAIL=$((FAIL+1)); }
+count=$(jq '.entries | length' "$TMP/_shared/friction-classified.json")
+[ "$count" = "2" ] && { echo "  ✓ both hyphen and em-dash entries parsed (count=2)"; PASS=$((PASS+1)); } || { echo "  ✗ wrong entry count: $count (expected 2 — hyphen entry skipped?)"; FAIL=$((FAIL+1)); }
+out=$(jq -r '.entries[] | select(.description | test("permission prompt on rg")) | .pattern' "$TMP/_shared/friction-classified.json")
+[ "$out" = "allowlist-patch" ] && { echo "  ✓ hyphen-separated entry classified"; PASS=$((PASS+1)); } || { echo "  ✗ hyphen entry missing/wrong: $out"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

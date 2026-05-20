@@ -64,5 +64,32 @@ echo "$out" | jq -e '.findings | length > 0' > /dev/null 2>&1 && { echo "  ✓ J
 teardown
 
 echo ""
+echo "Check 4 — clean scan (no prose matches) exits 0 in human + json mode"
+# Regression: under set -euo pipefail, an empty fingerprint list used to fail
+# the cache rebuild pipeline (grep -v '^\$' returns 1 on empty input) and the
+# subcommand silently exited 1. Verify both modes succeed AND write a valid cache.
+setup
+# Wipe the planted rule files so the scan root has zero matches.
+rm -rf "$TMP/_scan"/*
+mkdir -p "$TMP/_scan/core"
+echo "# Plain prose with no policy keywords" > "$TMP/_scan/core/clean.md"
+
+# Human mode: should exit 0 and report no findings
+out=$("$FORGE_CONTEXT" audit-prose-rules 2>&1)
+rc=$?
+[ "$rc" = "0" ] && { echo "  ✓ human mode exits 0 on clean scan"; PASS=$((PASS+1)); } || { echo "  ✗ human mode exited $rc on clean scan"; FAIL=$((FAIL+1)); }
+echo "$out" | grep -qE 'no new findings|0 new' && { echo "  ✓ human mode reports no findings"; PASS=$((PASS+1)); } || { echo "  ✗ human mode wrong output: $out"; FAIL=$((FAIL+1)); }
+
+# JSON mode: should exit 0 with empty findings array
+out=$("$FORGE_CONTEXT" audit-prose-rules --json 2>&1)
+rc=$?
+[ "$rc" = "0" ] && { echo "  ✓ json mode exits 0 on clean scan"; PASS=$((PASS+1)); } || { echo "  ✗ json mode exited $rc on clean scan"; FAIL=$((FAIL+1)); }
+echo "$out" | jq -e '.findings | length == 0' > /dev/null 2>&1 && { echo "  ✓ json mode returns empty findings array"; PASS=$((PASS+1)); } || { echo "  ✗ json mode wrong output: $out"; FAIL=$((FAIL+1)); }
+
+# Cache file should be valid JSON with empty fingerprints
+jq -e '.fingerprints | length == 0' "$TMP/_cache/audit-fingerprints.json" > /dev/null 2>&1 && { echo "  ✓ cache written with empty fingerprints"; PASS=$((PASS+1)); } || { echo "  ✗ cache invalid or missing"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
