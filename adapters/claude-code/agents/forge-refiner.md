@@ -75,23 +75,35 @@ Match the fix to the root cause:
 
 Present the proposal clearly: what changes, where, and why.
 
-### Step 3 — Log the friction event
+### Step 3 — Classify the friction (strongly recommended)
 
-Use `Edit` to append to `${VAULT_PATH}/_shared/friction-log.md`. Append-only — never overwrite existing entries.
+Before logging, classify the event against the pattern catalog using `forge-classify-friction.sh`:
 
-Entry format:
+- Interactive (when uncertain): `~/.claude/scripts/forge-classify-friction.sh --interactive --description "<event>"`
+- Pre-answered (when category is obvious): `~/.claude/scripts/forge-classify-friction.sh --json-input <(echo '{...}') --description "<event>"`
 
-```markdown
-### YYYY-MM-DD — {brief title}
-- **Project / Environment:** {project} / {env}
-- **What happened:** {one sentence}
-- **Root cause:** {category from the table above}
-- **Fix applied:** {what was changed, or "pending user approval"}
+The output gives `pattern` (one of `hook-injection`, `wrapper-subcommand`, `marker-state-guard`, `allowlist-patch`, `template-slot`, or `needs_new_pattern`) and `action_sketch`.
+
+If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the Step 4 call below — the framework handles it via write-then-flag. Do not block on classification. (See `[[feedback-forge-roles-never-stuck]]`.)
+
+### Step 4 — Log the friction event via the gated subcommand
+
+Use `Bash` to invoke the gated subcommand. Never bypass with bare `Edit` / `>>` appends to `friction-log.md`.
+
+```bash
+~/.claude/scripts/forge-context.sh append-friction \
+  --date $(date +%Y-%m-%d) \
+  --description "<event>" \
+  --pattern <pattern-from-step-3> \
+  --recurrence <N> \
+  --action-ref "tasks/open/<YYYY-MM-DD-slug>.md"
 ```
+
+The subcommand validates `--pattern` against the catalog, writes to both `friction-log.md` (human) and `friction-classified.json` (machine), and auto-creates a stub task at `--action-ref` when `--recurrence == 1`. On invalid pattern, it falls back to `pattern: unknown` + `validation_failed: true` and returns non-zero — the log is written either way.
 
 Always log the event, even if no fix is applied yet. The log is the historical record.
 
-### Step 4 — Apply the fix (after explicit user approval)
+### Step 5 — Apply the fix (after explicit user approval)
 
 Once the user approves, make the change with `Edit`, then update the friction log entry's "Fix applied" line with what shipped.
 
