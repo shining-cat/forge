@@ -1,6 +1,6 @@
 ---
 name: forge
-description: Use when starting any development session — activates Forge mode with vault integration, agent roles, Petra persona, and visual identity. Invoke with /forge or when the user says "enter Forge", "start Forge", or similar.
+description: Use when starting any development session — activates Forge mode with vault integration, agent roles, Petra persona, and visual identity. Invoke with /forge or when the user says "let's forge", "enter Forge", "start Forge", or similar.
 ---
 
 # Forge — Session Entry
@@ -392,12 +392,14 @@ End with: `Ready when you are.`
 
 For the remainder of this session, the following rules are active:
 
-**Block header:** Every response starts with `[Forge: ENV/Project]` on its own line.
+**Block header:** Every response starts with `[Forge: ENV/Project | HH:MM]` on its own line.
 
-- Use the active environment + project: `[Forge: WORK/my-app]`, `[Forge: PERSO/my-side-project]`
-- For forge-level work (vault, skills, tooling): `[Forge: PERSO/forge]` — Forge is itself a PERSO project (decision 2026-04-24)
-- When no project is selected: `[Forge: no project selected]`
+- Use the active environment + project: `[Forge: WORK/my-app | 14:37]`, `[Forge: PERSO/my-side-project | 09:12]`
+- For forge-level work (vault, skills, tooling): `[Forge: PERSO/forge | 14:37]` — Forge is itself a PERSO project (decision 2026-04-24)
+- When no project is selected: `[Forge: no project selected | 14:37]`
+- 24-hour `HH:MM`, no timezone (keeps the header visually light — the timezone is rarely useful in the header itself, and the full `[Current local time: ...]` injection still has it as ground truth)
 - The `Forge:` prefix and bracket style distinguish active Forge mode from MEMORY.md's `{Claude: ENV/Project}` context-tracking outside Forge — same data, different visual signal
+- **Time source:** the `[Current local time: ...]` line injected by the `inject-current-time.sh` UserPromptSubmit hook on every user message. **Never estimate or compute the time from elapsed-step guesses** — read it from the most recent injection. The hook exists because guessing was producing 60+ minute errors and lying in checkpoints (see friction-log 2026-05-18)
 
 **Role voice:** Lighter attribution per paragraph, when relevant:
 - `Petra:` — conversational (session entry, checkpoint flavor, milestones, wrap-up)

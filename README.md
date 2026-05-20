@@ -20,6 +20,7 @@ This isn't about being faster than parallel agents. It's about being quieter. If
 - **Roles** — Keeper (tracks state, logs decisions), Refiner (catches mistakes, proposes fixes), Reviewer (validates plans).
 - **Checkpoint system** — automatic breadcrumbs, prompted brain dumps, checkpoint gates on git commit, recovery on session start.
 - **Persona** — Petra, the Forge Master. Terse, direct, forge-flavored. A wink, not a performance.
+- **Friction framework** — converts recurrent friction (permission prompts, prose-discipline failures, role drift) into script-enforced mitigations. Pattern catalog + classifier + gated friction-log writes + audit. See [docs/ARCHITECTURE.md#friction-framework](docs/ARCHITECTURE.md#friction-framework).
 - **Wellness coach** — optional module. Tracks work time, nudges breaks, escalates if ignored. Three persona styles, calendar/weather awareness.
 
 ## Architecture
@@ -47,9 +48,11 @@ For the full breakdown of components, dependencies, and how the pieces fit toget
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, philosophy, where things live, agent roles overview
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, philosophy, where things live, agent roles overview, friction framework
 - [docs/ROLES.md](docs/ROLES.md) — per-role specifications (Petra, Keeper, Refiner, Reviewer, Architect, Builder, Debugger, Release Manager, Toolsmith)
 - [docs/PROJECT-STRUCTURE.md](docs/PROJECT-STRUCTURE.md) — how to lay out a vault project (INDEX vs checkpoint, on-demand folders, repo-docs symlinks)
+- [core/references/script-replacement-patterns.md](core/references/script-replacement-patterns.md) — 5 patterns for converting recurrent friction into script-enforced mitigations
+- [core/references/friction-classifier.md](core/references/friction-classifier.md) — decision tree for routing friction shape → pattern slug
 
 ## Requirements
 

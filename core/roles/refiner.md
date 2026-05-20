@@ -52,22 +52,34 @@ When triggered mid-task, the Refiner runs **before** the corrected approach is t
 - **Context lost** → If the lost item was a decision, ensure it's logged in the vault. If it was a session-level instruction, propose a checkpoint update to capture it.
 - **Skill gap** → Note the gap in the friction log as a candidate for a new skill or skill enhancement. Do not build the skill in this session — log it for later prioritization.
 
-**Step 3 — Log the friction event.** Append to `${VAULT_PATH}/_shared/friction-log.md` using this structure:
+**Step 3 — Classify the friction (strongly recommended).** Before logging, classify the event against the pattern catalog using `forge-classify-friction.sh`:
 
-```markdown
-### YYYY-MM-DD — {brief title}
-- **Project / Environment:** {project} / {env}
-- **What happened:** {one sentence}
-- **Root cause:** {category from the table above}
-- **Fix applied:** {what was changed, or "pending user approval"}
+- Interactive (when uncertain): `~/.claude/scripts/forge-classify-friction.sh --interactive --description "<event>"`
+- Pre-answered (when category is obvious): `~/.claude/scripts/forge-classify-friction.sh --json-input <(echo '{...}') --description "<event>"`
+
+The output gives `pattern` (one of `hook-injection`, `wrapper-subcommand`, `marker-state-guard`, `allowlist-patch`, `template-slot`, or `needs_new_pattern`) and `action_sketch`.
+
+If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the call below — the framework handles it via write-then-flag. Do not block on classification: roles must never be stuck on ambiguity.
+
+**Step 4 — Log the friction event via the gated subcommand.**
+
+```bash
+~/.claude/scripts/forge-context.sh append-friction \
+  --date $(date +%Y-%m-%d) \
+  --description "<event>" \
+  --pattern <pattern-from-step-3> \
+  --recurrence <N> \
+  --action-ref "tasks/open/<YYYY-MM-DD-slug>.md"
 ```
 
-**Step 4 — Apply the fix (after explicit user approval).** When approved, make the proposed change (rule update, memory entry, etc.) and update the friction log entry's "Fix applied" line with the resulting change.
+The subcommand validates `--pattern` against the catalog, writes to both `friction-log.md` (human) and `friction-classified.json` (machine), and auto-creates a stub task at `--action-ref` when `--recurrence == 1`. On invalid pattern, it falls back to `pattern: unknown` + `validation_failed: true` and returns non-zero — the log is written either way. Never bypass with bare `>>` appends.
+
+**Step 5 — Apply the fix (after explicit user approval).** When approved, make the proposed change (rule update, memory entry, etc.) and record the resolution in the linked action task (the stub at `--action-ref` from Step 4). Do not hand-edit the friction log entry — the gated subcommand is the only write path.
 
 ## Vault interaction
 
-- **Reads:** `${VAULT_PATH}/_shared/friction-log.md` (to avoid duplicate entries), existing rules and memory files (to know what already covers the case), CLAUDE.md files in the active project.
-- **Writes:** `${VAULT_PATH}/_shared/friction-log.md` (always — even when no fix is applied yet); rule/memory/skill files (only after explicit user approval).
+- **Reads:** `${VAULT_PATH}/_shared/friction-log.md` (to avoid duplicate entries), `${VAULT_PATH}/_shared/friction-classified.json` (machine state — for recurrence counts), existing rules and memory files (to know what already covers the case), CLAUDE.md files in the active project.
+- **Writes:** via the `append-friction` subcommand only — which writes `${VAULT_PATH}/_shared/friction-log.md` (human), `${VAULT_PATH}/_shared/friction-classified.json` (machine), and auto-creates a stub task at the supplied `--action-ref` path when `--recurrence == 1`. Rule/memory/skill files: only after explicit user approval.
 
 ## Constraints
 
@@ -83,4 +95,4 @@ When triggered mid-task, the Refiner runs **before** the corrected approach is t
 
 | Agent | File | Last synced |
 |---|---|---|
-| Claude Code | `adapters/claude-code/agents/forge-refiner.md` | 2026-05-05 |
+| Claude Code | `adapters/claude-code/agents/forge-refiner.md` | 2026-05-20 |

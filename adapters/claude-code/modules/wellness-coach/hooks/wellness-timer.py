@@ -87,21 +87,43 @@ def is_vault_write(hook_input):
     return tool_name in ("Write", "Edit") and vault_path in file_path
 
 
-def is_wellness_prefs_access(hook_input):
-    """Check if the tool call targets wellness-preferences.json.
+def is_wellness_state_access(hook_input):
+    """Check if the tool call targets wellness-coach state files.
 
-    During strike, Claude needs to read/write the preferences file to credit
-    a break when the user says they're back. Blocking these creates a deadlock.
+    Covers both `wellness-preferences.json` (user-set config) and
+    `wellness-runtime.json` (auto-modified runtime state including
+    `strike_active` and timer timestamps). During strike, Claude needs
+    read/write access to BOTH so it can credit a break or adjust runtime
+    state — blocking either creates a deadlock where the recovery path
+    is unreachable from the very state that needs recovering.
     """
     tool_name = hook_input.get("tool_name", "")
     tool_input = hook_input.get("tool_input", {})
-    prefs_file = "wellness-preferences.json"
+    state_files = ("wellness-preferences.json", "wellness-runtime.json")
 
     if tool_name in ("Read", "Write", "Edit"):
-        return prefs_file in tool_input.get("file_path", "")
+        path = tool_input.get("file_path", "")
+        return any(f in path for f in state_files)
     if tool_name == "Bash":
-        return prefs_file in tool_input.get("command", "")
+        command = tool_input.get("command", "")
+        return any(f in command for f in state_files)
     return False
+
+
+def is_wellness_script(hook_input):
+    """Check if the tool call is a Bash invocation of a wellness-coach script.
+
+    Scripts under `~/.claude/skills/wellness-coach/scripts/` (notably
+    `wellness-reset.sh`, `wellness-status.sh`) are recovery / inspection
+    helpers. They MUST remain reachable during a strike — otherwise the
+    documented recovery path is broken at the exact moment it's needed.
+    Match is by directory-prefix substring on the Bash command string.
+    """
+    tool_name = hook_input.get("tool_name", "")
+    if tool_name != "Bash":
+        return False
+    command = hook_input.get("tool_input", {}).get("command", "")
+    return "/.claude/skills/wellness-coach/scripts/" in command
 
 
 # ── Output helpers ─────────────────────────────────────────
@@ -202,9 +224,15 @@ def main():
 
     # Strike already active — block most tool calls
     if prefs.get("strike_active"):
-        # Let through: vault writes, wellness prefs access (so user can say
-        # "I'm back" and have Claude credit the break)
-        if is_vault_write(hook_input) or is_wellness_prefs_access(hook_input):
+        # Let through:
+        #   - vault writes (context preservation must not deadlock)
+        #   - wellness state file access (preferences + runtime — recovery path)
+        #   - wellness-coach script invocations (wellness-reset.sh etc. — recovery path)
+        # Without all three, the documented "skill is reachable during a strike"
+        # promise breaks at the runtime layer (see SKILL.md "Strike Conversation").
+        if (is_vault_write(hook_input)
+                or is_wellness_state_access(hook_input)
+                or is_wellness_script(hook_input)):
             sys.exit(0)
 
         elapsed = minutes_since(prefs.get("last_break_timestamp"))

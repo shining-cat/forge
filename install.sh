@@ -50,6 +50,49 @@ run() {
   fi
 }
 
+# Tracks how many user-modified files we backed up during this run.
+# Surfaced in the final summary so the user sees the count + can find them.
+BACKUP_COUNT=0
+
+# safe_cp — backup-then-copy if destination differs from source.
+# Used for runtime files that ship from the repo but may have been customized
+# by the user (skills/hooks/scripts/templates). On re-runs of install.sh,
+# any local modification is preserved as `<dest>.pre-update.<timestamp>` BEFORE
+# being overwritten. Default cp is destructive; this is the safety net.
+#
+# Behavior:
+#   - dest missing             → plain cp (first install)
+#   - dest identical to src    → plain cp (no-op, no backup)
+#   - dest exists AND differs  → backup dest to <dest>.pre-update.<ts>, then cp
+#
+# Supports file→file and file→dir destinations (dest resolved via basename if dir).
+# For glob sources, call safe_cp in a for-loop — keeps the logic single-file per call.
+# Honors --dry-run by printing what would happen without writing anything.
+safe_cp() {
+  local src="$1" dst="$2"
+  # Resolve actual destination path when dst is a directory
+  local actual_dst="$dst"
+  if [ -d "$dst" ]; then
+    actual_dst="${dst%/}/$(basename "$src")"
+  fi
+  if [ "$DRY_RUN" = true ]; then
+    if [ -f "$actual_dst" ] && ! cmp -s "$src" "$actual_dst" 2>/dev/null; then
+      printf "${DIM}    would back up modified: %s${NC}\n" "$actual_dst"
+    fi
+    printf "${DIM}    would run: cp %s %s${NC}\n" "$src" "$dst"
+    return 0
+  fi
+  if [ -f "$actual_dst" ] && ! cmp -s "$src" "$actual_dst" 2>/dev/null; then
+    local ts backup
+    ts=$(date +%Y%m%d-%H%M%S)
+    backup="${actual_dst}.pre-update.${ts}"
+    cp "$actual_dst" "$backup"
+    warn "Backed up modified $(basename "$actual_dst") → $(basename "$backup")"
+    BACKUP_COUNT=$((BACKUP_COUNT + 1))
+  fi
+  cp "$src" "$dst"
+}
+
 # prompt_or_default — read input from tty or fall back to a safe default.
 # Usage: var=$(prompt_or_default "<prompt text>" "<default if non-tty or empty>")
 # - tty: prints prompt to /dev/tty, reads input from /dev/tty, returns input or default if empty
@@ -72,25 +115,56 @@ prompt_or_default() {
   fi
 }
 
-# install_skill_md — copy a SKILL.md, substituting {{VAULT}} → $VAULT_PATH.
+# install_skill_md — install a SKILL.md, substituting {{VAULT}} → $VAULT_PATH,
+# with safe_cp-style backup of locally-modified destinations.
+#
 # Skills that reference the vault from runtime guidance (keeper, refiner,
 # forge-checkpoint) embed {{VAULT}} placeholders so the source file stays
-# portable. Falls through to plain cp when no placeholder is present.
+# portable. The expected on-disk content is therefore the substituted form,
+# not the raw source — naive `cmp src dst` would always report a difference
+# for placeholder skills and trigger spurious backups every install.
+#
+# Behavior mirrors safe_cp:
+#   - dst missing                       → install (no backup)
+#   - dst identical to expected content → install (no-op, no backup)
+#   - dst exists AND differs            → backup dst to <dst>.pre-update.<ts>, then install
 install_skill_md() {
   local src="$1" dst="$2"
+  local has_placeholder=false
+  if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+    has_placeholder=true
+  fi
+
   if [ "$DRY_RUN" = true ]; then
-    if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+    if [ "$has_placeholder" = true ]; then
       printf "${DIM}    would install: %s → %s (with {{VAULT}} → %s)${NC}\n" "$src" "$dst" "$VAULT_PATH"
     else
       printf "${DIM}    would install: %s → %s${NC}\n" "$src" "$dst"
     fi
     return
   fi
-  if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
-    sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$dst"
+
+  # Build the expected install content so we can compare it against the
+  # current destination — this is what backup decisions hinge on.
+  local expected
+  expected="$(mktemp)"
+  if [ "$has_placeholder" = true ]; then
+    sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$expected"
   else
-    cp "$src" "$dst"
+    cp "$src" "$expected"
   fi
+
+  if [ -f "$dst" ] && ! cmp -s "$expected" "$dst" 2>/dev/null; then
+    local ts backup
+    ts=$(date +%Y%m%d-%H%M%S)
+    backup="${dst}.pre-update.${ts}"
+    cp "$dst" "$backup"
+    warn "Backed up modified $(basename "$dst") → $(basename "$backup")"
+    BACKUP_COUNT=$((BACKUP_COUNT + 1))
+  fi
+
+  cp "$expected" "$dst"
+  rm -f "$expected"
 }
 
 # set_conf_key — update or append a key=value line in forge.conf in place
@@ -300,7 +374,7 @@ run mkdir -p "$VAULT_PATH/_shared/tasks/open" \
              "$VAULT_PATH/_templates" \
              "$VAULT_PATH/_meta"
 
-run cp "$FORGE_ROOT/core/vault-templates/"* "$VAULT_PATH/_templates/"
+for tpl in "$FORGE_ROOT/core/vault-templates/"*; do safe_cp "$tpl" "$VAULT_PATH/_templates/"; done
 ok "Vault structure at $VAULT_PATH"
 
 # ─── Encourage vault git-init ────────────────────────────────────────────────
@@ -357,15 +431,15 @@ echo ""
 info "Installing skills..."
 
 # Core skills
-for skill in forge forge-checkpoint forge-exit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+for skill in forge forge-checkpoint forge-exit forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
   install_skill_md "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
-ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
+ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md; do
   run rm -f "$SKILLS_DIR/forge/references/$ref"
   run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
 done
@@ -376,11 +450,11 @@ WC_SRC="$ADAPTER/modules/wellness-coach"
 WC_DST="$SKILLS_DIR/wellness-coach"
 
 run mkdir -p "$WC_DST/hooks" "$WC_DST/scripts" "$WC_DST/src"
-run cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
-run cp "$WC_SRC/README.md" "$WC_DST/"
-run cp "$WC_SRC/hooks/"*.py "$WC_DST/hooks/"
-run cp "$WC_SRC/scripts/"* "$WC_DST/scripts/"
-run cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
+safe_cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
+safe_cp "$WC_SRC/README.md" "$WC_DST/"
+for hook in "$WC_SRC/hooks/"*.py; do safe_cp "$hook" "$WC_DST/hooks/"; done
+for script in "$WC_SRC/scripts/"*; do safe_cp "$script" "$WC_DST/scripts/"; done
+safe_cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
 run chmod +x "$WC_DST/scripts/"*.sh
 ok "Wellness coach files (activation offered during first /forge session)"
 
@@ -402,20 +476,24 @@ info "Installing hooks and scripts..."
 
 run mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
 
-run cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
-run cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
-run cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
-run cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
+safe_cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-classify-friction.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
              "$CLAUDE_DIR/hooks/forge-session-end.sh" \
+             "$CLAUDE_DIR/hooks/inject-current-time.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
              "$CLAUDE_DIR/scripts/forge-permission-lint.sh" \
+             "$CLAUDE_DIR/scripts/forge-classify-friction.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"
@@ -528,7 +606,8 @@ SETTINGS=$(add_hook "PostCompact" "null" "$HOME/.claude/hooks/forge-compaction.s
 SETTINGS=$(add_hook "PostToolUse" "null" "$HOME/.claude/scripts/forge-context.sh post-tool" 5 "$SETTINGS")
 SETTINGS=$(add_hook "Stop" "null" "$HOME/.claude/scripts/forge-context.sh stop" 5 "$SETTINGS")
 SETTINGS=$(add_hook "SessionEnd" "null" "$HOME/.claude/hooks/forge-session-end.sh" 5 "$SETTINGS")
-ok "Hooks (6 core hooks)"
+SETTINGS=$(add_hook "UserPromptSubmit" "null" "$HOME/.claude/hooks/inject-current-time.sh" 2 "$SETTINGS")
+ok "Hooks (7 core hooks)"
 
 # ── Env vars for agent teams ──
 SETTINGS=$(echo "$SETTINGS" | jq '.env = ((.env // {}) + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})')
@@ -594,8 +673,17 @@ info "Installing shell wrapper for agent teams..."
 WRAPPER_FILE="$CLAUDE_DIR/forge-shell-init.sh"
 WRAPPER_SOURCE="$ADAPTER/scripts/forge-shell-init.sh"
 
-run cp "$WRAPPER_SOURCE" "$WRAPPER_FILE"
+safe_cp "$WRAPPER_SOURCE" "$WRAPPER_FILE"
 ok "Wrapper installed at $WRAPPER_FILE"
+
+# tmux config consumed by the wrapper — sources user's ~/.tmux.conf then forces
+# `mouse on` so wheel events scroll tmux's own buffer instead of being translated
+# to arrow keys by the alt-screen (which Claude Code receives as junk input).
+TMUX_CONF_FILE="$CLAUDE_DIR/forge-tmux.conf"
+TMUX_CONF_SOURCE="$ADAPTER/scripts/forge-tmux.conf"
+
+safe_cp "$TMUX_CONF_SOURCE" "$TMUX_CONF_FILE"
+ok "tmux config installed at $TMUX_CONF_FILE"
 
 # Detect user's shell rc file
 SHELL_RC=""
@@ -698,14 +786,18 @@ else
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit-permissions,"
-echo "                 keeper, refiner, plan-reviewer"
+echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions,"
+echo "                 forge-vault-sync, keeper, refiner, plan-reviewer"
 echo "  Agents:        forge-architect, forge-debugger, forge-impl, forge-keeper,"
 echo "                 forge-refiner, forge-release, forge-reviewer, forge-toolsmith"
 echo "  Wellness:      files ready — offered during onboarding"
 echo "  Vault:         $VAULT_PATH"
 echo "  Config:        ~/.claude/forge.conf"
 echo "  Backup:        ~/.claude/settings.json.forge-backup"
+if [ "$BACKUP_COUNT" -gt 0 ]; then
+  echo "  Pre-update:    $BACKUP_COUNT user-modified file(s) backed up as <file>.pre-update.<timestamp>"
+  echo "                 (re-run-safe: customizations preserved, not lost)"
+fi
 echo ""
 echo "  Team substrate (Pattern A agent teams):"
 if command -v tmux &>/dev/null; then

@@ -349,7 +349,18 @@ The coach has personality. If the user just wants to chat:
 
 ## Strike Conversation
 
-The wellness-coach skill is **always reachable**, even during a strike. The PreToolUse hook exempts it. When invoked during an active strike:
+During an active strike, the PreToolUse hook (`wellness-timer.py`) exempts a specific set of surfaces so recovery is reachable:
+
+- **Invoking the wellness-coach skill itself** — clears the strike and enters the strike conversation flow below. This is the primary recovery path.
+- **Read / Write / Edit on `wellness-preferences.json` or `wellness-runtime.json`** — lets the conversation correct timer state directly when crediting a break or fixing runtime data.
+- **Bash invocations of scripts under `~/.claude/skills/wellness-coach/scripts/`** — covers `wellness-reset.sh`, `wellness-status.sh`, and any other recovery / inspection helpers.
+- **Vault writes** — checkpoint / decision persistence must not deadlock during a break.
+
+All other tool calls (`Read` / `Write` / `Edit` on non-state files, arbitrary `Bash`, `Skill` invocations of other skills, etc.) remain blocked until the strike is cleared. If a path you need isn't on the list above, the strike will block it — file an issue in the Forge repo.
+
+**Integration with `/forge-exit`:** the forge-exit flow invokes `wellness-reset.sh --full-reset` as its Step 0, before any checkpoint write or marker deactivation. This relies on the scripts-dir exemption above — if Pip is on strike when the user invokes `/forge-exit`, the wellness reset runs anyway, clearing the strike so the rest of the exit can proceed.
+
+When the wellness-coach skill is invoked during an active strike:
 
 **Flow:**
 1. Read preferences — check `strike_active` and `last_break_timestamp`

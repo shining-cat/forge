@@ -44,6 +44,8 @@ The forge is assembled from Claude Code building blocks:
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
 | `${VAULT_PATH}/_shared/wellness-preferences.json` | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |
 | `~/.claude/forge.conf` | Per-install configuration (vault path, repo path, model assignments) |
+| `~/.claude/forge-shell-init.sh` | Shell wrapper sourced by the user's `~/.zshrc` / `~/.bashrc`. Wraps interactive `claude` invocations in tmux so Pattern A agent teams can spawn as panes without user pre-setup. Auto-bypasses when not interactive, already inside tmux, or tmux is missing. Manual bypass: `FORGE_NO_TMUX_WRAP=1` |
+| `~/.claude/forge-tmux.conf` | tmux config consumed by `forge-shell-init.sh` via `tmux -f`. Sources the user's own `~/.tmux.conf` first (if any) then forces `set -g mouse on` so wheel/trackpad events scroll tmux's own buffer — without it, xterm-family terminals translate wheel events to arrow keys on the alt-screen, which Claude Code receives as junk input |
 | `${VAULT_PATH}/_shared/forge-active` | Session marker — JSON `{session_id, project, started_at, tmux_pane}` (active, owned by that session); empty (deactivated); `__pending__` (launching). Hooks gate on `session_id` so they only fire in the window that ran `/forge`. Lives in the vault to avoid `~/.claude/` sensitive-zone permission prompts |
 | `{vault}/` | Knowledge vault (see [Vault Structure](#vault-structure)) |
 
@@ -87,7 +89,7 @@ See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md) for the per-project layout.
 
 Roles are behaviours, not separate agents. Output uses two layers:
 
-- **Block header** — `[Forge | {PROJECT}]` on its own line at the top of every response. Use the project name, `forge` for forge-level work, or `No project selected`.
+- **Block header** — `[Forge: ENV/Project | HH:MM]` on its own line at the top of every response. ENV is the vault env folder (`PRO`, `PERSO`, etc.); use the project name and `forge` for forge-level work. The `inject-current-time.sh` UserPromptSubmit hook supplies both the current HH:MM and the literal expected prefix string at every prompt, so the header doesn't depend on Claude assembling it from memory — the hook reads the active marker, resolves ENV from vault structure, and injects e.g. `[Forge active for forge — begin your response with: ​`[Forge: PERSO/forge | 16:11]​`]` as authoritative context.
 - **Role voice** — lighter per-paragraph attribution. `Petra:` for conversational voice. `[Keeper]`, `[Refiner]`, etc. for role status tags. Not every paragraph needs attribution.
 
 | Role | Backed by | Responsibility |
@@ -107,6 +109,29 @@ Roles are behaviours, not separate agents. Output uses two layers:
 - **Refiner** — activates on any user correction, before continuing with the corrected approach
 
 For per-role specifications (proactive flag, vault interaction, etc.), see [ROLES.md](ROLES.md).
+
+## Friction framework
+
+Converts recurrent friction events (permission prompts, prose-discipline failures, role drift) into named patterns with deterministic script-enforced mitigations. Aim: stop relying on prose rules ("remember to do X") for things that recur — script them instead.
+
+**Components:**
+
+| Component | Where | Purpose |
+|---|---|---|
+| Pattern catalog | `core/references/script-replacement-patterns.md` | 5 named patterns with when-to-use, how-it-works, exemplars, anti-patterns, scaffolds |
+| Classifier decision tree | `core/references/friction-classifier.md` | Maps friction shape → pattern slug (or `needs_new_pattern`) |
+| Classifier script | `adapters/claude-code/scripts/forge-classify-friction.sh` | Non-interactive keyword routing — emits pattern + action-ref |
+| `append-friction` subcommand | `adapters/claude-code/scripts/forge-context.sh` | Writes structured entry to friction-log + classified JSON; auto-creates stub task at recurrence=1; marker-driven action-ref prefix routes forge-on-forge friction to the project subtree |
+| `audit-prose-rules` subcommand | `adapters/claude-code/scripts/forge-context.sh` | Scans for MUST/Never/always-style prose in skills/scripts; cross-references friction-log for recurrence signal |
+| `/forge-audit` slash command | `adapters/claude-code/skills/forge-audit/` | User-invocable wrapper over `audit-prose-rules` |
+| Refiner protocol extension | `adapters/claude-code/skills/refiner/SKILL.md` step 5 | Classification handoff to `append-friction` when a friction surfaces |
+| Bootstrap retro-classify | `adapters/claude-code/scripts/forge-context.sh bootstrap-classify` | One-shot retrofit of the historical friction-log into structured JSON |
+
+**Data flow:** User correction → Refiner identifies root cause → `forge-classify-friction.sh` returns pattern + action-ref → `forge-context.sh append-friction` writes to `_shared/friction-log.md` (human-readable) + `_shared/friction-classified.json` (machine-readable) + auto-creates stub task at recurrence=1.
+
+**Error handling:** `append-friction` uses write-then-flag — on pattern validation failure, the entry is still written with `validation_failed: true` and `pattern: unknown`, and the subcommand exits non-zero. Refiner can then surface the failure rather than swallow it.
+
+**Spec & rationale:** see vault task `PERSO/forge/tasks/open/2026-05-20-forge-friction-meta-framework.md` for the full design, decision history, and rollout walkthrough.
 
 ## Petra — The Forge Master
 

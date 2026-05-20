@@ -74,8 +74,10 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 **Proactive.** Yes — always active in Forge mode. Activates on any user correction or redirection, before continuing with the corrected approach.
 
 **Vault interaction**
-- **Reads:** existing rules/memories (to avoid duplicates), friction log
-- **Writes:** friction log entries, proposes rule/skill updates
+- **Reads:** existing rules/memories (to avoid duplicates), friction log, pattern catalog, classifier decision tree
+- **Writes:** friction log entries (via `forge-context.sh append-friction` — never edits files directly), proposes rule/skill updates
+
+**Classification handoff.** When a friction surfaces, the Refiner classifies it against the pattern catalog (`core/references/script-replacement-patterns.md`) using the classifier decision tree (`core/references/friction-classifier.md`). Concretely: runs `forge-classify-friction.sh` to derive `{pattern, action-ref}`, then calls `forge-context.sh append-friction --pattern X --recurrence N --action-ref Y` to write the structured entry. The subcommand handles friction-log + classified-JSON writes and auto-creates a stub task at recurrence=1. Direct file edits to the friction log are forbidden — the subcommand is the only write path, which keeps both formats consistent and triggers the marker-driven prefix logic (forge-on-forge friction routes to the project subtree; other friction lands in `_shared/`). See `adapters/claude-code/skills/refiner/SKILL.md` step 5 for the protocol.
 
 ---
 
