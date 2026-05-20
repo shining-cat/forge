@@ -84,7 +84,7 @@ Before logging, classify the event against the pattern catalog using `forge-clas
 
 The output gives `pattern` (one of `hook-injection`, `wrapper-subcommand`, `marker-state-guard`, `allowlist-patch`, `template-slot`, or `needs_new_pattern`) and `action_sketch`.
 
-If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the Step 4 call below — the framework handles it via write-then-flag. Do not block on classification. (See `[[feedback-forge-roles-never-stuck]]`.)
+If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the Step 4 call below — the framework handles it via write-then-flag. Do not block on classification: roles must never be stuck on ambiguity.
 
 ### Step 4 — Log the friction event via the gated subcommand
 
@@ -105,7 +105,7 @@ Always log the event, even if no fix is applied yet. The log is the historical r
 
 ### Step 5 — Apply the fix (after explicit user approval)
 
-Once the user approves, make the change with `Edit`, then update the friction log entry's "Fix applied" line with what shipped.
+Once the user approves, make the change with `Edit`, then record the resolution in the linked action task — the stub at `--action-ref` from Step 4 — using `Edit`. Do not hand-edit the friction log entry; the gated subcommand is the only write path to `friction-log.md`.
 
 ## Vault paths
 
@@ -131,7 +131,8 @@ Common paths:
 | "The user just misspoke" | If you need to guess, ask. Don't dismiss corrections. |
 | "This is a one-off, no need to log" | One-offs reveal patterns. Log it. |
 | "The fix is obvious, just do it" | Never modify rules without approval. Present first. |
-| "I'll update the friction log later" | Write it now. Later = forgotten. |
+| "I'll update the friction log later" | Write it now via `append-friction`. Later = forgotten. |
+| "I'll just `Edit` friction-log.md directly" | The subcommand is the only write path. Bare edits break the machine-readable JSON. |
 
 ## Team-mode notes (when run as an agent-team teammate)
 
