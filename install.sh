@@ -115,6 +115,58 @@ prompt_or_default() {
   fi
 }
 
+# install_skill_md — install a SKILL.md, substituting {{VAULT}} → $VAULT_PATH,
+# with safe_cp-style backup of locally-modified destinations.
+#
+# Skills that reference the vault from runtime guidance (keeper, refiner,
+# forge-checkpoint) embed {{VAULT}} placeholders so the source file stays
+# portable. The expected on-disk content is therefore the substituted form,
+# not the raw source — naive `cmp src dst` would always report a difference
+# for placeholder skills and trigger spurious backups every install.
+#
+# Behavior mirrors safe_cp:
+#   - dst missing                       → install (no backup)
+#   - dst identical to expected content → install (no-op, no backup)
+#   - dst exists AND differs            → backup dst to <dst>.pre-update.<ts>, then install
+install_skill_md() {
+  local src="$1" dst="$2"
+  local has_placeholder=false
+  if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+    has_placeholder=true
+  fi
+
+  if [ "$DRY_RUN" = true ]; then
+    if [ "$has_placeholder" = true ]; then
+      printf "${DIM}    would install: %s → %s (with {{VAULT}} → %s)${NC}\n" "$src" "$dst" "$VAULT_PATH"
+    else
+      printf "${DIM}    would install: %s → %s${NC}\n" "$src" "$dst"
+    fi
+    return
+  fi
+
+  # Build the expected install content so we can compare it against the
+  # current destination — this is what backup decisions hinge on.
+  local expected
+  expected="$(mktemp)"
+  if [ "$has_placeholder" = true ]; then
+    sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$expected"
+  else
+    cp "$src" "$expected"
+  fi
+
+  if [ -f "$dst" ] && ! cmp -s "$expected" "$dst" 2>/dev/null; then
+    local ts backup
+    ts=$(date +%Y%m%d-%H%M%S)
+    backup="${dst}.pre-update.${ts}"
+    cp "$dst" "$backup"
+    warn "Backed up modified $(basename "$dst") → $(basename "$backup")"
+    BACKUP_COUNT=$((BACKUP_COUNT + 1))
+  fi
+
+  cp "$expected" "$dst"
+  rm -f "$expected"
+}
+
 # set_conf_key — update or append a key=value line in forge.conf in place
 set_conf_key() {
   local key="$1" val="$2" conf="$CLAUDE_DIR/forge.conf"
@@ -381,7 +433,7 @@ info "Installing skills..."
 # Core skills
 for skill in forge forge-checkpoint forge-exit forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
-  safe_cp "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
+  install_skill_md "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
 ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
@@ -577,7 +629,7 @@ else
 fi
 
 # ─── Sanitize inherited leading-* Bash patterns (safety net) ────────────────
-# Some upstream installers (notably the Vend Claude wizard) ship `Bash(*foo*)`
+# Some upstream installers ship `Bash(*foo*)`
 # permission patterns. The leading * in Claude Code Bash matchers is interpreted
 # literally — these patterns match nothing, but Forge's permission lint will
 # fail on them. Surgically remove them so the user ends up with a clean install
@@ -589,7 +641,7 @@ if [ "$DRY_RUN" = false ]; then
   if [ "$BROKEN_COUNT" -gt 0 ]; then
     echo ""
     info "Detected $BROKEN_COUNT inherited \`Bash(*foo*)\` permission pattern(s)..."
-    hint "These come from a previous installer (most likely the Vend Claude wizard)."
+    hint "These typically come from a previous third-party installer."
     hint "Leading * in Bash matchers is literal — these patterns match nothing,"
     hint "and Forge's permission lint will fail on them."
     hint "Backing up + sanitizing so the lint passes."

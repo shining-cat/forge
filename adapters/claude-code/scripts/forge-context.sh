@@ -213,19 +213,34 @@ get_vault_dir() {
   return 1
 }
 
-# Resolve project repo directory by scanning $HOME_DIR/__DEV/{env}/{project}/
-# case-insensitively. Skips Vault* and underscore-prefixed dirs at the env level.
+# Resolve project repo directory by scanning configured REPO_ROOTS.
+# REPO_ROOTS in forge.conf is a colon-separated list of directories to scan.
+# Defaults to $HOME_DIR/__DEV for backward compatibility. Each root is scanned
+# at depth 1 (flat layout: ROOT/project/) and at depth 2 (env-nested layout:
+# ROOT/env/project/), case-insensitively. Underscore-prefixed and Vault*
+# directories at the env level are skipped.
 # Emits stderr warning + empty stdout if no match.
 get_project_dir() {
   local project="$1"
   local target_lower
   target_lower="$(echo "$project" | tr '[:upper:]' '[:lower:]')"
-  local env_dir env_name proj_dir proj_name
-  for env_dir in "$HOME_DIR/__DEV"/*/; do
-    [ -d "$env_dir" ] || continue
-    env_name="$(basename "$env_dir")"
-    case "$env_name" in _*|Vault*) continue ;; esac
-    for proj_dir in "$env_dir"*/; do
+
+  local repo_roots
+  repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2-)"
+  if [ -z "$repo_roots" ]; then
+    repo_roots="$HOME_DIR/__DEV"
+  fi
+
+  local root sub_dir sub_name proj_dir proj_name
+  local IFS=':'
+  for root in $repo_roots; do
+    # Expand leading ~ to $HOME so users can write paths the natural way.
+    case "$root" in
+      "~"*) root="$HOME${root#\~}" ;;
+    esac
+    [ -d "$root" ] || continue
+    # Depth 1: flat layout (ROOT/project/)
+    for proj_dir in "$root"/*/; do
       [ -d "$proj_dir" ] || continue
       proj_name="$(basename "$proj_dir")"
       if [ "$(echo "$proj_name" | tr '[:upper:]' '[:lower:]')" = "$target_lower" ]; then
@@ -233,8 +248,32 @@ get_project_dir() {
         return 0
       fi
     done
+    # Depth 2: env-nested layout (ROOT/env/project/)
+    for sub_dir in "$root"/*/; do
+      [ -d "$sub_dir" ] || continue
+      sub_name="$(basename "$sub_dir")"
+      case "$sub_name" in _*|Vault*) continue ;; esac
+      for proj_dir in "$sub_dir"*/; do
+        [ -d "$proj_dir" ] || continue
+        proj_name="$(basename "$proj_dir")"
+        if [ "$(echo "$proj_name" | tr '[:upper:]' '[:lower:]')" = "$target_lower" ]; then
+          echo "${proj_dir%/}"
+          return 0
+        fi
+      done
+    done
   done
-  echo "[forge-context] no project repo found for '$project' under $HOME_DIR/__DEV/" >&2
+  # Emit warning once per session — repeated misses during a single session
+  # are the same miss; cascading through every PreToolUse hook spams stderr
+  # and drowns useful output. Marker is keyed on session id so concurrent
+  # sessions each get one warning, and PID-based fallback ensures uniqueness
+  # outside of Claude Code (e.g. manual script runs).
+  local sid="${CLAUDE_CODE_SESSION_ID:-$$}"
+  local warn_marker="/tmp/forge-context-warned-${sid}"
+  if [ ! -f "$warn_marker" ]; then
+    echo "[forge-context] no project repo found for '$project' under: $repo_roots" >&2
+    touch "$warn_marker" 2>/dev/null || true
+  fi
   return 1
 }
 
@@ -707,14 +746,14 @@ do_recover() {
     if [ -n "$remote" ]; then
       echo ""
       echo "--- PRs ---"
-      local repo pr_json
-      if echo "$remote" | grep -q "github.schibsted.io"; then
-        repo="$(echo "$remote" | sed 's|.*github.schibsted.io[:/]||;s|\.git$||')"
-        pr_json="$(GH_HOST=github.schibsted.io gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
-      else
-        repo="$(echo "$remote" | sed 's|.*github.com[:/]||;s|\.git$||')"
-        pr_json="$(GH_HOST=github.com gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
-      fi
+      # Extract host from remote URL — works for github.com and any GitHub
+      # Enterprise instance without hardcoding hostnames. Supports both SSH
+      # (git@host:org/repo.git) and HTTPS (https://host/org/repo.git) forms.
+      local host repo pr_json
+      host="$(echo "$remote" | sed -nE 's#^(https?://|git@)([^/:]+)[/:].*#\2#p')"
+      [ -z "$host" ] && host="github.com"
+      repo="$(echo "$remote" | sed "s|.*${host}[:/]||;s|\.git$||")"
+      pr_json="$(GH_HOST="$host" gh pr list --author @me --repo "$repo" --state open --limit 5 --json number,title,reviewDecision 2>/dev/null)"
       if [ -n "$pr_json" ] && [ "$pr_json" != "[]" ]; then
         echo "$pr_json" | python3 -c "
 import sys,json

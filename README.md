@@ -166,7 +166,7 @@ Offered during first `/forge` session. Can be enabled/disabled anytime.
 
 Create directories in your vault:
 ```bash
-mkdir -p ~/Vault/{project}/decisions ~/Vault/{project}/architecture
+mkdir -p "$VAULT_PATH/{project}/decisions" "$VAULT_PATH/{project}/architecture"
 ```
 
 Then start a Forge session in that project's directory.

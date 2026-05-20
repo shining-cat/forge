@@ -99,7 +99,7 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
 
    Patterns to add (substituting the user's actual home directory):
    - `Bash(~/.claude/skills/wellness-coach/scripts/*)` and `Bash(<HOME>/.claude/skills/wellness-coach/scripts/*)`
-   - Where `<HOME>` is the user's actual home directory (e.g. `/Users/shiva.bernhard@m10s.io`)
+   - Where `<HOME>` is the user's actual home directory (e.g. `/Users/<your-username>`)
 
    Wellness preferences live at `${VAULT_PATH}/_shared/wellness-preferences.json` — covered by the existing vault allowlist, no per-file permission needed.
 3. Add these hooks if not present:
@@ -176,8 +176,8 @@ If only one project/environment exists in the vault so far AND the user works ac
 
 Each environment gets its own:
 
-- **folder root** — e.g. `~/__DEV/PERSO/`, `~/__DEV/SCHIBSTED/`, or `~/projects/work`, `~/projects/personal`
-- **vault section** — `Vault/PERSO/{project}/`, `Vault/SCHIBSTED/{project}/`, ...
+- **folder root** — e.g. `~/projects/work`, `~/projects/personal`, or any layout you prefer (one root per environment)
+- **vault section** — `Vault/{ENV}/{project}/` — one section per environment
 - **git identity** — set via `.gitconfig.<env>` files referenced from `~/.gitconfig` with `includeIf "gitdir:..."`. Keeps personal vs work commits attributed to the right email automatically based on the directory you're in
 
 **Why it matters:**
@@ -237,7 +237,7 @@ Read the existing `${VAULT_PATH}/_shared/forge-active`. Behavior depends on what
 
 Run `~/.claude/scripts/forge-context.sh set-marker pending` via the Bash tool. This writes the literal sentinel `__pending__` to `${VAULT_PATH}/_shared/forge-active`. This MUST happen before any project disambiguation question is asked.
 
-Why: it signals "Forge is launching, no project chosen yet" — distinct from missing (never installed) and empty (deactivated). Hooks suppress brain-dump nags and Keeper warnings during this state. Without this step, an auto-memory hint (e.g., "you were on FINN last time") could prematurely set the marker to the wrong project, causing Keeper hooks to fire against the wrong vault before the user has actually chosen.
+Why: it signals "Forge is launching, no project chosen yet" — distinct from missing (never installed) and empty (deactivated). Hooks suppress brain-dump nags and Keeper warnings during this state. Without this step, an auto-memory hint (e.g., "you were on project-X last time") could prematurely set the marker to the wrong project, causing Keeper hooks to fire against the wrong vault before the user has actually chosen.
 
 **Do NOT use the Write tool for the marker.** The script is fully allowlisted (`Bash(~/.claude/scripts/forge-context.sh *)`), so the marker write completes silently. The Write tool would trigger Claude Code's overwrite-existing-file confirmation prompt — a separate safety dialog from the permission allowlist that cannot be bypassed.
 
@@ -254,7 +254,7 @@ Once the project is unambiguously chosen, run `~/.claude/scripts/forge-context.s
 ```json
 {
   "session_id": "<value of $CLAUDE_CODE_SESSION_ID at session start>",
-  "project": "<the chosen project name, e.g. FINN>",
+  "project": "<the chosen project name, e.g. my-app>",
   "started_at": "<output of `date +'%Y-%m-%dT%H:%M:%S%z'`>",
   "tmux_pane": "<value of $TMUX_PANE if set, else null>"
 }
@@ -394,7 +394,7 @@ For the remainder of this session, the following rules are active:
 
 **Block header:** Every response starts with `[Forge: ENV/Project | HH:MM]` on its own line.
 
-- Use the active environment + project: `[Forge: PRO/FINN | 14:37]`, `[Forge: PERSO/SimpleHIIT | 09:12]`
+- Use the active environment + project: `[Forge: WORK/my-app | 14:37]`, `[Forge: PERSO/my-side-project | 09:12]`
 - For forge-level work (vault, skills, tooling): `[Forge: PERSO/forge | 14:37]` — Forge is itself a PERSO project (decision 2026-04-24)
 - When no project is selected: `[Forge: no project selected | 14:37]`
 - 24-hour `HH:MM`, no timezone (keeps the header visually light — the timezone is rarely useful in the header itself, and the full `[Current local time: ...]` injection still has it as ground truth)
@@ -524,7 +524,7 @@ The list is meant to evolve. Starting a PR review is a quiet enough moment to ab
 
 ### Pattern A — execution protocol
 
-When dispatching a Pattern A pair (e.g. forge-reviewer + forge-refiner on the same artifact), follow this protocol. Validated against FINN PR #12271 trial (2026-05-05); see `forge-agent-teams-evaluation` task for the supporting findings.
+When dispatching a Pattern A pair (e.g. forge-reviewer + forge-refiner on the same artifact), follow this protocol. Validated 2026-05-05 — see `forge-agent-teams-evaluation` task for the supporting findings.
 
 **1. Sequence the dispatch — don't run truly parallel.**
 Roles with overlapping concerns need to know what each other found, or the back half of the team duplicates effort *or* leaves gaps in the don't-overlap zone. Run them in tiers:
