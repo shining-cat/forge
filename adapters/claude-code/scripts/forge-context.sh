@@ -8,7 +8,8 @@ set -euo pipefail
 HOME_DIR="$HOME"
 
 # Resolve marker path from forge.conf VAULT_PATH
-FORGE_CONF="$HOME_DIR/.claude/forge.conf"
+# Allow tests to override the config path
+FORGE_CONF="${FORGE_CONF_OVERRIDE:-$HOME_DIR/.claude/forge.conf}"
 if [ ! -f "$FORGE_CONF" ]; then
   echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
   exit 1
@@ -20,6 +21,10 @@ if [ -z "$VAULT_PATH" ]; then
 fi
 MARKER="$VAULT_PATH/_shared/forge-active"
 STOP_COUNT_FILE="$VAULT_PATH/_shared/forge-session-stops"
+FRICTION_LOG="$VAULT_PATH/_shared/friction-log.md"
+FRICTION_CLASSIFIED="$VAULT_PATH/_shared/friction-classified.json"
+# Catalog defaults to source-of-truth; tests can override
+FORGE_PATTERN_CATALOG="${FORGE_PATTERN_CATALOG:-$HOME_DIR/.claude/skills/forge/references/script-replacement-patterns.md}"
 
 # Vault drift thresholds — recover() warns when any one is exceeded
 VAULT_DRIFT_COMMITS_AHEAD=5
@@ -232,8 +237,8 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker)
-    # No stdin read, no guards. do_set_marker only needs $MARKER.
+  set-marker|append-friction)
+    # No stdin read, no guards. These operate on marker/shared state only.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -1135,6 +1140,138 @@ do_append_braindump() {
   printf '\n%s\n' "$content" >> "$BRAINDUMP_FILE"
 }
 
+# ── Subcommand: append-friction (structured friction-log entry + JSON index) ──
+# Writes to both friction-log.md (human-readable) and friction-classified.json
+# (machine-readable). Validates --pattern against catalog; on invalid pattern,
+# falls back to pattern=unknown + validation_failed=true tag, writes anyway,
+# returns non-zero exit.
+#
+# Auto-creates stub task at --action-ref when --recurrence == 1.
+#
+# Args (all required unless noted):
+#   --date YYYY-MM-DD
+#   --description "..."
+#   --pattern <slug-from-catalog|needs_new_pattern>
+#   --recurrence <N>
+#   --action-ref "tasks/open/<slug>.md|needs_new_pattern"
+do_append_friction() {
+  local date_arg="" desc="" pattern="" recurrence="" action_ref=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --date)         date_arg="$2"; shift 2 ;;
+      --description)  desc="$2"; shift 2 ;;
+      --pattern)      pattern="$2"; shift 2 ;;
+      --recurrence)   recurrence="$2"; shift 2 ;;
+      --action-ref)   action_ref="$2"; shift 2 ;;
+      *) echo "[append-friction] unknown arg: $1" >&2; exit 2 ;;
+    esac
+  done
+
+  for v in date_arg desc pattern recurrence action_ref; do
+    if [ -z "${!v}" ]; then
+      echo "[append-friction] missing required arg: --${v//_/-}" >&2
+      exit 2
+    fi
+  done
+
+  # Validate pattern against catalog (or accept escape value)
+  local validation_failed=false
+  local original_pattern="$pattern"
+  if [ "$pattern" != "needs_new_pattern" ] && [ "$pattern" != "unknown" ]; then
+    if [ ! -f "$FORGE_PATTERN_CATALOG" ]; then
+      echo "[append-friction] WARN: catalog not found at $FORGE_PATTERN_CATALOG; accepting pattern unchecked" >&2
+    else
+      if ! grep -qE "^## ${pattern}\$" "$FORGE_PATTERN_CATALOG"; then
+        echo "[append-friction] FAIL: pattern '$pattern' not in catalog; falling back to 'unknown'" >&2
+        validation_failed=true
+        pattern="unknown"
+      fi
+    fi
+  fi
+
+  # Ensure files exist
+  mkdir -p "$(dirname "$FRICTION_LOG")"
+  [ -f "$FRICTION_LOG" ] || : > "$FRICTION_LOG"
+  if [ ! -f "$FRICTION_CLASSIFIED" ]; then
+    echo '{"entries":[]}' > "$FRICTION_CLASSIFIED"
+  fi
+
+  # Append to friction-log.md (human-readable)
+  {
+    printf '\n### %s — %s\n' "$date_arg" "$desc"
+    printf -- '- **Pattern:** %s\n' "$pattern"
+    printf -- '- **Recurrence:** %s\n' "$recurrence"
+    printf -- '- **Action:** %s\n' "$action_ref"
+    if [ "$validation_failed" = "true" ]; then
+      printf -- '- **Validation:** failed (original pattern: %s)\n' "$original_pattern"
+    fi
+  } >> "$FRICTION_LOG"
+
+  # Append to friction-classified.json (machine-readable)
+  tmp_json=$(mktemp)
+  jq -c --arg d "$date_arg" \
+     --arg desc "$desc" \
+     --arg p "$pattern" \
+     --arg op "$original_pattern" \
+     --argjson r "$recurrence" \
+     --arg a "$action_ref" \
+     --argjson vf "$validation_failed" \
+     '.entries += [{
+        date: $d,
+        description: $desc,
+        pattern: $p,
+        recurrence: $r,
+        action_ref: $a,
+        validation_failed: $vf,
+        original_pattern: $op
+     }]' "$FRICTION_CLASSIFIED" > "$tmp_json"
+  mv "$tmp_json" "$FRICTION_CLASSIFIED"
+
+  # Auto-create stub task if recurrence == 1 and action-ref is a real path
+  if [ "$recurrence" = "1" ] && [ "$action_ref" != "needs_new_pattern" ]; then
+    # Auto-prefix relative tasks/ paths with _shared/ (friction is a shared concern)
+    local resolved_ref="$action_ref"
+    if [[ "$action_ref" == tasks/* ]]; then
+      resolved_ref="_shared/$action_ref"
+    fi
+    local stub_path="$VAULT_PATH/$resolved_ref"
+    if [ ! -f "$stub_path" ]; then
+      mkdir -p "$(dirname "$stub_path")"
+      cat > "$stub_path" <<EOF
+---
+created: $date_arg
+updated: $date_arg
+project: forge
+type: task
+status: needs-triage
+tags: [friction-stub, $pattern]
+---
+
+# $desc
+
+## What / Why
+
+Auto-created from friction-log entry. Classified as **$pattern**. See [[script-replacement-patterns]] for pattern details and [[friction-classifier]] for the routing logic.
+
+**Original friction:** $desc
+
+## Plan
+
+(triage required — flesh out the fix per the pattern's How-it-works)
+
+## Progress
+
+## Resolution
+EOF
+    fi
+  fi
+
+  # Exit code: non-zero if validation failed (write-then-flag)
+  if [ "$validation_failed" = "true" ]; then
+    exit 1
+  fi
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -1150,8 +1287,9 @@ case "$SUBCMD" in
   check-install)     do_check_install ;;
   set-marker)        do_set_marker "${@:2}" ;;
   append-braindump)  do_append_braindump "${@:2}" ;;
+  append-friction)   do_append_friction "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction}" >&2
     exit 1
     ;;
 esac
