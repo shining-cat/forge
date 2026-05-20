@@ -183,7 +183,17 @@ get_project_dir() {
       done
     done
   done
-  echo "[forge-context] no project repo found for '$project' under: $repo_roots" >&2
+  # Emit warning once per session — repeated misses during a single session
+  # are the same miss; cascading through every PreToolUse hook spams stderr
+  # and drowns useful output. Marker is keyed on session id so concurrent
+  # sessions each get one warning, and PID-based fallback ensures uniqueness
+  # outside of Claude Code (e.g. manual script runs).
+  local sid="${CLAUDE_CODE_SESSION_ID:-$$}"
+  local warn_marker="/tmp/forge-context-warned-${sid}"
+  if [ ! -f "$warn_marker" ]; then
+    echo "[forge-context] no project repo found for '$project' under: $repo_roots" >&2
+    touch "$warn_marker" 2>/dev/null || true
+  fi
   return 1
 }
 
