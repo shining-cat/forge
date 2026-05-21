@@ -672,6 +672,208 @@ do_auto_archive() {
   fi
 }
 
+# ── Open-task staleness audit (recovery sibling of auto-archive) ────────
+# Auto-archive only fires for tasks whose frontmatter already says `status: resolved`.
+# The drift pattern (shipped tasks left at `status: open`) is invisible to it. This
+# audit surfaces candidates: top-level *.md files in tasks/open/ where
+#   - mtime older than STALE_DAYS, AND
+#   - filename slug NOT mentioned anywhere in current-checkpoint.md
+# Both conditions together filter out actively-paused work. Visibility-only —
+# never auto-flips frontmatter; user/Claude verifies + flips per task.
+#
+# Also flags `tasks/done/` folders as one-time-migration prompts. `resolved/` is
+# the canonical bucket; `done/` is a legacy alias caught in FINN on 2026-05-21.
+STALE_TASK_DAYS=7
+audit_open_tasks_one() {
+  local proj_dir="$1"
+  local open_dir="$proj_dir/tasks/open"
+  local checkpoint="$proj_dir/current-checkpoint.md"
+  [ -d "$open_dir" ] || return 0
+
+  local now stale_threshold_secs cp_text
+  now="$(date +%s)"
+  stale_threshold_secs=$(( STALE_TASK_DAYS * 86400 ))
+  cp_text=""
+  [ -f "$checkpoint" ] && cp_text="$(cat "$checkpoint" 2>/dev/null)"
+
+  local f base slug short_slug mtime age_secs age_days
+  while IFS= read -r -d '' f; do
+    [ "$(dirname "$f")" = "$open_dir" ] || continue
+    base="$(basename "$f")"
+    slug="${base%.md}"
+    short_slug="${slug#????-??-??-}"
+
+    mtime="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+    age_secs=$(( now - mtime ))
+    [ "$age_secs" -ge "$stale_threshold_secs" ] || continue
+
+    if [ -n "$cp_text" ]; then
+      printf '%s' "$cp_text" | grep -qF "$slug" 2>/dev/null && continue
+      printf '%s' "$cp_text" | grep -qF "$short_slug" 2>/dev/null && continue
+    fi
+
+    age_days=$(( age_secs / 86400 ))
+    echo "$age_days|$base"
+  done < <(find "$open_dir" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null) \
+    | sort -t'|' -k1,1 -rn
+}
+
+do_open_task_audit() {
+  local stale_blocks="" migration_warnings=""
+  local env_dir env_name proj_dir proj_name
+
+  # Iterate concrete envs (skip _shared/_templates) plus _shared explicitly.
+  local scan_dirs=()
+  for env_dir in "$VAULT_PATH"/*/; do
+    [ -d "$env_dir" ] || continue
+    env_name="$(basename "$env_dir")"
+    case "$env_name" in _*) ;; *) :;; esac
+    case "$env_name" in
+      _shared) scan_dirs+=("$env_dir") ;;
+      _*) continue ;;
+      *)
+        for proj_dir in "$env_dir"*/; do
+          [ -d "$proj_dir" ] || continue
+          scan_dirs+=("$proj_dir")
+        done
+        ;;
+    esac
+  done
+
+  local scan_dir
+  for scan_dir in "${scan_dirs[@]}"; do
+    proj_dir="${scan_dir%/}"
+    proj_name="$(basename "$(dirname "$proj_dir")")/$(basename "$proj_dir")"
+    [ "$(basename "$proj_dir")" = "_shared" ] && proj_name="_shared"
+
+    if [ -d "$proj_dir/tasks/done" ]; then
+      local done_count
+      done_count="$(find "$proj_dir/tasks/done" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+      migration_warnings="${migration_warnings}  - ${proj_name}: tasks/done/ exists (${done_count} files) — migrate to tasks/resolved/ (canonical bucket)"$'\n'
+    fi
+
+    local rows
+    rows="$(audit_open_tasks_one "$proj_dir")"
+    if [ -n "$rows" ]; then
+      stale_blocks="${stale_blocks}  ${proj_name}:"$'\n'
+      stale_blocks="${stale_blocks}$(echo "$rows" | awk -F'|' '{printf "    - %s (%dd)\n", $2, $1}')"$'\n'
+    fi
+  done
+
+  if [ -z "$stale_blocks" ] && [ -z "$migration_warnings" ]; then
+    return 0
+  fi
+
+  echo ""
+  echo "--- Open-Task Audit ---"
+  if [ -n "$migration_warnings" ]; then
+    echo "Legacy 'done/' folder(s) — migrate to canonical 'resolved/':"
+    printf "%s" "$migration_warnings"
+  fi
+  if [ -n "$stale_blocks" ]; then
+    echo "Possibly-shipped tasks (>${STALE_TASK_DAYS}d, not in checkpoint):"
+    printf "%s" "$stale_blocks"
+    echo "Verify each (ship via PR? status already flipped?) then update frontmatter."
+  fi
+}
+
+# ── BACKLOG.md staleness audit ──────────────────────────────────────────
+# Each project's BACKLOG.md is hand-curated from tasks/open/ + tasks/resolved/
+# inventory. It drifts whenever a task moves between buckets without a BACKLOG
+# refresh. Two cheap signals:
+#   - BACKLOG mtime at least 1 day behind the most recent tasks/{open,resolved}/
+#     mtime (0d gaps are noise — same-session BACKLOG edits land near task edits)
+#   - distinct wikilink count in BACKLOG diverges from tasks/open/*.md count
+#     (slack ±3 — banner mentions of closed-since-last-update + wikilinks to
+#      umbrella sub-tasks inflate the count harmlessly)
+# Visibility-only: prints which BACKLOGs look stale and how. Manual regen via
+# /forge-backlog (or hand-edit) is the closure step.
+BACKLOG_ROW_COUNT_SLACK=3
+BACKLOG_MTIME_GAP_MIN_DAYS=1
+do_backlog_audit() {
+  local drift_lines=""
+  local env_dir env_name proj_dir proj_name backlog
+
+  local scan_dirs=()
+  for env_dir in "$VAULT_PATH"/*/; do
+    [ -d "$env_dir" ] || continue
+    env_name="$(basename "$env_dir")"
+    case "$env_name" in
+      _shared) scan_dirs+=("$env_dir") ;;
+      _*) continue ;;
+      *)
+        for proj_dir in "$env_dir"*/; do
+          [ -d "$proj_dir" ] || continue
+          scan_dirs+=("$proj_dir")
+        done
+        ;;
+    esac
+  done
+
+  local scan_dir
+  for scan_dir in "${scan_dirs[@]}"; do
+    proj_dir="${scan_dir%/}"
+    backlog="$proj_dir/BACKLOG.md"
+    [ -f "$backlog" ] || continue
+
+    proj_name="$(basename "$(dirname "$proj_dir")")/$(basename "$proj_dir")"
+    [ "$(basename "$proj_dir")" = "_shared" ] && proj_name="_shared"
+
+    local backlog_mtime newest_task_mtime
+    backlog_mtime="$(stat -f %m "$backlog" 2>/dev/null || stat -c %Y "$backlog" 2>/dev/null || echo 0)"
+
+    newest_task_mtime=0
+    local t_dir m
+    for t_dir in "$proj_dir/tasks/open" "$proj_dir/tasks/resolved" "$proj_dir/tasks/done"; do
+      [ -d "$t_dir" ] || continue
+      m="$(find "$t_dir" -type f -name '*.md' -exec stat -f %m {} \; 2>/dev/null | sort -rn | head -1)"
+      [ -z "$m" ] && m="$(find "$t_dir" -type f -name '*.md' -exec stat -c %Y {} \; 2>/dev/null | sort -rn | head -1)"
+      if [ -n "$m" ] && [ "$m" -gt "$newest_task_mtime" ]; then
+        newest_task_mtime="$m"
+      fi
+    done
+
+    local issues=""
+    if [ "$newest_task_mtime" -gt "$backlog_mtime" ]; then
+      local gap_days=$(( (newest_task_mtime - backlog_mtime) / 86400 ))
+      if [ "$gap_days" -ge "$BACKLOG_MTIME_GAP_MIN_DAYS" ]; then
+        issues="older than tasks/ activity (${gap_days}d gap)"
+      fi
+    fi
+
+    local open_count backlog_refs
+    open_count=0
+    if [ -d "$proj_dir/tasks/open" ]; then
+      open_count="$(find "$proj_dir/tasks/open" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+    # `|| echo 0` — grep no-match returns 1, which `pipefail` propagates and
+    # `set -e` would abort on. BACKLOGs with zero wikilinks are valid (e.g.
+    # an empty starter file).
+    backlog_refs="$( { grep -oE '\[\[[0-9]{4}-[0-9]{2}-[0-9]{2}-[^]]+\]\]' "$backlog" 2>/dev/null || true; } | sort -u | wc -l | tr -d ' ')"
+
+    if [ "$open_count" -gt 0 ] && [ "$backlog_refs" -gt 0 ]; then
+      local diff
+      diff=$(( open_count - backlog_refs ))
+      local abs_diff="${diff#-}"
+      if [ "$abs_diff" -gt "$BACKLOG_ROW_COUNT_SLACK" ]; then
+        [ -n "$issues" ] && issues="${issues}; "
+        issues="${issues}row count diverges (${backlog_refs} wikilinks vs ${open_count} open tasks)"
+      fi
+    fi
+
+    if [ -n "$issues" ]; then
+      drift_lines="${drift_lines}  - ${proj_name}: ${issues}"$'\n'
+    fi
+  done
+
+  if [ -n "$drift_lines" ]; then
+    echo ""
+    echo "--- BACKLOG Staleness ---"
+    printf "%s" "$drift_lines"
+    echo "Refresh by hand or via the project's BACKLOG regen workflow."
+  fi
+}
+
 do_recover() {
   echo "=== FORGE RECOVERY — $PROJECT_NAME ==="
 
@@ -742,7 +944,10 @@ do_recover() {
   # PRs (if project has a git remote)
   if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
     local remote
-    remote="$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null)"
+    # `|| true` because `git remote get-url origin` exits 128 on a repo with
+    # no `origin` set yet (brand-new project, local-only sandbox). Without it,
+    # `set -euo pipefail` aborts recover before the audits run.
+    remote="$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || true)"
     if [ -n "$remote" ]; then
       echo ""
       echo "--- PRs ---"
@@ -771,6 +976,12 @@ for pr in json.load(sys.stdin):
   # downstream reflects the post-archive moves (signal to user that there are
   # uncommitted moves to commit).
   do_auto_archive
+
+  # Drift safety net — auto-archive only catches tasks whose frontmatter already
+  # says `status: resolved`. These audits surface candidates that the trigger
+  # (manual frontmatter flip) missed. Visibility-only, no auto-mutation.
+  do_open_task_audit
+  do_backlog_audit
 
   # Install drift — surface if Forge runtime is behind the source repo.
   do_check_install_drift
