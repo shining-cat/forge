@@ -589,7 +589,9 @@ Role attribution stays visible inline — source column in the table, source tag
 - Zero concerns + zero nits → collapse to "Approved, no findings, here are the positive notes."
 - Heavily-overlapping findings (rare — Pattern A is designed against this) → the table calls out the overlap explicitly rather than letting the reader spot it.
 
-**Canonical example:** `${VAULT_PATH}/PRO/FINN/2026-05-21-pr-12460-review.md` (post-restructure shape, regenerated 2026-05-21 after user push-back on the duplicating-everything default).
+**Output path:** `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/reviews/YYYY-MM-DD-pr-NNNN-review.md`. PR reviews aren't tasks in the lifecycle sense (no `status: open → resolved` flip), but they're task-adjacent artifacts produced *about* shipped work. Living under `tasks/reviews/` (sibling to `tasks/open/` and `tasks/resolved/`) keeps the project root clean as Pattern A gets used more.
+
+**Canonical example:** `${VAULT_PATH}/PRO/FINN/tasks/reviews/2026-05-21-pr-12460-review.md` (post-restructure shape, regenerated 2026-05-21 after user push-back on the duplicating-everything default).
 
 **Limitations to remember:**
 - One team per session (Petra can't run a permanent role-team alongside an ad-hoc team).
