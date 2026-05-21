@@ -564,6 +564,33 @@ If session entry detected "Team substrate: missing" (no tmux, or tmux installed 
 
 Same trigger evaluation, same Refiner brief constraints, same pre-shutdown follow-ups (just no teammates to ask, since this is sequential subagent dispatch). The only loss is concurrent observability — which is fine when substrate isn't there to support it. Inline fallback shipped via change-set #6 of `2026-05-07-forge-team-substrate-install` task.
 
+**6. Synthesis output structure.**
+The synthesis is the artifact the user posts — the agents' work is invisible until it lands in this document. Pattern A is expensive (two role passes, sequenced dispatch), so a bad synthesis erases the spend. Default to this shape; deviations need a reason.
+
+**Required structure (seven sections, in order):**
+
+1. **Header** — one line each: PR link · author · reviewed-date+agents · size · verdict counts.
+2. **TL;DR — feedback to leave on the PR** — paste-ready blockquote in second person, ordered as direct feedback the author can act on. Opens with a grounding positive note, then `**Before merge — N items because [reason]:**` (numbered, file:line + one-line rationale each), then `**Optional polish — none individually blocking:**` (bulleted, cross-ref to detail entry numbers).
+3. **All findings** — single table: `# / Severity / Source (Reviewer or Refiner) / File / Title`. Dashboard view. One entry per finding, no duplication.
+4. **Details** — single numbered list 1..N in table order. Each entry: severity+source tagged header (e.g. `### 3. concern (Refiner) — title`), file:line, observation, why-it-bites, concrete relief, code sample only when load-bearing.
+5. **Correctness checklist** — Reviewer-only value (side-effects / timeouts / wiring / layering). Kept because it's non-duplicative — structural verification that doesn't appear in any individual finding.
+6. **Positive notes** — Refiner-only value. What's worth keeping as the template gets copied.
+7. **About this review** — Pattern A explanation (Tier 1 / Tier 2 / Tier 3, anti-anchoring rationale, source-report file paths for traceability) — appendix, NOT opener.
+
+Role attribution stays visible inline — source column in the table, source tag on each detail header. That preserves Pattern A provenance without forcing the reader through two parallel structures.
+
+**Anti-patterns (easy defaults that fail the user):**
+- Two verbatim role reports side-by-side — duplicates findings, doubles read cost (N findings × 2 = 2N read events for what should be N).
+- "Suggested triage" / "Priority recommendations" table replacing direct PR-author feedback — forces the reader to translate before they can post anything.
+- Pattern A explanation at the top — buries the action under protocol meta.
+- Findings appearing in both the combined table AND per-role report sections — same finding read twice.
+
+**When to vary:**
+- Zero concerns + zero nits → collapse to "Approved, no findings, here are the positive notes."
+- Heavily-overlapping findings (rare — Pattern A is designed against this) → the table calls out the overlap explicitly rather than letting the reader spot it.
+
+**Canonical example:** `${VAULT_PATH}/PRO/FINN/2026-05-21-pr-12460-review.md` (post-restructure shape, regenerated 2026-05-21 after user push-back on the duplicating-everything default).
+
 **Limitations to remember:**
 - One team per session (Petra can't run a permanent role-team alongside an ad-hoc team).
 - No nested teams (a teammate can't spawn its own team).
