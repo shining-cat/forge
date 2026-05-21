@@ -302,8 +302,11 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|audit-prose-rules|bootstrap-classify)
+  set-marker|append-friction|audit-prose-rules|bootstrap-classify|resolve-task)
     # No stdin read, no guards. These operate on marker/shared state only.
+    # resolve-task scans the whole vault by slug — it doesn't need a resolved
+    # active project, and is safe to invoke even when Forge isn't active
+    # (e.g. from a post-commit hook in a sibling Claude Code window).
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -439,9 +442,59 @@ print(summary)
   # Pip on strike — breadcrumb still recorded above, but suppress all nags
   # below (brain-dump, push/PR nudge). User can't act on them during a strike,
   # and Keeper's Stop hook would loop on the resulting empty responses.
+  # NOTE: trailer parsing (further down) is mechanical and also gated by
+  # strike — during a strike there are no git commits to parse anyway, so
+  # this is moot in practice.
   if is_pip_on_strike; then
     return 0
   fi
+
+  # Parse the Bash command once for use by trailer parsing + push/PR nudge.
+  local command
+  command="$(echo "$STDIN_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null)" || command=""
+
+  # ── Plan C: auto-resolve tasks from `Resolves task:` commit trailers ─
+  # When `git commit` lands, scan the just-committed message for
+  # `Resolves task: <slug>` trailers and flip matching open-task files to
+  # tasks/resolved/. Pattern reuses do_gate's matcher for consistency.
+  #
+  # MUST run before the brain-dump section: that section has early `return 0`
+  # branches (subagent guard, just-dumped, per-response cooldown) that would
+  # otherwise skip trailer parsing whenever a recent brain-dump nag fired.
+  # Trailer parsing is mechanical work, not a notification — it should fire
+  # on every commit regardless of nag-throttling state.
+  #
+  # Requires `git -C <path>` form so we know which repo to inspect. The
+  # bare `git commit` form (relies on cwd) is skipped — post-tool runs
+  # from Claude Code's wd, not the user's commit wd, so cwd is unreliable.
+  # All commits driven through Claude follow the `git -C` convention
+  # anyway (MEMORY.md: "NEVER use cd && git, ALWAYS use git -C").
+  #
+  # Idempotent: do_resolve_task no-ops on already-resolved files. If the
+  # commit failed (hook reject), HEAD is unchanged and we re-parse the
+  # previous commit's trailers — still safe.
+  case "$command" in
+    *"git commit"*|*"git -C"*commit*)
+      local repo_dir=""
+      if [[ "$command" =~ git[[:space:]]+-C[[:space:]]+([^[:space:]]+) ]]; then
+        repo_dir="${BASH_REMATCH[1]}"
+      fi
+      if [ -n "$repo_dir" ] && [ -d "$repo_dir/.git" ]; then
+        local commit_msg commit_sha pr_spec="" trailer_slug
+        commit_msg="$(git -C "$repo_dir" log -1 --format=%B HEAD 2>/dev/null || true)"
+        commit_sha="$(git -C "$repo_dir" log -1 --format=%H HEAD 2>/dev/null || true)"
+        if [ -n "$commit_msg" ]; then
+          if [[ "$commit_msg" =~ ([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+#[0-9]+) ]]; then
+            pr_spec="${BASH_REMATCH[1]}"
+          fi
+          while IFS= read -r trailer_slug; do
+            [ -z "$trailer_slug" ] && continue
+            "$0" resolve-task "$trailer_slug" "$commit_sha" "$pr_spec" >&2 || true
+          done < <(printf '%s\n' "$commit_msg" | sed -n 's/^Resolves task:[[:space:]]*\(.*\)$/\1/p' | tr -d '\r')
+        fi
+      fi
+      ;;
+  esac
 
   # ── Brain dump prompt (if >10min since last entry) ──────────────────
   # Stacked throttle: subagent guard + just-dumped mtime + per-response cooldown.
@@ -486,8 +539,6 @@ print(summary)
   fi
 
   # ── Push/PR nudge (checkpoint reminder on push or PR creation) ──────
-  local command
-  command="$(echo "$STDIN_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null)" || command=""
   case "$command" in
     *"git push"*|*"git -C"*push*|*"gh pr create"*)
       if [ "$checkpoint_age" -ge 2 ]; then
@@ -670,6 +721,126 @@ do_auto_archive() {
     printf "%s" "$moved_list"
     echo "Update BACKLOG to remove these rows."
   fi
+}
+
+# ── Subcommand: resolve-task (Plan C — script-driven task closure) ──────
+# Flip a single open task to `status: resolved` and git-mv it to
+# tasks/resolved/. Invoked two ways:
+#   (1) Directly:  forge-context.sh resolve-task <slug> [<sha>] [<pr-spec>]
+#   (2) Auto via do_post_tool: when a `git commit` lands carrying one or more
+#       `Resolves task: <slug>` trailers in its message body, do_post_tool
+#       re-execs this subcommand per trailer.
+#
+# Slug match is substring across $VAULT_PATH/**/tasks/open/*.md. Refuses
+# (warn, exit 0) on 0 matches or >1 matches — no auto-pick. Idempotent if
+# the file is already status: resolved (skips flip, still relocates if
+# somehow still in tasks/open/).
+#
+# Note: pairs with do_auto_archive (which flips nothing but archives
+# anything already marked status: resolved). resolve-task does both: flip
+# + archive. They're complementary, not redundant — auto-archive cleans up
+# resolved-but-not-moved (e.g. manual edits), resolve-task is the
+# commit-driven closure path.
+do_resolve_task() {
+  local slug="${1:-}"
+  local sha="${2:-}"
+  local pr_spec="${3:-}"
+  if [ -z "$slug" ]; then
+    echo "[resolve-task] ERR: slug required" >&2
+    return 1
+  fi
+  slug="${slug%.md}"
+
+  if [ -z "${VAULT_PATH:-}" ] || [ ! -d "$VAULT_PATH" ]; then
+    echo "[resolve-task] ERR: VAULT_PATH unset or missing ($VAULT_PATH)" >&2
+    return 1
+  fi
+
+  local matches=() f
+  while IFS= read -r -d '' f; do
+    matches+=("$f")
+  done < <(find "$VAULT_PATH" -type f -name "*${slug}*.md" -path "*/tasks/open/*" -print0 2>/dev/null)
+
+  if [ "${#matches[@]}" -eq 0 ]; then
+    echo "[resolve-task] WARN: no open task matching '$slug' — nothing to do" >&2
+    return 0
+  fi
+  if [ "${#matches[@]}" -gt 1 ]; then
+    echo "[resolve-task] WARN: ambiguous '$slug' — ${#matches[@]} matches:" >&2
+    printf '  %s\n' "${matches[@]}" >&2
+    return 0
+  fi
+
+  local task_file="${matches[0]}"
+  local task_dir task_base task_root resolved_dir today current_status
+  task_dir="$(dirname "$task_file")"
+  task_base="$(basename "$task_file")"
+  task_root="${task_dir%/tasks/open}"
+  resolved_dir="$task_root/tasks/resolved"
+  mkdir -p "$resolved_dir"
+  today="$(date +%Y-%m-%d)"
+
+  current_status=$(awk '
+    /^---[[:space:]]*$/ { c++; if (c==2) exit; next }
+    c==1 && /^status:/ {
+      sub(/^status:[[:space:]]*/, "")
+      gsub(/^["'"'"']|["'"'"']$/, "")
+      gsub(/[[:space:]]+$/, "")
+      print
+      exit
+    }
+  ' "$task_file" 2>/dev/null)
+
+  # Flip frontmatter in place unless already resolved AND no new pr_spec to record.
+  if [ "$current_status" != "resolved" ] || [ -n "$pr_spec" ]; then
+    local tmp="$task_file.tmp.$$"
+    awk -v today="$today" -v pr_spec="$pr_spec" '
+      BEGIN { in_fm=0; fm_count=0; have_resolved=0; have_shipped=0 }
+      /^---[[:space:]]*$/ {
+        fm_count++
+        if (fm_count == 1) { in_fm=1; print; next }
+        if (fm_count == 2 && in_fm) {
+          if (!have_resolved) print "resolved: " today
+          if (!have_shipped && pr_spec != "") print "shipped_via: " pr_spec
+          in_fm=0
+          print
+          next
+        }
+        print; next
+      }
+      in_fm && /^status:[[:space:]]/ { print "status: resolved"; next }
+      in_fm && /^updated:[[:space:]]/ { print "updated: " today; next }
+      in_fm && /^resolved:[[:space:]]/ { print "resolved: " today; have_resolved=1; next }
+      in_fm && /^shipped_via:[[:space:]]/ {
+        if (pr_spec != "") { print "shipped_via: " pr_spec } else { print }
+        have_shipped=1; next
+      }
+      { print }
+    ' "$task_file" > "$tmp" && mv "$tmp" "$task_file"
+  fi
+
+  # git mv if vault is a git repo AND the file is tracked; else plain mv.
+  local moved=0 rel_from rel_to
+  rel_from="${task_file#$VAULT_PATH/}"
+  rel_to="${resolved_dir#$VAULT_PATH/}/$task_base"
+  if git -C "$VAULT_PATH" rev-parse --git-dir >/dev/null 2>&1; then
+    if git -C "$VAULT_PATH" ls-files --error-unmatch "$rel_from" >/dev/null 2>&1; then
+      if git -C "$VAULT_PATH" mv "$rel_from" "$rel_to" 2>/dev/null; then
+        moved=1
+      fi
+    fi
+  fi
+  if [ "$moved" -eq 0 ]; then
+    mv "$task_file" "$resolved_dir/$task_base" 2>/dev/null || {
+      echo "[resolve-task] ERR: failed to mv $task_base to resolved/" >&2
+      return 1
+    }
+  fi
+
+  local note=""
+  [ -n "$sha" ] && note=" (commit ${sha:0:7})"
+  [ -n "$pr_spec" ] && note="${note} (shipped via $pr_spec)"
+  echo "[resolve-task] $task_base → tasks/resolved/${note}"
 }
 
 # ── Open-task staleness audit (recovery sibling of auto-archive) ────────
@@ -1730,8 +1901,9 @@ case "$SUBCMD" in
   append-friction)     do_append_friction "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
+  resolve-task)        do_resolve_task "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify|resolve-task}" >&2
     exit 1
     ;;
 esac
