@@ -585,6 +585,13 @@ Role attribution stays visible inline — source column in the table, source tag
 - Pattern A explanation at the top — buries the action under protocol meta.
 - Findings appearing in both the combined table AND per-role report sections — same finding read twice.
 
+**TL;DR bullets — surface the strongest sub-justification.**
+When a finding has multiple sub-justifications (e.g. "this matters for testability AND it breaks an application contract AND framework integration is awkward"), the TL;DR bullet MUST name the **strongest** one — the one that, if the author addresses it, validates the entire finding; the one that, if missed, leaves the finding under-defended. NOT the most general one, NOT the broadest framing, NOT the one written first. Anti-patterns above govern *structure* (where things go); this rule governs *content* of the TL;DR bullets themselves.
+
+**Operationalization** — before finalizing each TL;DR bullet, ask: *"if the author addresses ONLY what this bullet says, does my finding survive?"* If no, the bullet names the wrong angle — rewrite.
+
+**Why it matters:** PR authors skim TL;DRs. If the headline names the weakest defensible angle, that's the angle they reply to — and the strongest angle never enters the conversation. Reviewer effort wasted. Worked failure mode: `${VAULT_PATH}/PRO/FINN/tasks/reviews/2026-05-21-pr-12460-review.md` item 3 — TL;DR headline was "framework testing" (weakest); the load-bearing justification was `withTimeout(SEND_MESSAGE_TIMEOUT_MS)` preservation (application contract). Author addressed framework testing only.
+
 **When to vary:**
 - Zero concerns + zero nits → collapse to "Approved, no findings, here are the positive notes."
 - Heavily-overlapping findings (rare — Pattern A is designed against this) → the table calls out the overlap explicitly rather than letting the reader spot it.
