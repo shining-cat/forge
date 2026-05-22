@@ -33,7 +33,7 @@ VAULT_DRIFT_DAYS_SINCE=7
 
 # Brain-dump nag interval (minutes since last entry) — override via forge.conf
 # by setting `BRAINDUMP_INTERVAL_MIN=<int>`. Default 10. Tester item #7.
-BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2-)"
+BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 BRAINDUMP_INTERVAL_MIN="${BRAINDUMP_INTERVAL_MIN:-10}"
 
 # Checkpoint-nag suppression (do_stop) — both gates must pass for the nag to fire.
@@ -231,7 +231,7 @@ get_project_dir() {
   target_lower="$(echo "$project" | tr '[:upper:]' '[:lower:]')"
 
   local repo_roots
-  repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2-)"
+  repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
   if [ -z "$repo_roots" ]; then
     repo_roots="$HOME_DIR/__DEV"
   fi
@@ -1286,7 +1286,7 @@ do_status() {
 # Reads FORGE_REPO from forge.conf. Silent when in sync AND fetched in last 7 days.
 do_check_install_drift() {
   local forge_repo
-  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
   [ -z "$forge_repo" ] && return 0
   [ -d "$forge_repo/.git" ] || return 0
 
@@ -1329,7 +1329,7 @@ do_check_install_drift() {
 # target or shell alias when you've been working a while and want a fresh read.
 do_check_install() {
   local forge_repo
-  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
   if [ -z "$forge_repo" ] || [ ! -d "$forge_repo/.git" ]; then
     echo "FORGE_REPO not configured or not a git repo — nothing to check."
     return 0
