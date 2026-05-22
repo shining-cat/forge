@@ -108,6 +108,21 @@ Store the chosen name in preferences as `coach_name`. Use this name in ALL perso
 **5. Calendar access** — Should I check your calendar to time breaks around meetings?
 - Yes (uses Google Calendar plugin if available) / No
 
+If the user picks **Yes**, verify the scope is actually granted *before* writing `calendar_enabled: true` — otherwise the first calendar fetch later in the session fails with a 403 the user has no context to debug.
+
+Probe (silent unless it fails):
+```bash
+gws calendar +agenda 2>&1 | head -5
+```
+
+Branch on the result:
+- **Command not found** (`gws: command not found` or similar) → "Calendar awareness needs the Google Workspace plugin. Install it first, then say 'enable calendar awareness' to re-enable. Setting calendar to OFF for now."
+- **Output contains `403`, `PERMISSION_DENIED`, `insufficient`, or `invalid_grant`** → "Calendar awareness needs the `https://www.googleapis.com/auth/calendar.readonly` scope on your gws-auth token. Run `/gws-auth` to refresh with that scope, then say 'enable calendar awareness'. Setting calendar to OFF for now."
+- **Other error** → surface the first 1-2 lines, set OFF, point to `/gws-auth` as the most common remedy.
+- **Success** (events list or "no upcoming events") → set `calendar_enabled: true`.
+
+This keeps the answered-question state honest: `calendar_enabled` is true ONLY when the scope check just passed. Users who opt in but lack the scope get told now, not via a mystery 403 mid-session.
+
 **6. Weather & location** — Should I check weather for outdoor break suggestions?
 - Yes + city (e.g., "Oslo, Norway") / No
 

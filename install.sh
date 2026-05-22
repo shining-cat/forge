@@ -530,6 +530,38 @@ if [ -f "$CLAUDE_DIR/forge.conf" ]; then
   WELLNESS_ENABLED=$(grep -E '^WELLNESS_ENABLED=' "$CLAUDE_DIR/forge.conf" 2>/dev/null | head -1 | cut -d= -f2 || echo "false")
 fi
 
+# Permissive shell-wrapper defaults (tester item #6) — opt-in via forge.conf.
+# Off by default: these patterns allow ANY command passed to the wrapper once
+# the prefix matches (Claude Code Bash matcher grants the WHOLE command —
+# see core/references/permission-patterns.md pitfall #2). Power users who
+# accept that tradeoff opt in to reduce permission-prompt friction during
+# multi-step setup steps (Forge install, wellness-coach setup, gws-auth
+# recovery, etc.).
+PERMISSIVE_BASH_WRAPPERS="${PERMISSIVE_BASH_WRAPPERS:-false}"
+if [ -f "$CLAUDE_DIR/forge.conf" ] && grep -qE '^PERMISSIVE_BASH_WRAPPERS=' "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+  PERMISSIVE_BASH_WRAPPERS=$(grep -E '^PERMISSIVE_BASH_WRAPPERS=' "$CLAUDE_DIR/forge.conf" | head -1 | cut -d= -f2)
+elif [ "$DRY_RUN" = true ]; then
+  info "Would prompt: ship permissive shell-wrapper defaults (bash -c, zsh -c)?"
+else
+  echo ""
+  printf "${CYAN}[forge]${NC} Permissive shell-wrapper defaults reduce prompt friction during multi-step setup steps.\n"
+  printf "        Adds: Bash(bash -c:*), Bash(zsh -c:*)\n"
+  printf "        Tradeoff: each pattern allows ANY command inside the wrapper.\n"
+  printf "        See core/references/permission-patterns.md for the matcher behavior.\n"
+  printf "        Recommended only if you already accept this tradeoff. Default: NO.\n"
+  permissive_answer=$(prompt_or_default \
+    "$(printf "        Add permissive wrappers? [y/N]: ")" \
+    "n")
+  case "${permissive_answer:-n}" in
+    [Yy]*) PERMISSIVE_BASH_WRAPPERS=true;;
+    *)     PERMISSIVE_BASH_WRAPPERS=false;;
+  esac
+  # Persist only for interactive answers (-t 0) — non-tty fallback isn't a real choice.
+  if [ -t 0 ]; then
+    set_conf_key PERMISSIVE_BASH_WRAPPERS "$PERMISSIVE_BASH_WRAPPERS"
+  fi
+fi
+
 PERMS_TO_ADD=(
   # Forge scripts
   "Bash($HOME/.claude/scripts/forge-context.sh:*)"
@@ -553,6 +585,14 @@ if [ "$WELLNESS_ENABLED" = "true" ]; then
   PERMS_TO_ADD+=(
     "Bash(python3:$HOME/.claude/skills/wellness-coach/hooks/*)"
     "Bash($HOME/.claude/skills/wellness-coach/scripts/*)"
+  )
+fi
+
+# Conditional: permissive shell wrappers (tester item #6, opt-in above)
+if [ "$PERMISSIVE_BASH_WRAPPERS" = "true" ]; then
+  PERMS_TO_ADD+=(
+    "Bash(bash -c:*)"
+    "Bash(zsh -c:*)"
   )
 fi
 

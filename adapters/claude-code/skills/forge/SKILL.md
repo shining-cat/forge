@@ -312,8 +312,15 @@ Sync the vault against GitHub to catch merges, approvals, and new PRs since the 
 
 **Data gathering:**
 1. Parse `current-checkpoint.md` for PR numbers (`#(\d+)`) — these are the "known" PRs
-2. Run: `gh pr list --author @me --repo {owner/repo} --state all --limit 20 --json number,title,state,reviewDecision,mergedAt,createdAt`
-3. Filter results: keep PRs that are either **(a)** known in vault, or **(b)** open AND created less than 5 days ago
+2. **Resolve the remote explicitly.** Run `git -C {project_path} remote get-url origin` and parse it into `{host}` and `{owner/repo}`:
+   - SSH (`git@github.com:owner/repo.git`) → host = part after `git@` before `:`, repo = part after `:` minus `.git`
+   - HTTPS (`https://github.com/owner/repo.git`) → host = part after `://` before `/`, repo = the path minus `.git`
+3. **Compose the `gh` call with explicit values** — never let `gh` guess from cwd or git config alone (it silently defaults to `github.com` and may pick the wrong repo on multi-project sessions or enterprise hosts):
+   - GitHub.com: `gh pr list --author @me --repo {owner/repo} --state all --limit 20 --json number,title,state,reviewDecision,mergedAt,createdAt`
+   - Enterprise (e.g. `github.acme.com`): prepend `GH_HOST={host}` to the same command
+4. Filter results: keep PRs that are either **(a)** known in vault, or **(b)** open AND created less than 5 days ago
+
+**Why explicit:** without the resolve+pass-through, the call can return empty silently — `gh` defaults to `github.com` and guesses the repo from cwd, which fails on non-github.com hosts and on workspaces with sibling repos of similar names. Documented failure: enterprise repo `finn/frontpage-layout-v2` on `github.schibsted.io` came back empty because `gh` defaulted to github.com and guessed `schibsted-nmp/frontpage-layout-v2`. The same hazard hits **any subagent** dispatched to do PR sync — subagents inherit cwd but not context about which remote matters, so explicit values are mandatory in dispatch prompts too.
 
 **Update rules:**
 - **Known PR now merged/closed** → move to "Completed" in checkpoint, note merge date
