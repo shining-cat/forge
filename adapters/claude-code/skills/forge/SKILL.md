@@ -51,153 +51,8 @@ You MUST complete all steps in order:
 Check if onboarding has been completed by reading `~/.claude/forge.conf` with the Read tool (not Bash — avoids a visible grep on every session start).
 
 - If the file contains `ONBOARDING_COMPLETE=true` → skip to step 1
-- If `ONBOARDING_COMPLETE=false` or the key is missing → run onboarding below
-
-**If `~/.claude/forge.conf` doesn't exist at all**, the install script hasn't been run. Tell the user:
-> "Forge needs to be installed first. Clone the repo and run `./install.sh` — see the README for details."
-
-Then stop.
-
-#### Onboarding flow
-
-**Welcome message (Petra voice):**
-
-> Petra: First time at the anvil. Let me show you around.
->
-> Forge is a session orchestration layer. It keeps a knowledge vault (decisions, checkpoints, friction log), runs agent roles (Keeper tracks state, Refiner catches mistakes, Reviewer validates plans), and gives you a consistent workflow across sessions.
->
-> A few things to set up before we start.
-
-**a) Wellness Coach**
-
-Check if wellness files exist but hooks aren't wired:
-
-```bash
-# Files present?
-test -f ~/.claude/skills/wellness-coach/SKILL.md && echo "FILES_PRESENT" || echo "NO_FILES"
-
-# Hooks already wired?
-grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_WIRED" || echo "NO_HOOKS"
-```
-
-- If `NO_FILES` → skip (install script didn't include them)
-- If `FILES_PRESENT` + `HOOKS_WIRED` → already active, skip
-- If `FILES_PRESENT` + `NO_HOOKS` → ask:
-
-> Forge includes an optional wellness coach — it tracks your work time and nudges you to take breaks. It has three persona styles, calendar awareness, weather-based outdoor suggestions, and configurable escalation (from gentle nudges to blocking tools until you step away).
->
-> One thing to know: the wellness coach fires in every Claude Code window on this machine, not just the Forge one. That's intentional — break time is about you, not which terminal you're in.
->
-> Want to activate it? You can always enable or disable it later.
-
-**If yes:**
-1. Read `~/.claude/settings.json`
-2. Add these permissions if not present. Important syntax notes:
-   - **Single `*` does not cross `/`** — use the literal absolute path for multi-segment matches, not `*/.claude/...`
-   - **Leading `*` in `Bash(...)` is literal**, not a wildcard — use proper `prefix*` form
-   - **Tilde `~` expansion is unverified** for permission rules — add both tilde and absolute forms as belt-and-braces
-
-   Patterns to add (substituting the user's actual home directory):
-   - `Bash(~/.claude/skills/wellness-coach/scripts/*)` and `Bash(<HOME>/.claude/skills/wellness-coach/scripts/*)`
-   - Where `<HOME>` is the user's actual home directory (e.g. `/Users/<your-username>`)
-
-   Wellness preferences live at `${VAULT_PATH}/_shared/wellness-preferences.json` — covered by the existing vault allowlist, no per-file permission needed.
-3. Add these hooks if not present:
-   - PreToolUse: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5)
-   - PreCompact: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-precompact.py` (timeout: 5)
-4. Write the updated settings.json
-5. Update `~/.claude/forge.conf`: set `WELLNESS_ENABLED=true`
-6. Tell the user: "Wellness coach activated. It'll offer its own onboarding on your next interaction."
-
-**If no:**
-Ask: "Want me to remove the wellness coach files, or keep them in case you change your mind?"
-- If remove → delete `~/.claude/skills/wellness-coach/` directory
-- If keep → leave files, they're inert without hooks
-
-**b) Verify superpowers**
-
-```bash
-jq -e '.enabledPlugins | keys[] | select(startswith("superpowers@"))' ~/.claude/settings.json 2>/dev/null
-```
-
-- If found → ok, continue
-- If not found → warn:
-  > "Forge depends on the superpowers plugin for process discipline (brainstorming, TDD, debugging, plans). Install it from https://github.com/obra/superpowers-marketplace and add it to your Claude Code plugins."
-
-Don't block — the user might install it later.
-
-**c) Vault project setup**
-
-The vault root was created by the install script. Now set up the project structure for the current environment:
-
-1. Detect the current project (same logic as step 1 below)
-2. Create project directories:
-   ```
-   {VAULT_PATH}/{ENV}/{PROJECT}/
-   {VAULT_PATH}/{ENV}/{PROJECT}/decisions/
-   {VAULT_PATH}/{ENV}/{PROJECT}/architecture/
-   ```
-3. If `{VAULT_PATH}/_shared/OVERVIEW.md` doesn't exist, create a starter:
-   ```markdown
-   # Vault Overview
-
-   ## Projects
-   - **{PROJECT}** ({ENV}) — [describe your project here]
-
-   ## Active Forge Work
-   (none yet)
-   ```
-4. If `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` doesn't exist, create a starter:
-   ```markdown
-   # {PROJECT} — Index
-
-   ## Active Decisions
-   (none yet)
-
-   ## Architecture
-   (none yet)
-   ```
-
-**d) First work folder**
-
-After scaffolding the vault, invite the user to confirm or point to their main work folder:
-
-> Petra: The vault's set up. Now — where does the real work live?
->
-> I've detected you're in `{current_directory}`. If that's your project, we're good. Otherwise, point me to the folder you want to track — e.g., `~/projects/my-app`.
->
-> You can add more projects anytime by saying "add project" from inside the folder.
-
-If the user provides a different path, re-run step (c) with that path as the project root.
-
-**d-2) Multi-environment pattern (optional but recommended)**
-
-If only one project/environment exists in the vault so far AND the user works across distinct contexts (personal projects, client work, employer), recommend separating them into top-level environments. This is opt-in, not gated.
-
-Each environment gets its own:
-
-- **folder root** — e.g. `~/projects/work`, `~/projects/personal`, or any layout you prefer (one root per environment)
-- **vault section** — `Vault/{ENV}/{project}/` — one section per environment
-- **git identity** — set via `.gitconfig.<env>` files referenced from `~/.gitconfig` with `includeIf "gitdir:..."`. Keeps personal vs work commits attributed to the right email automatically based on the directory you're in
-
-**Why it matters:**
-- Commit attribution stays correct across contexts (no more "oops, work email on personal repo")
-- Project-level rules can differ per environment (separate `CLAUDE.md`, separate `.gitconfig`)
-- Prevents accidental cross-context git pushes
-
-> Petra: Want to set up a second environment now? Or skip — you can add one any time by saying "add environment".
-
-If the user opts in, walk them through creating the second environment folder + vault section. If not, continue to step (e).
-
-This is a recommendation, not a requirement. Don't push if the user dismisses it.
-
-**e) Complete onboarding**
-
-Update `~/.claude/forge.conf`: set `ONBOARDING_COMPLETE=true`
-
-> Petra: Forge is ready. Let's get to work.
-
-Then continue to step 1 as normal.
+- If `ONBOARDING_COMPLETE=false` or the key is missing → **load `references/onboarding.md` and follow the flow there**. The full onboarding (wellness coach setup, superpowers verification, vault project scaffolding, multi-environment guidance) lives in that file. It runs once per machine, then sets `ONBOARDING_COMPLETE=true` and is never read again.
+- If `~/.claude/forge.conf` doesn't exist at all, the install script hasn't been run. Tell the user: *"Forge needs to be installed first. Clone the repo and run `./install.sh` — see the README for details."* Then stop.
 
 ### 1. Detect Environment
 
@@ -496,136 +351,27 @@ Each role's adapter file (`adapters/claude-code/agents/forge-{role}.md` in the r
 
 ## Agent-Teams Mode
 
-For workflows that genuinely benefit from parallel collaboration with inter-agent communication, Petra can spawn an agent team instead of dispatching subagents sequentially.
+For workflows that genuinely benefit from parallel collaboration with inter-agent communication, Petra can spawn an agent team instead of dispatching subagents sequentially. Most Forge work does NOT need this — sequential subagent dispatch is the default.
 
-**Requires:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in `~/.claude/settings.json` (env var). Takes effect on session restart. Requires Claude Code v2.1.32+.
+**When to consider:**
+- **Pattern A** — Pair of different roles on the same artifact (e.g. Reviewer + Refiner on a PR).
+- **Pattern B** — Multiple instances of the same role with competing hypotheses (e.g. 3-5 Debuggers on an unclear root cause).
+- **Pattern C** — Same role, scope-partitioned (e.g. Reviewers split across security / performance / test coverage).
 
-**When to spawn a team (Petra's call):**
+**Substrate guard.** Team spawning requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Claude Code v2.1.32+) and tmux. If session entry reported "Team substrate: missing", Pattern A still runs — but as inline sequential subagent dispatches, NOT `TeamCreate`. Attempting `TeamCreate` without substrate cancels with "iTerm2 setup required" or equivalent.
 
-- **Pattern A — Pair / triplet of different roles** on the same artifact. PR review needing both structural validation (Reviewer) and friction analysis (Refiner). Design discussion needing both forward design (Architect) and adversarial failure analysis (Debugger).
-- **Pattern B — Multiple instances of the same role**, each seeded with a different hypothesis. Hard debugging where root cause is unclear (3-5 Debuggers, adversarial debate). Security investigation with multiple attack vectors. The value is anti-anchoring through competing hypotheses, not "more thorough coverage."
-- **Pattern C — Same role, scope-partitioned**. PR review split into separate concerns (security / performance / test coverage), each owned by a different Reviewer.
+**Before spawning OR running Pattern A inline — load `references/agent-teams-mode.md`.** That file holds:
+- Pattern A trigger heuristic (weighted score, ≥ 3 → ask the user)
+- Tiered dispatch protocol (Tier 1 → Tier 2 header relay → Tier 3, anti-anchoring rationale)
+- Refiner Mode-2 brief constraints
+- Two-tier data handoff for static artifacts
+- Required seven-section synthesis structure + anti-patterns
+- TL;DR strongest-sub-justification rule
+- Limitations, pre-shutdown follow-up gate, cleanup
 
-**Trigger convention:** Petra detects the workflow shape and asks before spawning ("This looks like a multi-perspective review — should I spin up a team?"). The user can also explicitly request a team.
+Same content governs both the `TeamCreate` path and the inline-subagent fallback — only the dispatch mechanism differs.
 
-### Pattern A — when to spawn (trigger heuristic)
-
-Petra evaluates each candidate PR (or design doc / plan) against the trigger list below. Each trigger that fires adds its weight to a running score. **Score ≥ 3** → Petra surfaces the call: "Score X from triggers [list] — Pattern A territory?" The user confirms or overrides. **Score 0-2** → Reviewer-solo, no friction.
-
-| # | Trigger | Weight |
-|---|---|---|
-| 1 | **PR description doesn't fully account for the change surface** (mismatch between stated intent and diff scope) | 3 |
-| 2 | **PR appears to bundle multiple concerns / no decomposition into smaller batches** (single commit doing several distinct things, multiple unrelated module touches, no commit hierarchy) — not raw LOC, since pure deletion can be huge and trivial | 2 |
-| 3 | **Touches shared components** (utility classes, design system, base components) | 2 |
-| 4 | **Modifies control flow over multiple paths** (`when` arms, `if/else` over enums, callback dispatch) | 2 |
-| 5 | **Changes ancestor / parent / hierarchy logic** (tree navigation, recursive resolution) | 1 |
-| 6 | **Adds operations on shared collections** (`.sortedBy`, `.filter`, `.map` on collections that flow into multiple consumers) | 1 |
-
-**Surface the work when asking.** Petra shows the score, which triggers fired, and any near-miss intuition. This lets the user override with context the heuristic can't see (e.g. "the bundling was deliberate; dev did think it through").
-
-**Near-miss flagging.** If a PR scores below threshold but Petra senses Pattern A territory anyway, she names the gut feeling explicitly: *"Score below threshold, but this feels like Pattern A territory because [X]."* If the user agrees and Pattern A turns out right, Petra asks: *"Should we add [X] to the trigger list?"* — and on approval, edits this section in place to add the new trigger with a proposed weight.
-
-**Symmetric pruning.** If a trigger keeps firing on PRs where Pattern A turns out to be overkill, flag it (*"this trigger isn't carrying its weight; downweight or remove?"*) and edit accordingly.
-
-The list is meant to evolve. Starting a PR review is a quiet enough moment to absorb the conversation cost of one or two list-tuning interactions per week.
-
-### Pattern A — execution protocol
-
-When dispatching a Pattern A pair (e.g. forge-reviewer + forge-refiner on the same artifact), follow this protocol. Validated 2026-05-05 — see `forge-agent-teams-evaluation` task for the supporting findings.
-
-**1. Sequence the dispatch — don't run truly parallel.**
-Roles with overlapping concerns need to know what each other found, or the back half of the team duplicates effort *or* leaves gaps in the don't-overlap zone. Run them in tiers:
-
-- **Tier 1 — first role ships.** Standard work. No knowledge of the second role's findings.
-- **Tier 2 — header relay.** Petra sends the second role a *one-line-per-finding* summary of Tier 1 results: `Reviewer flagged: file:line — short label`. NOT the full report — that biases the second role toward agreement or differentiation. Headers only, just enough to draw the don't-overlap line.
-- **Tier 3 — second role ships** with the header context.
-
-Trade-off: wall-clock goes from `max(t1, t2)` to `t1 + t2`. Worth the cost — overlap waste and gap risk both compound otherwise.
-
-**2. Pre-load project context in the team lead brief.**
-Don't make each role re-read CLAUDE.md, AGENTS.md, project conventions. The team lead has already done this work — paraphrase the relevant rules into the brief. Roles get the file paths if they need to verify, but they shouldn't re-discover. If a role *does* need to read source rules itself (e.g. a Toolsmith reviewing a skill against its own spec), say so explicitly in the brief.
-
-**3. Two-tier data handoff for static artifacts.**
-For PR review and similar static-artifact work, the team lead provides:
-
-- **Worktree at canonical path:** `/tmp/pr-NNNN-worktree` — full repo at PR HEAD, full file context for whole-file reads, grep, neighbor exploration
-- **Dumps for orientation:** `/tmp/pr-NNNN/meta.json` (PR metadata: title, body, files, refs, additions/deletions, author, state) and `/tmp/pr-NNNN/diff.patch` (full diff)
-
-Roles read dumps first for orientation, then dive into the worktree for depth. This pattern handles roles that have or lack `Bash` uniformly — they all just read paths.
-
-**4. Refiner brief — Mode 2 specifics.**
-When dispatching `forge-refiner` in Mode 2 (static-artifact friction prediction), the brief MUST include:
-
-- **Grounding instruction:** "Cite the line that grounds each concern in the artifact. Concerns extrapolated from patterns seen elsewhere — without concrete evidence in this code — are speculation. Either cite or omit."
-- **Severity gating:** "Use blocker / concern / nit. Blockers and concerns get full treatment (file:line / observation / why it'll bite / relief). Nits go in a one-line bullet at the end, or get skipped if not load-bearing. Do not pad to a count target. Do not artificially trim."
-- **Positive question:** "Where does this PR make future work easier? Name patterns worth replicating."
-
-These echo the constraints in `core/roles/refiner.md`, but stating them in the brief reinforces the framing for the specific dispatch.
-
-**5. Substrate-missing fallback.**
-If session entry detected "Team substrate: missing" (no tmux, or tmux installed but not in a tmux session), Petra MUST NOT attempt `TeamCreate` + teammate dispatch — the spawn will be cancelled with "iTerm2 setup required" or equivalent. Instead, run Pattern A as **inline subagent dispatches** — same protocol (Tier 1 → Tier 2 header relay → Tier 3), same output quality, no live multi-pane visibility:
-
-1. **Tier 1:** `Agent({subagent_type: "forge-reviewer", ...})` foreground. Read full report.
-2. **Tier 2:** Compose one-line-per-finding header summary from the Tier 1 report.
-3. **Tier 3:** `Agent({subagent_type: "forge-refiner", ...})` foreground with the header summary in the brief.
-
-Same trigger evaluation, same Refiner brief constraints, same pre-shutdown follow-ups (just no teammates to ask, since this is sequential subagent dispatch). The only loss is concurrent observability — which is fine when substrate isn't there to support it. Inline fallback shipped via change-set #6 of `2026-05-07-forge-team-substrate-install` task.
-
-**6. Synthesis output structure.**
-The synthesis is the artifact the user posts — the agents' work is invisible until it lands in this document. Pattern A is expensive (two role passes, sequenced dispatch), so a bad synthesis erases the spend. Default to this shape; deviations need a reason.
-
-**Required structure (seven sections, in order):**
-
-1. **Header** — one line each: PR link · author · reviewed-date+agents · size · verdict counts.
-2. **TL;DR — feedback to leave on the PR** — paste-ready blockquote in second person, ordered as direct feedback the author can act on. Opens with a grounding positive note, then `**Before merge — N items because [reason]:**` (numbered, file:line + one-line rationale each), then `**Optional polish — none individually blocking:**` (bulleted, cross-ref to detail entry numbers).
-3. **All findings** — single table: `# / Severity / Source (Reviewer or Refiner) / File / Title`. Dashboard view. One entry per finding, no duplication.
-4. **Details** — single numbered list 1..N in table order. Each entry: severity+source tagged header (e.g. `### 3. concern (Refiner) — title`), file:line, observation, why-it-bites, concrete relief, code sample only when load-bearing.
-5. **Correctness checklist** — Reviewer-only value (side-effects / timeouts / wiring / layering). Kept because it's non-duplicative — structural verification that doesn't appear in any individual finding.
-6. **Positive notes** — Refiner-only value. What's worth keeping as the template gets copied.
-7. **About this review** — Pattern A explanation (Tier 1 / Tier 2 / Tier 3, anti-anchoring rationale, source-report file paths for traceability) — appendix, NOT opener.
-
-Role attribution stays visible inline — source column in the table, source tag on each detail header. That preserves Pattern A provenance without forcing the reader through two parallel structures.
-
-**Anti-patterns (easy defaults that fail the user):**
-- Two verbatim role reports side-by-side — duplicates findings, doubles read cost (N findings × 2 = 2N read events for what should be N).
-- "Suggested triage" / "Priority recommendations" table replacing direct PR-author feedback — forces the reader to translate before they can post anything.
-- Pattern A explanation at the top — buries the action under protocol meta.
-- Findings appearing in both the combined table AND per-role report sections — same finding read twice.
-
-**TL;DR bullets — surface the strongest sub-justification.**
-When a finding has multiple sub-justifications (e.g. "this matters for testability AND it breaks an application contract AND framework integration is awkward"), the TL;DR bullet MUST name the **strongest** one — the one that, if the author addresses it, validates the entire finding; the one that, if missed, leaves the finding under-defended. NOT the most general one, NOT the broadest framing, NOT the one written first. Anti-patterns above govern *structure* (where things go); this rule governs *content* of the TL;DR bullets themselves.
-
-**Operationalization** — before finalizing each TL;DR bullet, ask: *"if the author addresses ONLY what this bullet says, does my finding survive?"* If no, the bullet names the wrong angle — rewrite.
-
-**Why it matters:** PR authors skim TL;DRs. If the headline names the weakest defensible angle, that's the angle they reply to — and the strongest angle never enters the conversation. Reviewer effort wasted. Worked failure mode: `${VAULT_PATH}/PRO/FINN/tasks/reviews/2026-05-21-pr-12460-review.md` item 3 — TL;DR headline was "framework testing" (weakest); the load-bearing justification was `withTimeout(SEND_MESSAGE_TIMEOUT_MS)` preservation (application contract). Author addressed framework testing only.
-
-**When to vary:**
-- Zero concerns + zero nits → collapse to "Approved, no findings, here are the positive notes."
-- Heavily-overlapping findings (rare — Pattern A is designed against this) → the table calls out the overlap explicitly rather than letting the reader spot it.
-
-**Output path:** `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/reviews/YYYY-MM-DD-pr-NNNN-review.md`. PR reviews aren't tasks in the lifecycle sense (no `status: open → resolved` flip), but they're task-adjacent artifacts produced *about* shipped work. Living under `tasks/reviews/` (sibling to `tasks/open/` and `tasks/resolved/`) keeps the project root clean as Pattern A gets used more.
-
-**Canonical example:** `${VAULT_PATH}/PRO/FINN/tasks/reviews/2026-05-21-pr-12460-review.md` (post-restructure shape, regenerated 2026-05-21 after user push-back on the duplicating-everything default).
-
-**Limitations to remember:**
-- One team per session (Petra can't run a permanent role-team alongside an ad-hoc team).
-- No nested teams (a teammate can't spawn its own team).
-- Lead is fixed (Petra stays Petra; no promotion).
-- No session resumption (teammates are not restored on `/resume`).
-- Token cost is linear in teammate count.
-- Per Anthropic's docs, `skills` and `mcpServers` frontmatter on subagent defs are NOT applied when run as teammates — only `tools`, `model`, body. Skill dependencies must be invoked from the body.
-
-**Before shutdown — ask for follow-ups.** Teammate context is lost the moment they terminate. Anything you'd want to ask them — meta-questions about their lens, drill-downs on a finding, cross-examination against another teammate's report — must happen *while they are alive*. Petra MUST ask the user "any follow-ups for [teammate names] before I shut the team down?" before sending `shutdown_request`. Spawning a fresh agent later means re-fetching, re-reading, re-reasoning from scratch — expensive and lossy. The pre-shutdown gate is cheap (cache is hot, teammates are idle anyway).
-
-**Cleanup:** Always end teams cleanly ("Ask the lead to clean up the team"). Don't leave orphaned teammates running between user requests.
-
-**When NOT to use teams:**
-- Sequential tasks tied to specific tool calls (use Keeper / Release inline).
-- Same-file edits (file conflicts).
-- Routine work (overhead exceeds benefit — most Forge work).
-- Quick lookups or single-perspective tasks.
-
-For the deeper rationale and ongoing evaluation, see open task `forge-agent-teams-evaluation` (2026-05-04).
+When NOT to use teams: sequential tasks tied to specific tool calls, same-file edits (file conflicts), routine work, quick lookups, single-perspective tasks. For ongoing evaluation, see open task `forge-agent-teams-evaluation` (2026-05-04).
 
 ## Session Exit
 

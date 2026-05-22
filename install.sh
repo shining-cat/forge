@@ -439,7 +439,7 @@ ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-p
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md; do
   run rm -f "$SKILLS_DIR/forge/references/$ref"
   run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
 done
