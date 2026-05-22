@@ -350,6 +350,12 @@ FORGE_REPO=$FORGE_ROOT
 ONBOARDING_COMPLETE=false
 WELLNESS_ENABLED=false
 
+# Cold-start threshold (hours). When session entry detects no Forge signal for
+# longer than this, Petra runs wellness-reset.sh --full-reset before the entry
+# summary. Default 4h covers lunch + a meeting block; tune up if you typically
+# return to deep work after shorter pauses, down if you want stricter resets.
+WELLNESS_COLD_START_HOURS=4
+
 # Model assignments per role — valid values: opus, sonnet, haiku
 # Empty value = inherit from session model
 MODEL_KEEPER=sonnet
