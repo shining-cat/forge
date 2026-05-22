@@ -18,6 +18,7 @@ Forge `install.sh` writes a baseline allow-list into `~/.claude/settings.json` s
 |---|---|---|
 | `forge-context.sh` | `Bash($HOME/.claude/scripts/forge-context.sh:*)` | PreToolUse / PostToolUse / Stop hooks; manual `recover` subcommand at session start |
 | `forge-permission-lint.sh` | `Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)` | end of `install.sh` (fail-closed) + `/forge-audit-permissions` skill |
+| `forge-gap-since-last-signal.sh` | `Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)` | Unified gap-detection primitive — emits seconds-since-last-Forge-signal across {checkpoints, marker JSON, braindumps, vault git}. Consumers: wellness on-entry, Petra's cold-start banner, Keeper stale-checkpoint math, prose end-of-day triggers |
 
 ### Claude Code statusline (`~/.claude/`)
 

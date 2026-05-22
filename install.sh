@@ -484,6 +484,7 @@ safe_cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-classify-friction.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
@@ -494,6 +495,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
              "$CLAUDE_DIR/scripts/forge-permission-lint.sh" \
              "$CLAUDE_DIR/scripts/forge-classify-friction.sh" \
+             "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"
@@ -566,6 +568,7 @@ PERMS_TO_ADD=(
   # Forge scripts
   "Bash($HOME/.claude/scripts/forge-context.sh:*)"
   "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
+  "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
   "Bash($HOME/.claude/statusline.sh:*)"
   # Forge hooks
   "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
