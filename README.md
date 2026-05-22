@@ -142,6 +142,7 @@ Forge tracks your work automatically at multiple levels:
 │   ├── OVERVIEW.md             # All projects at a glance
 │   ├── current-checkpoint.md   # Forge-level work state
 │   ├── friction-log.md         # What went wrong and why
+│   ├── wind-down-phrases.json  # Personal end-of-day vocabulary (learned)
 │   ├── decisions/              # Cross-project decisions
 │   └── tasks/                  # Open and resolved tasks
 ├── _templates/                 # Note templates
@@ -159,6 +160,24 @@ Forge tracks your work automatically at multiple levels:
 Tracks work time and nudges you to take breaks. Three persona styles (professional, playful, character), configurable escalation (suggest → escalate → strike), calendar and weather awareness for context-appropriate suggestions.
 
 Offered during first `/forge` session. Can be enabled/disabled anytime.
+
+### Prose wind-down trigger
+
+When you signal end-of-day in prose — *"done for today"*, *"calling it"*, *"logging off"*, etc. — instead of typing `/forge-exit`, Forge:
+
+1. Silently resets your wellness break clock (you're winding down either way).
+2. Asks once whether to run the full exit, so the session ends cleanly with a final checkpoint and the marker torn down. Saying *"yes"* runs `/forge-exit`; *"no, sticking around"* leaves the session warm.
+
+**Personal phrase list.** Forge ships with a seed list of canonical wind-down phrases. When you confirm a novel phrase ("I'm winding down"), Forge **learns it** — appends it to a personal list at `${VAULT_PATH}/_shared/wind-down-phrases.json` so it counts as canonical next time (no educational tip needed). You can view or prune the list directly:
+
+```bash
+~/.claude/scripts/forge-context.sh wind-down-list   # show learned phrases
+$EDITOR ${VAULT_PATH}/_shared/wind-down-phrases.json   # edit / prune
+```
+
+The list is vault-resident — it travels with your vault across machines.
+
+**Why offer exit, not checkpoint?** Closing the forge cleanly at end of day is a wellness practice — same family as the wellness coach. An offered checkpoint that you don't follow with an exit leaves the marker stale and hooks firing into a dead session; the exit flow writes the final checkpoint *and* tears down session state in one move.
 
 ## Extending
 

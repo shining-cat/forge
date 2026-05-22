@@ -321,6 +321,47 @@ Returns one of `too_early` / `mid_session` / `eod_window` / `past_eod` / `unknow
 
 The signal is cheap to call — read it on the fly when about to suggest wrap-up. Don't cache; the state changes minute-to-minute near the EOD boundary. The thresholds (`WRAP_UP_TOO_EARLY_MIN`, `WRAP_UP_EOD_WINDOW_MIN`) live as constants at the top of `forge-context.sh` for tuning.
 
+**Prose wind-down trigger:** When the user's message clearly signals "I'm calling it" (winding down for the day, not just finishing a task), do two things:
+
+1. **Silently** run `~/.claude/skills/wellness-coach/scripts/wellness-reset.sh --full-reset`. The reset is correct regardless of what user decides next — they're winding down either way.
+2. **Ask once, in voice**, whether to run the full exit:
+   > *"Sounds like you're calling it. Want to run `/forge-exit` to land it properly?"*
+
+The exit invitation — not a checkpoint invitation — is the load-bearing point: closing the forge cleanly at end of day is a wellness practice, same family as the wellness coach. The exit flow writes the final checkpoint AND tears down session state in one move; an offered checkpoint without exit leaves the marker stale and hooks firing into a dead session.
+
+**Trigger phrase list — two sources, matched as union:**
+
+A) **Seed list** (canonical, edit inline as new patterns surface):
+
+- "done for the day" / "done for today" / "that's it for today"
+- "calling it" / "calling it a day" / "calling it a night"
+- "logging off" / "signing off" / "off to bed"
+- "I'm out" / "heading out" / "gotta run"
+- "see you tomorrow" / "talk tomorrow" / "see ya"
+- "ttyl" / "ttfn"
+
+B) **Personal learned list** at `${VAULT_PATH}/_shared/wind-down-phrases.json` — phrases the user has confirmed in past sessions. Surfaced on session entry by `forge-context.sh recover` (under `--- Personal wind-down phrases ---`); also readable directly if needed.
+
+**Behavior on match:**
+
+1. Trigger wellness reset (silent, side-effect — no status announcement).
+2. Classify the triggering phrase:
+   - **Canonical** (phrase is in the seed list above OR in the user's personal list) → confirmation question only.
+   - **Fuzzy** (novel phrase, user's wording, an idiom not yet known) → confirmation question + educational tip in the same line:
+     > *"Tip: phrases like 'done for the day', 'calling it', or 'logging off' are the clearest for me. Your personal list lives at `${VAULT_PATH}/_shared/wind-down-phrases.json` — edit anytime."*
+3. **Branches:**
+   - **User confirms** → invoke `/forge-exit`. If the trigger was a fuzzy phrase, ALSO call `~/.claude/scripts/forge-context.sh learn-wind-down "<the phrase>"` and disclose in the same response: *"Logged 'winding down' to your wind-down list."*
+   - **User declines** ("no, sticking around" / "one more thing") → respect it. No further wind-down nag this session. Do NOT learn the phrase (declined ≠ corrected; user might confirm a different version next time).
+   - **No response, user walks away** → slice 2 (entry-time gap check) catches the wellness state on next `/forge`. Uncommitted state is the user's choice; Keeper's checkpoint nag has been firing throughout the session anyway.
+4. **Hard-exit escape hatch:** if the message ALSO carries explicit exit intent ("done for today, exit forge"), skip the confirmation and invoke `/forge-exit` directly.
+
+**Anti-patterns** — do NOT trigger on:
+- Third-person ("they're calling it", "the team's wrapping up")
+- Hypothetical / conditional ("if we wrap up early, we can ship X")
+- Mid-task close-out without day-end intent ("wrapping up this email then back")
+
+When in doubt, treat as conversational and stay silent. False-negative is cheap (slice 2 catches it on next entry); false-positive interrupts mid-thought and trains the user to mistrust the prompt.
+
 **Workspace skills (Forge mode):** When a Google Workspace API is needed (calendar, sheets, docs, drive, tasks), invoke the matching `google-workspace:gws-*` skill on the **first** try. No raw `gws ...` CLI exploration unless the skill itself fails or doesn't exist. Each failed flag-fish is a permission prompt the user has to triage. Same applies to other available specialized skills (jira, snowflake, slack, workplace) — invoke first, don't fish.
 
 **Plan storage (Forge mode):** All plan, design, and spec content MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`. Per the single-doc workflow, plan + design + progress live as **sections inside the task file**, not as separate `-design.md` / `-plan.md` siblings.
