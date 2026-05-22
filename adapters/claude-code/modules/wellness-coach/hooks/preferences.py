@@ -90,12 +90,25 @@ DEFAULT_PREFS = {
     "break_history": [],
     "resistance_pattern": None,
     "activity_monitor_enabled": False,
-    "activity_monitor_installed": False
+    "activity_monitor_installed": False,
+    # Tiered lock-duration thresholds (auto-detected breaks only — explicit
+    # acks are always credited as real regardless of duration).
+    # Locks < micro threshold are ignored entirely (noise floor).
+    # Locks ≥ micro and < real are credited as micro (resets 🙆 timer only,
+    # does NOT clear strike, logs as "auto-micro").
+    # Locks ≥ real are credited as real (resets both timers, clears strike,
+    # logs as "auto-real").
+    "micro_break_lock_threshold_minutes": 2,
+    "real_break_lock_threshold_minutes": 10
 }
 
 IDLE_LOG_PATH = Path.home() / ".claude" / "wellness-idle-log.json"
 IDLE_LOG_MAX_AGE_MINUTES = 120  # log is stale if no sample in this window
-MIN_BREAK_DURATION_MINUTES = 5  # minimum duration to count as a real break
+
+# Defaults for tiered lock-duration detection. User-configurable via the
+# matching prefs keys above. See DEFAULT_PREFS comment for the tier semantics.
+MICRO_BREAK_LOCK_THRESHOLD_MINUTES = 2
+REAL_BREAK_LOCK_THRESHOLD_MINUTES = 10
 
 
 def read_prefs():
@@ -224,11 +237,26 @@ def read_idle_log():
         return []
 
 
-def find_last_screen_off_break(samples, min_duration_minutes=None):
-    """Find the last period where screen was off/locked for at least min_duration_minutes.
-    Returns ISO timestamp of when screen came back on, or None."""
-    if min_duration_minutes is None:
-        min_duration_minutes = MIN_BREAK_DURATION_MINUTES
+def find_last_screen_off_break(samples, micro_threshold_minutes=None,
+                               real_threshold_minutes=None):
+    """Find the last lock/off period and classify it into a tier.
+
+    Returns a tuple (timestamp_iso, duration_minutes, tier) where tier is:
+      "real"  — duration ≥ real_threshold
+      "micro" — micro_threshold ≤ duration < real_threshold
+    Returns None if no qualifying lock period is found (duration < micro
+    threshold, or no off→on transition in the samples).
+
+    The caller uses the tier to decide credit semantics:
+      "real"  → resets both timers, clears strike, logs "auto-real"
+      "micro" → resets 🙆 only, does NOT clear strike, logs "auto-micro"
+    Sub-threshold locks return None and produce no log entry — they're noise
+    (phone glance, someone walking by).
+    """
+    if micro_threshold_minutes is None:
+        micro_threshold_minutes = MICRO_BREAK_LOCK_THRESHOLD_MINUTES
+    if real_threshold_minutes is None:
+        real_threshold_minutes = REAL_BREAK_LOCK_THRESHOLD_MINUTES
     if not samples:
         return None
 
@@ -256,8 +284,15 @@ def find_last_screen_off_break(samples, min_duration_minutes=None):
             break_end = curr["t"]
             duration_min = (break_end - break_start) / 60.0
 
-            if duration_min >= min_duration_minutes:
-                return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(break_end))
+            if duration_min >= real_threshold_minutes:
+                tier = "real"
+            elif duration_min >= micro_threshold_minutes:
+                tier = "micro"
+            else:
+                return None  # below noise floor — ignore entirely
+
+            ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(break_end))
+            return (ts, duration_min, tier)
 
     return None
 

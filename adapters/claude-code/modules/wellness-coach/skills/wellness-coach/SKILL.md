@@ -228,9 +228,27 @@ When you see a hook-injected wellness message:
 3. **Include personal notes** where relevant (e.g., "Good time to take the dog out" if user has a dog)
 4. **Deliver in persona tone**
 
+## Auto-Detected Break Tiers (Tier 2 only)
+
+When the activity monitor is enabled, the hook automatically classifies lock periods into three tiers based on duration. **You don't drive this — the hook does it.** This section exists so you can explain it correctly when the user asks.
+
+**The trigger is screen state.** A break is credited only when the laptop visibly registers the user as away — screen locked, display off, or system asleep. If the screen stays on and unlocked, **no break is credited**, even if the user is in a video meeting, browsing another app, or otherwise not in the terminal. This is deliberate — it prevents false-positives from non-terminal activity. If a user complains "I was in a meeting and you still nagged me," that's the expected behavior: lock the screen to count.
+
+| Lock duration | Action | Strike cleared? | break_history type |
+|---|---|---|---|
+| < 2 min | ignored (noise floor) | no | not logged |
+| 2–10 min | resets 🙆 only | no | `auto-micro` |
+| 10+ min | resets 🙆 + ☕ | yes | `auto-real` |
+
+Thresholds are configurable via `micro_break_lock_threshold_minutes` and `real_break_lock_threshold_minutes` in prefs. Defaults are 2 and 10 — designed so a phone glance doesn't count and a 7-min coffee top-up doesn't fake a real break.
+
+When the user returns from an auto-detected break, the hook shows a tier-appropriate welcome-back message. **Don't add your own welcome-back on top** — the hook already handled it.
+
+System sleep / reboot is always treated as a real break (uses the real-break threshold as its gap floor).
+
 ## Break Acknowledgment
 
-When the user acknowledges a break, update preferences:
+When the user acknowledges a break, update preferences. **Explicit user acks are always credited as real, regardless of how long they actually were away** — the user's stated intent overrides duration heuristics.
 
 **Trigger keywords:** "ok", "back", "brb", "taking a break", "fine", "going for a walk", "break", "stepping away"
 
