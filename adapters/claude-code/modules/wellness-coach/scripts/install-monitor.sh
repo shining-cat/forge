@@ -78,5 +78,38 @@ echo "Activity monitor installed successfully."
 echo "  Binary: $BIN_DIR/screen_state"
 echo "  Sampler: $BIN_DIR/idle-sampler.py"
 echo "  LaunchAgent: $PLIST_PATH"
+
+# 7. Flip the prefs flag so the hook actually reads from the idle log.
+# Without this, the hook silently ignores the daemon's samples because
+# `activity_monitor_enabled` defaults to false. This step makes the install
+# self-sufficient: the script can be run standalone (not via skill onboarding)
+# and still produce a working setup.
+FORGE_CONF="$HOME/.claude/forge.conf"
+if [ -f "$FORGE_CONF" ]; then
+    VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)
+    PREFS_FILE="${VAULT_PATH}/_shared/wellness-preferences.json"
+    if [ -n "${VAULT_PATH:-}" ] && [ -f "$PREFS_FILE" ]; then
+        if command -v jq &>/dev/null; then
+            TMP="${PREFS_FILE}.tmp"
+            if jq '.activity_monitor_enabled = true | .activity_monitor_installed = true' \
+                "$PREFS_FILE" > "$TMP" 2>/dev/null; then
+                mv "$TMP" "$PREFS_FILE"
+                echo "  Prefs flag: activity_monitor_enabled=true (in $PREFS_FILE)"
+            else
+                rm -f "$TMP"
+                echo "  Warning: could not update prefs flag. Set manually:"
+                echo "    jq '.activity_monitor_enabled = true | .activity_monitor_installed = true' $PREFS_FILE"
+            fi
+        else
+            echo "  Warning: jq not found. Set the prefs flag manually:"
+            echo "    Edit $PREFS_FILE and add: \"activity_monitor_enabled\": true, \"activity_monitor_installed\": true"
+        fi
+    else
+        # Prefs not yet created — wellness onboarding hasn't run.
+        # The skill will set both flags when it writes the prefs file.
+        echo "  Prefs flag: will be set when wellness onboarding runs (no prefs file yet)"
+    fi
+fi
+
 echo ""
 echo "To uninstall: run $(dirname "$0")/uninstall-monitor.sh"

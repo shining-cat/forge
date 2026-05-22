@@ -134,31 +134,56 @@ This keeps the answered-question state honest: `calendar_enabled` is true ONLY w
 Present as:
 
 ```
-a) Basic (no setup needed)
-   I track time since your last break and detect laptop 
-   sleep (lid close). You'll need to tell me when you 
-   take a break ("brb", "back", etc.). Locking your 
-   screen or stepping away won't be detected — I'll 
-   keep counting as if you're working.
-
-b) Activity-aware (one-time install)
+Recommended — Activity-aware (default):
    I install a lightweight background service that checks
-   your screen state every 60 seconds (~0.1% CPU). 
-   When your screen locks or turns off, I automatically 
-   credit that as a break — no need to tell me.
-   
-   You can uninstall anytime: "uninstall activity monitor"
+   your screen state every 60 seconds (~0.1% CPU). When 
+   your screen locks or turns off, I automatically credit 
+   that as a break — no need to tell me. You can uninstall 
+   anytime by saying "uninstall activity monitor".
+
+Alternative — Timing-only:
+   I just track time since your last break and detect 
+   laptop sleep (lid close). You'll need to tell me when 
+   you take a break ("brb", "back", etc.). Locking your 
+   screen or stepping away won't be detected — I'll keep 
+   counting as if you're working.
+
+Default is Activity-aware. Say "yes" to install (or just 
+hit enter), or "timing-only" to skip the daemon.
 ```
 
-If user picks **a)**: set `activity_monitor_enabled: false`, continue.
+**Tier 2 path (default / explicit "yes"):**
 
-If user picks **b)**: run the install script:
+Run the install script:
 ```bash
 ~/.claude/skills/wellness-coach/scripts/install-monitor.sh
 ```
-Then set `activity_monitor_enabled: true` and `activity_monitor_installed: true`.
 
-After successful install, show post-install tips (ONLY after install, not during the choice):
+Branch on the outcome:
+
+- **Success (exit 0)** → set `activity_monitor_enabled: true` and `activity_monitor_installed: true`, then show post-install tips (below).
+
+- **Failure (exit non-zero)** → inspect the captured output and pick the matching message:
+
+  - Output contains `C compiler not found` → Xcode Command Line Tools missing.
+    > "The activity monitor needs Xcode Command Line Tools to compile the screen-state checker. Run `xcode-select --install` in a terminal (it opens a system dialog and takes a few minutes). Once it's done, say 'install activity monitor' and I'll retry. For now, I'm starting you on timing-only mode."
+
+  - Output contains `python3 not found` → unusual; suggest checking PATH and falling back.
+    > "I couldn't find python3 on your PATH, which the sampler needs. Starting you on timing-only mode — once python3 is reachable, say 'install activity monitor' to retry."
+
+  - Output contains `Failed to load LaunchAgent` → launchd issue; the script already cleaned up.
+    > "macOS refused to load the background sampler (the script cleaned up the partial install). Starting you on timing-only mode. If you want to retry later, say 'install activity monitor' — and if it still fails, paste the install output and I'll dig in."
+
+  - Anything else → generic compile/install failure.
+    > "Activity monitor install failed: <first line or two of the error>. Starting you on timing-only mode — say 'install activity monitor' to retry later."
+
+  In every failure branch, set `activity_monitor_enabled: false` and `activity_monitor_installed: false`, then continue onboarding. Do NOT block the user — the fallback is fully functional.
+
+**Tier 1 path (explicit "timing-only"):**
+
+Set `activity_monitor_enabled: false` and `activity_monitor_installed: false`, continue.
+
+**Post-install tips** — show ONLY after a successful Tier 2 install:
 
 ```
 Activity monitor installed!
@@ -167,6 +192,9 @@ For best results:
 • Lock your screen (Ctrl+Cmd+Q) when you step away
 • Set display-off timeout to 5–10 min in 
   System Settings → Lock Screen
+
+If anything looks off later, run:
+  ~/.claude/skills/wellness-coach/scripts/wellness-status.sh --diagnose
 ```
 
 ### Changing answers

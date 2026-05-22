@@ -4,7 +4,7 @@ A context-aware wellness coaching module for Claude Code, bundled with Forge as 
 
 ## Features
 
-- **Activity-aware break detection** — detects screen lock and display-off as real breaks (optional Tier 2)
+- **Activity-aware break detection** — detects screen lock and display-off as real breaks (default; falls back to timing-only if install fails)
 - **Context-aware timing** — suggests breaks based on work rhythm, not arbitrary intervals
 - **Calendar integration** — knows when your next meeting is, suggests breaks before them
 - **Weather awareness** — outdoor suggestions when weather is nice, indoor alternatives when it's not
@@ -24,19 +24,15 @@ The plugin auto-configures on first use. It will ask 8 quick questions:
 5. **Calendar access** — integrate with Google Calendar for meeting-aware timing
 6. **Weather & location** — check weather for outdoor/indoor break suggestions
 7. **Personal notes** — dog to walk, standing desk, park nearby, etc.
-8. **Activity monitoring** — basic (wall-clock) or activity-aware (screen state detection)
+8. **Activity monitoring** — activity-aware screen state detection (default) or timing-only fallback
 
 You can update preferences anytime by saying "update wellness preferences".
 
 ## Activity Monitoring
 
-The plugin offers two tiers of break detection:
+The plugin offers two tiers of break detection. **Activity-aware is the default** — onboarding tries to install it automatically, falling back to timing-only if the install can't complete (e.g., Xcode Command Line Tools missing).
 
-### Tier 1: Basic (default, no setup)
-
-Tracks wall-clock time since your last confirmed break and detects laptop sleep (lid close). You need to tell the plugin when you take a break ("brb", "back", etc.). Screen lock and stepping away without closing the lid are **not** detected.
-
-### Tier 2: Activity-aware (optional install)
+### Tier 2: Activity-aware (default)
 
 A lightweight background service checks your screen state every 60 seconds. When your screen locks or turns off, the plugin automatically credits that as a break.
 
@@ -49,18 +45,29 @@ A lightweight background service checks your screen state every 60 seconds. When
 - Walking away without locking (until display-off timeout kicks in)
 - Switching to another app while screen stays on (correctly — that's still screen time)
 
-**Install:** During onboarding (question 8) or anytime by saying "install activity monitor"
+**Install:** Attempted by default during onboarding (question 8). Can also be installed anytime by saying "install activity monitor".
 
 **Uninstall:** Say "uninstall activity monitor" or run:
 ```bash
 ~/.claude/skills/wellness-coach/scripts/uninstall-monitor.sh
 ```
 
-**For best results (Tier 2):**
+**For best results:**
 - Lock your screen (Ctrl+Cmd+Q) when you step away
 - Set display-off timeout to 5–10 min in System Settings → Lock Screen
 
 **Requirements:** Xcode Command Line Tools (for one-time compilation of the screen state binary). Install with `xcode-select --install` if needed.
+
+**Health check:** If breaks aren't being detected, run the diagnostic to see exactly which component is unhappy:
+```bash
+~/.claude/skills/wellness-coach/scripts/wellness-status.sh --diagnose
+```
+
+### Tier 1: Timing-only (fallback)
+
+Tracks wall-clock time since your last confirmed break and detects laptop sleep (lid close). You need to tell the plugin when you take a break ("brb", "back", etc.). Screen lock and stepping away without closing the lid are **not** detected.
+
+Use this tier if you prefer not to run a background sampler, or if the Tier 2 install can't complete on your machine. You can opt in explicitly by answering "timing-only" to question 8, or be automatically dropped here if the default install hits a blocker.
 
 ## Personas
 
