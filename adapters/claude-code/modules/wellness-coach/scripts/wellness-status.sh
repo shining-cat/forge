@@ -93,6 +93,12 @@ if [ "${1:-}" = "--diagnose" ]; then
         hint "Or re-run: ~/.claude/skills/wellness-coach/scripts/install-monitor.sh"
     fi
 
+    # Show active thresholds (defaults: 2 / 10). Helpful when a user is
+    # debugging why a particular lock did or didn't get credited.
+    MICRO_T=$(jq -r '.micro_break_lock_threshold_minutes // 2' "$PREFS" 2>/dev/null)
+    REAL_T=$(jq -r '.real_break_lock_threshold_minutes // 10' "$PREFS" 2>/dev/null)
+    pass "Lock thresholds:" "< ${MICRO_T}min ignore | ${MICRO_T}–${REAL_T}min micro | ≥ ${REAL_T}min real"
+
     echo
     echo "Binary"
     BINARY="$HOME/.claude/bin/screen_state"

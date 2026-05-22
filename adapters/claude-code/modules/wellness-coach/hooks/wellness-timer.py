@@ -32,6 +32,7 @@ from preferences import (
     read_prefs, read_modify_write, minutes_since, now_iso,
     read_idle_log, find_last_screen_off_break, get_system_wake_time,
     get_system_boot_time, get_current_screen_state,
+    REAL_BREAK_LOCK_THRESHOLD_MINUTES,
 )
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(PLUGIN_DIR), "scripts")
@@ -214,13 +215,21 @@ def main():
 
     # Auto-detect breaks from activity monitoring — runs BEFORE strike check
     # so a real break (screen off, system sleep) can clear a strike naturally.
-    auto_break = _detect_auto_break(prefs)
+    # Returns (timestamp, tier) where tier is "real" or "micro", or None.
+    detected = _detect_auto_break(prefs)
 
     last_break = prefs.get("last_break_timestamp")
-    if auto_break and (not last_break or auto_break > last_break):
-        _credit_auto_break(prefs, auto_break, last_break, coach_name)
-        # Re-read prefs after crediting — strike may have been cleared
-        prefs = read_prefs() or prefs
+    if detected:
+        auto_break, tier = detected
+        # Dedup against the right reference: real-tier compares against the
+        # real-break timestamp, micro-tier against the micro-break timestamp.
+        # Without this, micros re-fire on every hook tick.
+        prior = (prefs.get("last_break_timestamp") if tier == "real"
+                 else prefs.get("last_micro_break_timestamp"))
+        if not prior or auto_break > prior:
+            _credit_auto_break(prefs, auto_break, last_break, coach_name, tier)
+            # Re-read prefs after crediting — strike may have been cleared
+            prefs = read_prefs() or prefs
 
     # Strike already active — block most tool calls
     if prefs.get("strike_active"):
@@ -327,10 +336,18 @@ def main():
 
 
 def _detect_auto_break(prefs):
-    """Check activity monitor, system wake, and boot time for auto-detected breaks."""
-    auto_break = None
+    """Check activity monitor, system wake, and boot time for auto-detected breaks.
+
+    Returns (timestamp_iso, tier) where tier is "real" or "micro", or None.
+
+    Activity-monitor samples can yield either tier based on lock duration.
+    System wake / boot fallback always returns "real" — sleep/reboot is
+    intrinsically a long break (and uses the real-break threshold as its gap
+    floor to keep symmetry with the lock-duration tiering).
+    """
     last_break = prefs.get("last_break_timestamp")
 
+    # Activity monitor path — granular, can return either tier.
     if prefs.get("activity_monitor_enabled"):
         samples = read_idle_log()
         if samples:
@@ -344,47 +361,78 @@ def _detect_auto_break(prefs):
                         "display": "on",
                         "locked": False,
                     })
-            auto_break = find_last_screen_off_break(samples)
+            micro_t = prefs.get("micro_break_lock_threshold_minutes")
+            real_t = prefs.get("real_break_lock_threshold_minutes")
+            result = find_last_screen_off_break(samples,
+                micro_threshold_minutes=micro_t,
+                real_threshold_minutes=real_t)
+            if result is not None:
+                ts, _duration, tier = result
+                return (ts, tier)
 
-    if not auto_break and last_break:
+    # System wake / boot fallback — always real tier. Gate on the real-break
+    # threshold so a 7-min nap doesn't masquerade as a real break.
+    if last_break:
+        real_threshold = (prefs.get("real_break_lock_threshold_minutes")
+                          or REAL_BREAK_LOCK_THRESHOLD_MINUTES)
         wake_time = get_system_wake_time()
         if wake_time and wake_time > last_break:
-            if minutes_since(last_break) - minutes_since(wake_time) >= 5:
-                auto_break = wake_time
+            if minutes_since(last_break) - minutes_since(wake_time) >= real_threshold:
+                return (wake_time, "real")
 
-        if not auto_break:
-            boot_time = get_system_boot_time()
-            if boot_time and boot_time > last_break:
-                if minutes_since(last_break) - minutes_since(boot_time) >= 5:
-                    auto_break = boot_time
+        boot_time = get_system_boot_time()
+        if boot_time and boot_time > last_break:
+            if minutes_since(last_break) - minutes_since(boot_time) >= real_threshold:
+                return (boot_time, "real")
 
-    return auto_break
+    return None
 
 
-def _credit_auto_break(prefs, auto_break, last_break, coach_name):
-    """Credit an auto-detected break and optionally show welcome-back."""
+def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real"):
+    """Credit an auto-detected break and optionally show welcome-back.
+
+    Tier semantics:
+      "real"  — reset both timestamps, clear strike, log "auto-real"
+      "micro" — reset only last_micro_break_timestamp, keep last_break_timestamp
+                and strike intact, log "auto-micro". A short lock isn't a
+                substitute for a real break.
+    """
     old_strike = prefs.get("strike_active", False)
     old_snooze = prefs.get("snooze_count", 0)
+    last_micro = prefs.get("last_micro_break_timestamp")
 
-    def credit(p):
-        p["last_break_timestamp"] = auto_break
-        p["last_micro_break_timestamp"] = auto_break
-        p["strike_active"] = False
-        p["strike_cleared_at"] = None
-        p["snooze_count"] = 0
-        return p
-    read_modify_write(credit)
-    prefs["last_break_timestamp"] = auto_break
-    prefs["strike_active"] = False
-    prefs["snooze_count"] = 0
+    if tier == "real":
+        def credit(p):
+            p["last_break_timestamp"] = auto_break
+            p["last_micro_break_timestamp"] = auto_break
+            p["strike_active"] = False
+            p["strike_cleared_at"] = None
+            p["snooze_count"] = 0
+            return p
+        read_modify_write(credit)
+        prefs["last_break_timestamp"] = auto_break
+        prefs["last_micro_break_timestamp"] = auto_break
+        prefs["strike_active"] = False
+        prefs["snooze_count"] = 0
 
-    changes = {"last_break_timestamp": f"{last_break} → {auto_break}"}
-    if old_strike:
-        changes["strike_active"] = "true → false"
-    if old_snooze:
-        changes["snooze_count"] = f"{old_snooze} → 0"
-    log_event(prefs, "break-ack",
-        f"Auto-detected break. Credited at {auto_break}.", changes)
+        changes = {"last_break_timestamp": f"{last_break} → {auto_break}"}
+        if old_strike:
+            changes["strike_active"] = "true → false"
+        if old_snooze:
+            changes["snooze_count"] = f"{old_snooze} → 0"
+        log_event(prefs, "break-ack",
+            f"Auto-detected real break. Credited at {auto_break}.", changes)
+    else:  # micro
+        def credit(p):
+            p["last_micro_break_timestamp"] = auto_break
+            return p
+        read_modify_write(credit)
+        prefs["last_micro_break_timestamp"] = auto_break
+
+        changes = {"last_micro_break_timestamp": f"{last_micro} → {auto_break}"}
+        log_event(prefs, "micro-break-ack",
+            f"Auto-detected micro break (short lock). "
+            f"Credited at {auto_break}. Real-break timer untouched.", changes)
 
     # Welcome-back message if user just returned (within 5 min)
     try:
@@ -395,10 +443,11 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name):
             lock_fd = try_reminder_lock()
             if lock_fd is not None:
                 persona = prefs.get("persona", "professional")
-                wb_lines = get_welcome_back_lines(persona)
+                wb_lines = get_welcome_back_lines(persona, tier=tier)
                 box = format_box(coach_name, wb_lines, "welcome_back")
                 log_event(prefs, "welcome-back",
-                    "Welcome-back shown — user returned from auto-detected break.")
+                    f"Welcome-back shown ({tier}) — user returned from "
+                    f"auto-detected break.")
                 emit_allow(center_block(box))
     except (ValueError, TypeError, OverflowError):
         pass

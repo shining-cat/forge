@@ -93,8 +93,22 @@ def get_persona_messages(prefs, level, elapsed_min):
     return [ln[:BOX_TEXT_WIDTH] for ln in content], notif
 
 
-def get_welcome_back_lines(persona):
-    """Return content lines for the welcome-back box."""
+def get_welcome_back_lines(persona, tier="real"):
+    """Return content lines for the welcome-back box.
+
+    `tier` is "real" or "micro" — micro is shown for short locks (typically
+    2–10 min) that reset the stretch timer but not the real-break timer.
+    The micro copy is intentionally lighter so the user knows the break was
+    noted but doesn't think the real-break countdown got reset.
+    """
+    if tier == "micro":
+        if persona == "playful":
+            return ["Short break noted!", "Stretch timer reset."]
+        elif persona == "character":
+            return ["Quick step away — I saw.", "Stretch reset; break still due."]
+        return ["Short break detected.", "Micro-break credited."]
+
+    # Real break (default).
     if persona == "playful":
         return ["Welcome back! Break credited."]
     elif persona == "character":

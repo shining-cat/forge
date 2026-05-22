@@ -36,14 +36,31 @@ The plugin offers two tiers of break detection. **Activity-aware is the default*
 
 A lightweight background service checks your screen state every 60 seconds. When your screen locks or turns off, the plugin automatically credits that as a break.
 
+**The trigger is screen state, not user presence.** A break is credited only when the laptop visibly registers you as away — your screen is locked, your display is off, or the system is asleep. **If your screen stays on and unlocked, no break is credited**, even if you're physically not at the keyboard.
+
+This is deliberate: it prevents false-positives from non-terminal activity. A video meeting in a browser, time spent in another app, reading on the same screen — all keep the screen on and unlocked, and none of them are a real break. The monitor stays accurate by trusting the screen state, not by guessing whether you're "really" working.
+
 **What it detects:**
 - Screen lock (Ctrl+Cmd+Q or auto-lock)
 - Display off (timeout or lid close)
 - System sleep
 
-**What it doesn't detect:**
+**What it doesn't detect (by design):**
 - Walking away without locking (until display-off timeout kicks in)
-- Switching to another app while screen stays on (correctly — that's still screen time)
+- Video meetings, browsing, or other apps while screen stays on and unlocked
+- Switching focus away from Claude Code without locking
+
+**Practical implication:** if you want a break to count, lock your screen (Ctrl+Cmd+Q) when you step away. Setting a short display-off timeout (5–10 min in System Settings → Lock Screen) is the belt-and-braces — anything you forget to lock will eventually trigger the credit when the display sleeps.
+
+**Tiered classification** — lock duration determines whether the break counts:
+
+| Lock duration | Credited as | Effect |
+|---|---|---|
+| < 2 min | nothing | noise floor — ignored entirely |
+| 2–10 min | micro-break | resets the stretch timer only |
+| 10+ min | real break | resets both timers, clears any active strike |
+
+Thresholds are configurable via `micro_break_lock_threshold_minutes` and `real_break_lock_threshold_minutes` in `wellness-preferences.json`. Defaults are tuned so a phone glance doesn't fake a break, and a 7-minute coffee top-up doesn't reset the real-break timer.
 
 **Install:** Attempted by default during onboarding (question 8). Can also be installed anytime by saying "install activity monitor".
 
