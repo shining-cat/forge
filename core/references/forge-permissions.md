@@ -63,6 +63,27 @@ Installed only if `WELLNESS_ENABLED=true` in `forge.conf` (set during onboarding
 
 ---
 
+## Conditional (permissive shell wrappers — opt-in)
+
+Installed only if `PERMISSIVE_BASH_WRAPPERS=true` in `forge.conf`. Default is `false`. `install.sh` prompts interactively the first time it runs, persists the answer, and skips the prompt on re-installs.
+
+| Surface | Pattern | Notes |
+|---|---|---|
+| `bash -c "…"` | `Bash(bash -c:*)` | inline shell wrapper |
+| `zsh -c "…"` | `Bash(zsh -c:*)` | inline shell wrapper |
+
+**Why it exists:** Claude Code's Bash matcher is prefix-only (pitfall #2 in [`permission-patterns.md`](permission-patterns.md)). A grant like `Bash(pnpm:*)` does NOT cover `Bash(cd dir && pnpm install)` because the command starts with `cd`, not `pnpm`. Multi-step setup steps (Forge install, wellness-coach setup, gws-auth recovery) routinely hit this and require either narrowing the command or pinning the exact compound string in `settings.local.json`.
+
+**The tradeoff:** these wrappers don't bypass the matcher — they trip it earlier. Once `Bash(bash -c:*)` matches, the entire `bash -c '<anything>'` payload runs. Equivalent to saying "I trust myself when I deliberately invoke a one-shot shell." Suitable for power users who already accept that tradeoff. Not suitable as a universal default.
+
+**Patterns we intentionally do NOT ship**, even with `PERMISSIVE_BASH_WRAPPERS=true`:
+
+- `Bash(cd:*)` and `Bash(cd * && *)` — these match any `cd`-prefixed compound, which in combination with matcher behavior amounts to "anything you can reach via `cd <anywhere> && …`". Too broad for a baseline. Users who want this can add it to their own `~/.claude/settings.json` after weighing the risk.
+
+**Relationship to `forge-permission-lint.sh`:** the lint script (also surfaced as the `/forge-audit-permissions` skill) surfaces *anti-patterns* in existing settings (drift detection — see pitfalls #1, #2, #4 in [`permission-patterns.md`](permission-patterns.md)). It does NOT propose or apply baseline patterns. The opt-in surface above is install-time only; the lint stays a separate runtime tool.
+
+---
+
 ## Maintenance
 
 When adding a new Forge surface (script, hook, skill that performs filesystem operations), update this catalog AND `install.sh`'s `PERMS_TO_ADD` array in the same commit.
