@@ -1233,6 +1233,21 @@ for pr in json.load(sys.stdin):
     echo "Run \`git -C $VAULT_PATH init\` to enable history + recovery."
   fi
 
+  # Personal wind-down phrases (slice 3 — prose wind-down trigger learning loop).
+  # Surface the user's learned phrases on entry so Petra recognizes them as
+  # canonical (no educational tip needed) throughout the session. Silent when
+  # the file doesn't exist or holds an empty list.
+  local wd_file="$VAULT_PATH/_shared/wind-down-phrases.json"
+  if [ -f "$wd_file" ] && command -v jq >/dev/null 2>&1; then
+    local wd_phrases
+    wd_phrases=$(jq -r '.phrases[]?' "$wd_file" 2>/dev/null)
+    if [ -n "$wd_phrases" ]; then
+      echo ""
+      echo "--- Personal wind-down phrases ---"
+      echo "$wd_phrases" | paste -sd, - | sed 's/,/, /g'
+    fi
+  fi
+
   echo "========================"
 
   # Truncate breadcrumbs (fresh session)
@@ -1919,6 +1934,86 @@ do_bootstrap_classify() {
   echo "[bootstrap-classify] classified $count entries → $FRICTION_CLASSIFIED"
 }
 
+# ── Subcommand: learn-wind-down (slice 3 — personal phrase learning) ──
+# Append a user-confirmed wind-down phrase to the personal vault list at
+# ${VAULT_PATH}/_shared/wind-down-phrases.json. Normalizes the phrase
+# (lowercase, trim, collapse internal whitespace) before dedup so different
+# castings of the same phrase don't get stored as separate entries.
+#
+# File format: {"phrases": ["phrase1", "phrase2", ...]}
+#
+# Behavior:
+#   - File missing → initialize with empty array, then append
+#   - Phrase already present (after normalization) → no-op, exit 0
+#   - jq not available → fall back to plain-text append in a sibling
+#     `.txt` file so we don't silently drop the learning signal
+#
+# Usage: forge-context.sh learn-wind-down "<phrase>"
+do_learn_wind_down() {
+  local phrase="${1:-}"
+  if [ -z "$phrase" ]; then
+    echo "[forge-context] learn-wind-down requires <phrase> arg" >&2
+    exit 1
+  fi
+
+  local file="$VAULT_PATH/_shared/wind-down-phrases.json"
+  mkdir -p "$(dirname "$file")"
+
+  # Normalize: lowercase, trim, collapse internal whitespace
+  local normalized
+  normalized=$(printf '%s' "$phrase" | tr '[:upper:]' '[:lower:]' | awk '{$1=$1; print}')
+  if [ -z "$normalized" ]; then
+    echo "[forge-context] learn-wind-down: phrase empty after normalization" >&2
+    exit 1
+  fi
+
+  # jq fallback — plain-text append, marked for later migration
+  if ! command -v jq >/dev/null 2>&1; then
+    local txt_fallback="$VAULT_PATH/_shared/wind-down-phrases.txt"
+    if ! grep -Fxq "$normalized" "$txt_fallback" 2>/dev/null; then
+      printf '%s\n' "$normalized" >> "$txt_fallback"
+      echo "Logged '$normalized' to $txt_fallback (jq missing — JSON store skipped)"
+    else
+      echo "Already in list: '$normalized'"
+    fi
+    return 0
+  fi
+
+  if [ ! -f "$file" ]; then
+    printf '{"phrases": []}\n' > "$file"
+  fi
+
+  if jq -e --arg p "$normalized" '.phrases | index($p) != null' "$file" >/dev/null 2>&1; then
+    echo "Already in list: '$normalized'"
+    return 0
+  fi
+
+  local tmp
+  tmp=$(mktemp)
+  if jq --arg p "$normalized" '.phrases += [$p]' "$file" > "$tmp"; then
+    mv "$tmp" "$file"
+    echo "Logged '$normalized' to $file"
+  else
+    rm -f "$tmp"
+    echo "[forge-context] learn-wind-down: jq update failed" >&2
+    exit 1
+  fi
+}
+
+# ── Subcommand: wind-down-list (slice 3 — discoverability) ────────────
+# Print the user's personal wind-down phrases, one per line. Silent-ok when
+# the file doesn't exist yet (returns 0, no output) so callers can pipe it
+# without conditionals.
+do_wind_down_list() {
+  local file="$VAULT_PATH/_shared/wind-down-phrases.json"
+  [ -f "$file" ] || return 0
+  if ! command -v jq >/dev/null 2>&1; then
+    cat "$file"
+    return 0
+  fi
+  jq -r '.phrases[]?' "$file"
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -1938,8 +2033,10 @@ case "$SUBCMD" in
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
   resolve-task)        do_resolve_task "${@:2}" ;;
+  learn-wind-down)     do_learn_wind_down "${@:2}" ;;
+  wind-down-list)      do_wind_down_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify|resolve-task}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list}" >&2
     exit 1
     ;;
 esac
