@@ -1159,17 +1159,27 @@ for pr in json.load(sys.stdin):
 
   # Vault state — surfaces drift in the vault repo itself (not the project repo).
   # Loss of laptop = loss of all decisions/checkpoints/plans if the vault never gets pushed.
+  # Header + warning wording is self-orienting (signals "your vault, not the Forge source repo")
+  # so first-time users don't pattern-match "uncommitted" to "I should push to shining-cat/forge".
   if [ -d "$VAULT_PATH/.git" ]; then
     echo ""
-    echo "--- Vault state ---"
-    local vault_dirty vault_ahead vault_behind vault_untracked_dirs
+    echo "--- Your vault (local history) ---"
+    local vault_dirty vault_ahead vault_behind vault_untracked_dirs vault_has_upstream
     vault_dirty="$(git -C "$VAULT_PATH" status --short 2>/dev/null | wc -l | tr -d ' ')"
     vault_ahead="$(git -C "$VAULT_PATH" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
     vault_behind="$(git -C "$VAULT_PATH" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
     vault_untracked_dirs="$(git -C "$VAULT_PATH" status --short 2>/dev/null | awk '/^\?\?/ {print $2}' | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ')"
+    vault_has_upstream=0
+    if git -C "$VAULT_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+      vault_has_upstream=1
+    fi
 
     if [ "$vault_dirty" -eq 0 ] && [ "$vault_ahead" -eq 0 ] && [ "$vault_behind" -eq 0 ]; then
-      echo "Clean, in sync with origin."
+      if [ "$vault_has_upstream" -eq 1 ]; then
+        echo "Clean, in sync with origin."
+      else
+        echo "Clean. (No remote — stays on your laptop.)"
+      fi
     else
       [ "$vault_dirty" -gt 0 ] && echo "Dirty files: $vault_dirty"
       [ "$vault_untracked_dirs" -gt 0 ] && echo "Untracked top-level dirs: $vault_untracked_dirs"
@@ -1188,11 +1198,15 @@ for pr in json.load(sys.stdin):
     if [ "$vault_dirty" -ge "$VAULT_DRIFT_DIRTY_FILES" ] \
       || [ "$vault_ahead" -ge "$VAULT_DRIFT_COMMITS_AHEAD" ] \
       || [ "$vault_last_commit_age_days" -ge "$VAULT_DRIFT_DAYS_SINCE" ]; then
-      echo "[!] Vault drift detected — commit + push when you reach a natural pause."
+      if [ "$vault_has_upstream" -eq 1 ]; then
+        echo "[!] Your vault has drift — commit + push when you reach a natural pause."
+      else
+        echo "[!] Your vault has drift — commit when you reach a natural pause. (No remote — stays on your laptop.)"
+      fi
     fi
   elif ! grep -q '^VAULT_GIT_DECLINED=true' "$HOME/.claude/forge.conf" 2>/dev/null; then
     echo ""
-    echo "--- Vault state ---"
+    echo "--- Your vault (local history) ---"
     echo "Not under version control. Decisions, checkpoints, plans live only on this disk."
     echo "Run \`git -C $VAULT_PATH init\` to enable history + recovery."
   fi
