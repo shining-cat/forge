@@ -31,6 +31,11 @@ VAULT_DRIFT_COMMITS_AHEAD=5
 VAULT_DRIFT_DIRTY_FILES=10
 VAULT_DRIFT_DAYS_SINCE=7
 
+# Brain-dump nag interval (minutes since last entry) — override via forge.conf
+# by setting `BRAINDUMP_INTERVAL_MIN=<int>`. Default 10. Tester item #7.
+BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2-)"
+BRAINDUMP_INTERVAL_MIN="${BRAINDUMP_INTERVAL_MIN:-10}"
+
 # Checkpoint-nag suppression (do_stop) — both gates must pass for the nag to fire.
 # Reframes the nag from "clock-driven" ("X minutes since checkpoint") to
 # "activity-driven" ("work done in this session that isn't recorded"). Covers
@@ -496,10 +501,12 @@ print(summary)
       ;;
   esac
 
-  # ── Brain dump prompt (if >10min since last entry) ──────────────────
-  # Stacked throttle: subagent guard + just-dumped mtime + per-response cooldown.
+  # ── Brain dump prompt (interval-driven; tunable + no-novelty skip) ─────
+  # Stacked throttle: subagent guard + just-dumped mtime + per-response cooldown
+  # + no-novelty marker. Interval threshold is tunable via BRAINDUMP_INTERVAL_MIN
+  # in forge.conf (default 10). Tester item #7.
   # Fixes per-tool-call refire pattern (see vault task keeper-braindump-hook-suppress-in-subagents).
-  local dump_age checkpoint_age output session_id agent_id now braindump_mtime cooldown_marker cooldown_age
+  local dump_age checkpoint_age output session_id agent_id now braindump_mtime cooldown_marker cooldown_age last_braindump_line
   dump_age="$(get_braindump_age_minutes)"
   checkpoint_age="$(get_checkpoint_age_minutes)"
   output=""
@@ -532,10 +539,25 @@ print(summary)
     fi
   fi
 
-  if [ "$dump_age" -ge 10 ]; then
+  # No-novelty signal — if the last non-empty line of braindump.md contains
+  # the literal "(no new state)" or "(nns)", the user has signaled nothing has
+  # changed since the previous entry. Suppress nag until a new entry is
+  # appended without the marker. This is the user's explicit escape hatch:
+  # cheap to write, instantly silences cadence-driven nagging, self-clears on
+  # the next real entry.
+  if [ -f "$BRAINDUMP_FILE" ]; then
+    last_braindump_line="$(awk 'NF {line=$0} END {print line}' "$BRAINDUMP_FILE" 2>/dev/null)"
+    case "$last_braindump_line" in
+      *"(no new state)"*|*"(nns)"*)
+        return 0
+        ;;
+    esac
+  fi
+
+  if [ "$dump_age" -ge "$BRAINDUMP_INTERVAL_MIN" ]; then
     # Touch the cooldown marker before emitting (suppresses next tool call within 60s).
     [ -n "$session_id" ] && touch "/tmp/forge-braindump-cooldown-${session_id}" 2>/dev/null
-    output="{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[Keeper] Brain dump due (${dump_age}min since last). Append 2-3 lines to braindump.md: what you're working on, what you just figured out, what's next. File: $BRAINDUMP_FILE\"}}"
+    output="{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[Keeper] Brain dump due (${dump_age}min since last). Append 2-3 lines to braindump.md: what you're working on, what you just figured out, what's next. If genuinely nothing new, append '(no new state)' to silence until next real entry. File: $BRAINDUMP_FILE\"}}"
   fi
 
   # ── Push/PR nudge (checkpoint reminder on push or PR creation) ──────
