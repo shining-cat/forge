@@ -54,6 +54,22 @@ Check if onboarding has been completed by reading `~/.claude/forge.conf` with th
 - If `ONBOARDING_COMPLETE=false` or the key is missing → **load `references/onboarding.md` and follow the flow there**. The full onboarding (wellness coach setup, superpowers verification, vault project scaffolding, multi-environment guidance) lives in that file. It runs once per machine, then sets `ONBOARDING_COMPLETE=true` and is never read again.
 - If `~/.claude/forge.conf` doesn't exist at all, the install script hasn't been run. Tell the user: *"Forge needs to be installed first. Clone the repo and run `./install.sh` — see the README for details."* Then stop.
 
+### 0a. Wellness Cold-Start Check (pre-onboarding)
+
+Run BEFORE step 1, BEFORE step 2's recovery read, BEFORE anything that touches a forge file:
+
+```bash
+~/.claude/skills/wellness-coach/scripts/wellness-reset.sh --if-cold-start
+```
+
+The script self-gates on `WELLNESS_ENABLED` + `WELLNESS_COLD_START_HOURS` (defaults: disabled, 4h) and internally invokes `forge-gap-since-last-signal.sh`. On a cold start it runs a full wellness reset and prints a single line: *"Wellness reset — Forge idle for {Nh}h{Mm}m, break clock zeroed."* Otherwise silent.
+
+**Surface the script's stdout verbatim before the step-6 summary** if non-empty — do not paraphrase, do not omit.
+
+**Why this is step 0a, not step 2.5:** If the user has returned after a long gap with an active strike (e.g. ☕ break overdue from the prior session), the strike fires on the FIRST tool call. Step 0's Read of `~/.claude/forge.conf` was that first call — it got blocked, the user saw Pip on strike instead of Petra warming the anvil. `wellness-reset.sh` is on the strike-exemption list (path matches `/.claude/skills/wellness-coach/scripts/`), so it runs cleanly even when a strike is active, and clears the strike in the process. After 0a runs, step 0's Read proceeds normally.
+
+The internal `forge-gap-since-last-signal.sh` call is shell-to-shell (the wellness script invokes it directly), bypassing the Claude tool layer entirely — so the gap script does not need to be on the strike exemption list.
+
 ### 1. Detect Environment
 
 Determine which environment and project are active based on the current working directory or user instruction.
@@ -142,25 +158,6 @@ Still read separately (cross-project context not covered by recovery). Read `VAU
 2. `{VAULT_PATH}/_shared/current-checkpoint.md` — last known state of cross-project work (only if project != Forge — when project = Forge/forge, the project's own checkpoint at `{VAULT_PATH}/PERSO/forge/current-checkpoint.md` is used instead, picked up automatically by the recovery script via the routing in step 1)
 3. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
 4. `{VAULT_PATH}/_shared/friction-log.md` — recent friction events (last 5 entries only)
-
-### 2.5. Wellness Cold-Start Check
-
-If wellness is enabled, check the gap since the last Forge signal and reset the wellness coach when the gap exceeds the cold-start threshold. This must happen BEFORE the entry summary (step 6).
-
-**Why:** returning after lunch or a long meeting triggers an immediate wellness nag — the timer has no idea you stepped away. The wake/boot fallback in `_detect_auto_break` (wellness-timer.py) covers macOS sleep but is gated on `last_break` being truthy, so fresh installs and pure idle gaps slip through. The gap primitive (`forge-gap-since-last-signal.sh`) is the durable signal — it measures wall-clock time across checkpoints, braindumps, marker JSON, and vault git, so any kind of away-time counts.
-
-**How:**
-
-1. Read `WELLNESS_ENABLED` and `WELLNESS_COLD_START_HOURS` from `~/.claude/forge.conf` (defaults: disabled, `4` hours). If `WELLNESS_ENABLED` is not `true`, skip silently.
-2. Run `~/.claude/scripts/forge-gap-since-last-signal.sh`. Stdout is integer seconds; sentinel `999999999` means "no signals yet" (fresh install, vault wiped).
-3. Threshold = `WELLNESS_COLD_START_HOURS * 3600`.
-4. If `gap >= threshold` AND `gap != 999999999`:
-   - Run `~/.claude/skills/wellness-coach/scripts/wellness-reset.sh --full-reset`
-   - Emit a one-line note BEFORE the step-6 summary: *"Wellness reset — Forge idle for {Nh}m{Mm}, break clock zeroed."*
-5. On the no-signals sentinel: do NOT reset. Without a baseline, "gap" is meaningless; let the user take their first break on schedule.
-6. Silent on warm start (gap < threshold) — do not mention.
-
-This supersedes the wake/boot fallback in `_detect_auto_break` for the cold-start case. The wake/boot fallback still runs between turns and remains useful for mid-session naps the gap signal can't see.
 
 ### 2b. Load Knowledge Bases (optional)
 
