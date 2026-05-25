@@ -1268,16 +1268,26 @@ do_status() {
 
   # Checkpoint freshness chip: 💾 always (semantic = "save state"), color = urgency
   # green ≤15min, yellow ≤30min, red >30min. "ago" suffix anchors elapsed-time meaning.
-  local color
-  if [ "$age" -le 15 ]; then
-    color='\033[32m'  # green
-  elif [ "$age" -le 30 ]; then
-    color='\033[33m'  # yellow
-  else
-    color='\033[31m'  # red
+  # Exception: `session: closed` in checkpoint frontmatter → dormant (gray), no urgency.
+  # A cleanly-closed project's stale checkpoint isn't neglect; it's intentional dormancy.
+  local session_state=""
+  if [ -f "$CHECKPOINT_FILE" ]; then
+    session_state="$(awk '/^---$/{c++; next} c==1 && /^session:/ {gsub(/[[:space:]]/,"",$2); print $2; exit}' "$CHECKPOINT_FILE" 2>/dev/null)"
   fi
   local indicator
-  indicator=$(printf "${color}💾 %sm ago\033[0m" "$age")
+  if [ "$session_state" = "closed" ]; then
+    indicator=$(printf "\033[90m💾 dormant\033[0m")
+  else
+    local color
+    if [ "$age" -le 15 ]; then
+      color='\033[32m'  # green
+    elif [ "$age" -le 30 ]; then
+      color='\033[33m'  # yellow
+    else
+      color='\033[31m'  # red
+    fi
+    indicator=$(printf "${color}💾 %sm ago\033[0m" "$age")
+  fi
 
   # Ownership chip: ⚒ = this session owns the marker, ⚠ = another window owns it.
   # Makes session-isolation visible — sibling Claude Code windows that didn't run /forge
