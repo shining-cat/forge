@@ -307,11 +307,13 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|audit-prose-rules|bootstrap-classify|resolve-task)
+  set-marker|append-friction|audit-prose-rules|bootstrap-classify|resolve-task|friction-tail)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
     # (e.g. from a post-commit hook in a sibling Claude Code window).
+    # friction-tail reads $VAULT_PATH/_shared/friction-log.md directly — no
+    # project context needed.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -1662,6 +1664,35 @@ do_append_braindump() {
 #   --pattern <slug-from-catalog|needs_new_pattern>
 #   --recurrence <N>
 #   --action-ref "tasks/open/<slug>.md|needs_new_pattern"
+do_friction_tail() {
+  # Print the N most recent entries (by date in H2 header, default 5) of
+  # friction-log.md. Used by the Forge SKILL at session entry instead of a
+  # naive Read of the whole file (the log grows unbounded — 128 KB / 32K
+  # tokens at the time of writing — and only the recent tail is useful as
+  # priming context).
+  #
+  # Sort-by-date (not by file position) because the file has historically
+  # been a mix of prepended and appended entries; "last 5 by position"
+  # returned a mix of old and new entries. Date is the right semantic.
+  local n="${1:-5}"
+  local file="$VAULT_PATH/_shared/friction-log.md"
+  [ -f "$file" ] || return 0
+  python3 - "$file" "$n" <<'PYEOF'
+import re, sys
+path, n = sys.argv[1], int(sys.argv[2])
+with open(path) as f:
+    text = f.read()
+# Split on H2 headers, keeping the header with each entry.
+parts = re.split(r'(?=^## )', text, flags=re.MULTILINE)
+entries = [p for p in parts if p.startswith('## ')]
+def date_key(e):
+    m = re.search(r'(\d{4}-\d{2}-\d{2})', e)
+    return m.group(1) if m else '0000-00-00'
+entries.sort(key=date_key)
+sys.stdout.write(''.join(entries[-n:]).rstrip() + '\n')
+PYEOF
+}
+
 do_append_friction() {
   local date_arg="" desc="" pattern="" recurrence="" action_ref=""
   while [ $# -gt 0 ]; do
@@ -2040,13 +2071,14 @@ case "$SUBCMD" in
   set-marker)          do_set_marker "${@:2}" ;;
   append-braindump)    do_append_braindump "${@:2}" ;;
   append-friction)     do_append_friction "${@:2}" ;;
+  friction-tail)       do_friction_tail "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
   resolve-task)        do_resolve_task "${@:2}" ;;
   learn-wind-down)     do_learn_wind_down "${@:2}" ;;
   wind-down-list)      do_wind_down_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|audit-prose-rules|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|audit-prose-rules|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list}" >&2
     exit 1
     ;;
 esac

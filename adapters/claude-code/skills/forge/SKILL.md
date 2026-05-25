@@ -157,7 +157,7 @@ Still read separately (cross-project context not covered by recovery). Read `VAU
 1. `{VAULT_PATH}/_shared/OVERVIEW.md` — cross-project awareness (all projects, forge work, punctual tasks)
 2. `{VAULT_PATH}/_shared/current-checkpoint.md` — last known state of cross-project work (only if project != Forge — when project = Forge/forge, the project's own checkpoint at `{VAULT_PATH}/PERSO/forge/current-checkpoint.md` is used instead, picked up automatically by the recovery script via the routing in step 1)
 3. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
-4. `{VAULT_PATH}/_shared/friction-log.md` — recent friction events (last 5 entries only)
+4. **Run** `~/.claude/scripts/forge-context.sh friction-tail` for recent friction events (last 5 entries). Do NOT Read `friction-log.md` directly — the file grows unbounded (already 100+ KB / 30K+ tokens) and a naive Read charges the whole thing into context every session entry, driving compaction frequency. The subcommand emits only the tail.
 
 ### 2b. Load Knowledge Bases (optional)
 
