@@ -48,6 +48,10 @@ fi
 - If `NO_PREFS` → start **Onboarding** (below)
 - If files exist → use the merged view, note persona and settings, proceed normally
 
+### Stale-clear guard (Layer 3)
+
+After the merge above, run `scripts/wellness-stale-clear-guard.sh`. It self-corrects runtime files where `strike_active: false` but `last_break_timestamp` is stale relative to `strike_cleared_at` (recent clear, old break clock) — covers manual edits and pre-PR-#26 leftovers. Silent on no-op; one stderr line on fix; exits 0 either way.
+
 ## Onboarding
 
 Triggered when the startup check above returns `NO_PREFS`, or when the user explicitly asks to redo onboarding. Eight-question flow (persona/name, micro/real break intervals, insistence, calendar with gws scope probe, weather, personal notes, activity-monitor tier with install branches). Runs once per machine, then the file isn't needed again.
