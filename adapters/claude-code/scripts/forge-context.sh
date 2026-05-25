@@ -307,13 +307,16 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|audit-prose-rules|bootstrap-classify|resolve-task|friction-tail)
+  set-marker|append-friction|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
     # (e.g. from a post-commit hook in a sibling Claude Code window).
     # friction-tail reads $VAULT_PATH/_shared/friction-log.md directly — no
     # project context needed.
+    # skill-budgets reads $FORGE_REPO/core/skill-budgets.conf directly and
+    # doesn't need marker context — also future-proofs against pre-commit /
+    # `gh pr comment` invocations that won't have a tty.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -1914,6 +1917,153 @@ do_audit_prose_rules() {
   fi
 }
 
+# ── Subcommand: skill-budgets ──────────────────────────────────────────
+# Reads $FORGE_REPO/core/skill-budgets.conf (lines of "path=N"), wc -l
+# each file, classifies green (≤80% of budget) / yellow (80–100%) / red
+# (>100%). Default human table; --json for machine output; --quiet to
+# suppress green rows. Exit 1 if any red row, else 0.
+#
+# Why no install-time copy of the config: budgets are intrinsically tied
+# to source-repo paths, so reading from $FORGE_REPO avoids drift.
+do_skill_budgets() {
+  local json_mode=false quiet_mode=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json)  json_mode=true; shift ;;
+      --quiet) quiet_mode=true; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  local forge_repo
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
+  if [ -z "$forge_repo" ]; then
+    echo "[skill-budgets] FORGE_REPO not set in $FORGE_CONF" >&2
+    exit 2
+  fi
+
+  local conf="$forge_repo/core/skill-budgets.conf"
+  if [ ! -f "$conf" ]; then
+    echo "[skill-budgets] config not found: $conf" >&2
+    exit 2
+  fi
+
+  local use_color=false
+  if [ "$json_mode" = "false" ] && [ -t 1 ]; then
+    use_color=true
+  fi
+  local c_green="" c_yellow="" c_red="" c_reset=""
+  if [ "$use_color" = "true" ]; then
+    c_green=$'\033[32m'
+    c_yellow=$'\033[33m'
+    c_red=$'\033[31m'
+    c_reset=$'\033[0m'
+  fi
+
+  local rows="[]"
+  local any_red=false
+  local any_row=false
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [ -z "$line" ] && continue
+    case "$line" in *=*) ;; *) continue ;; esac
+
+    any_row=true
+    local rel_path budget full status pct actual
+    rel_path="${line%%=*}"
+    budget="${line#*=}"
+    rel_path="$(printf '%s' "$rel_path" | sed -e 's/[[:space:]]*$//')"
+    budget="$(printf '%s' "$budget" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+    if ! printf '%s' "$budget" | grep -qE '^[0-9]+$'; then
+      status="red"; actual="0"; pct="0"
+      any_red=true
+      rows=$(printf '%s' "$rows" | jq --arg p "$rel_path" --arg b "$budget" '. + [{path:$p, actual:0, budget:0, pct:0, status:"red", note:"invalid budget"}]')
+      continue
+    fi
+
+    full="$forge_repo/$rel_path"
+    if [ ! -f "$full" ]; then
+      status="red"; actual="N/A"; pct="N/A"
+      any_red=true
+      rows=$(printf '%s' "$rows" | jq --arg p "$rel_path" --argjson b "$budget" '. + [{path:$p, actual:null, budget:$b, pct:null, status:"red", note:"FILE NOT FOUND"}]')
+      continue
+    fi
+
+    if ! actual=$(wc -l < "$full" 2>/dev/null); then
+      status="red"; actual="N/A"; pct="N/A"
+      any_red=true
+      rows=$(printf '%s' "$rows" | jq --arg p "$rel_path" --argjson b "$budget" '. + [{path:$p, actual:null, budget:$b, pct:null, status:"red", note:"READ ERROR"}]')
+      continue
+    fi
+    actual=$(printf '%s' "$actual" | tr -d '[:space:]')
+
+    if [ "$budget" -le 0 ]; then
+      pct=0
+    else
+      pct=$(( actual * 100 / budget ))
+    fi
+
+    if [ "$pct" -le 80 ]; then
+      status="green"
+    elif [ "$pct" -le 100 ]; then
+      status="yellow"
+    else
+      status="red"
+      any_red=true
+    fi
+
+    rows=$(printf '%s' "$rows" | jq --arg p "$rel_path" --argjson a "$actual" --argjson b "$budget" --argjson pc "$pct" --arg s "$status" '. + [{path:$p, actual:$a, budget:$b, pct:$pc, status:$s}]')
+  done < "$conf"
+
+  if [ "$any_row" = "false" ]; then
+    if [ "$json_mode" = "true" ]; then
+      echo "[]"
+    else
+      echo "[skill-budgets] no budgets configured in $conf"
+    fi
+    exit 0
+  fi
+
+  if [ "$json_mode" = "true" ]; then
+    printf '%s\n' "$rows" | jq .
+  else
+    # In quiet mode, only print header if at least one non-green row exists.
+    # Without this, --quiet on an all-green run prints just the header — noise
+    # for pre-commit / pipe consumers that expect empty stdout on success.
+    if [ "$quiet_mode" = "false" ] || printf '%s' "$rows" | jq -e 'any(.[]; .status != "green")' >/dev/null 2>&1; then
+      printf '%-7s %-70s %-12s %s\n' "STATUS" "PATH" "ACTUAL/BUDGET" "PCT"
+    fi
+    printf '%s\n' "$rows" | jq -r '.[] | [.status, .path, (.actual|tostring), (.budget|tostring), (.pct|tostring), (.note // "")] | @tsv' | \
+    while IFS=$'\t' read -r st path actual_v budget_v pct_v note; do
+      if [ "$quiet_mode" = "true" ] && [ "$st" = "green" ]; then
+        continue
+      fi
+      local color="" label
+      case "$st" in
+        green)  color="$c_green";  label="GREEN " ;;
+        yellow) color="$c_yellow"; label="YELLOW" ;;
+        red)    color="$c_red";    label="RED   " ;;
+      esac
+      local pct_str="${pct_v}%"
+      [ "$pct_v" = "null" ] && pct_str="N/A"
+      local count_str="${actual_v}/${budget_v}"
+      [ "$actual_v" = "null" ] && count_str="N/A/${budget_v}"
+      if [ -n "$note" ]; then
+        printf '%s%s%s %-70s %-12s %-6s %s\n' "$color" "$label" "$c_reset" "$path" "$count_str" "$pct_str" "($note)"
+      else
+        printf '%s%s%s %-70s %-12s %s\n' "$color" "$label" "$c_reset" "$path" "$count_str" "$pct_str"
+      fi
+    done
+  fi
+
+  if [ "$any_red" = "true" ]; then
+    exit 1
+  fi
+}
+
 # ── Subcommand: bootstrap-classify ──────────────────────────────────────
 # One-shot. Reads existing friction-log.md, runs keyword-heuristic
 # classification, writes friction-classified.json. Used to retro-fit the
@@ -2073,12 +2223,13 @@ case "$SUBCMD" in
   append-friction)     do_append_friction "${@:2}" ;;
   friction-tail)       do_friction_tail "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
+  skill-budgets)       do_skill_budgets "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
   resolve-task)        do_resolve_task "${@:2}" ;;
   learn-wind-down)     do_learn_wind_down "${@:2}" ;;
   wind-down-list)      do_wind_down_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|audit-prose-rules|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list}" >&2
     exit 1
     ;;
 esac
