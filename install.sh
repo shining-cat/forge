@@ -445,7 +445,7 @@ ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-p
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md; do
   run rm -f "$SKILLS_DIR/forge/references/$ref"
   run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
 done
@@ -462,6 +462,13 @@ for hook in "$WC_SRC/hooks/"*.py; do safe_cp "$hook" "$WC_DST/hooks/"; done
 for script in "$WC_SRC/scripts/"*; do safe_cp "$script" "$WC_DST/scripts/"; done
 safe_cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
 run chmod +x "$WC_DST/scripts/"*.sh
+
+# Symlink wellness-coach references (lazy-loaded by SKILL.md stubs)
+run mkdir -p "$WC_DST/references"
+for ref in onboarding.md conflict-resolution.md; do
+  run rm -f "$WC_DST/references/$ref"
+  run ln -s "$WC_SRC/references/$ref" "$WC_DST/references/$ref"
+done
 ok "Wellness coach files (activation offered during first /forge session)"
 
 # ─── Copy agent definitions ──────────────────────────────────────────────────
