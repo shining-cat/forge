@@ -13,23 +13,57 @@
 #       last_reminder_timestamp, and strike_cleared_at to now. Use after a
 #       manual silence (e.g. pushed timestamps to a future time) to restore
 #       Pip to a fully normal cadence starting from now.
+#
+#   ! ~/.claude/skills/wellness-coach/scripts/wellness-reset.sh --if-cold-start
+#       Cold-start guard: if WELLNESS_ENABLED=true in forge.conf AND the
+#       gap since last Forge signal exceeds WELLNESS_COLD_START_HOURS (default
+#       4h), run --full-reset and emit a one-line "Wellness reset — ..." note.
+#       Otherwise silent no-op (exit 0). Invoked by Forge SKILL.md step 0a.
 
 FULL_RESET="false"
+IF_COLD_START="false"
 for arg in "$@"; do
   case "$arg" in
     --full-reset) FULL_RESET="true" ;;
+    --if-cold-start) IF_COLD_START="true" ;;
     -h|--help)
-      sed -n '2,15p' "$0"
+      sed -n '2,21p' "$0"
       exit 0
       ;;
     *)
       echo "[wellness-reset] Unknown arg: $arg" >&2
-      echo "[wellness-reset] Usage: wellness-reset.sh [--full-reset|-h|--help]" >&2
+      echo "[wellness-reset] Usage: wellness-reset.sh [--full-reset|--if-cold-start|-h|--help]" >&2
       exit 1
       ;;
   esac
 done
+
+# --if-cold-start: gate on WELLNESS_ENABLED + gap-since-last-signal. Self-contained
+# so the Forge SKILL only needs one Bash call (and this script is on the strike
+# exemption list, so cold-start can run BEFORE step 0 unblocks the strike).
+if [ "$IF_COLD_START" = "true" ]; then
+  FORGE_CONF="$HOME/.claude/forge.conf"
+  [ -f "$FORGE_CONF" ] || exit 0
+  WELLNESS_ENABLED=$(grep '^WELLNESS_ENABLED=' "$FORGE_CONF" | cut -d= -f2- | tr -d '[:space:]')
+  [ "$WELLNESS_ENABLED" = "true" ] || exit 0
+  WELLNESS_COLD_START_HOURS=$(grep '^WELLNESS_COLD_START_HOURS=' "$FORGE_CONF" | cut -d= -f2- | tr -d '[:space:]')
+  [ -z "$WELLNESS_COLD_START_HOURS" ] && WELLNESS_COLD_START_HOURS=4
+  GAP_SCRIPT="$HOME/.claude/scripts/forge-gap-since-last-signal.sh"
+  [ -x "$GAP_SCRIPT" ] || exit 0
+  GAP_SECONDS=$("$GAP_SCRIPT" 2>/dev/null)
+  # Sentinel: no signals yet (fresh install / wiped vault) → don't reset, let the
+  # user take their first break on schedule.
+  [ "$GAP_SECONDS" = "999999999" ] && exit 0
+  THRESHOLD=$(( WELLNESS_COLD_START_HOURS * 3600 ))
+  [ "$GAP_SECONDS" -ge "$THRESHOLD" ] 2>/dev/null || exit 0
+  # Promote to full reset and emit the cold-start note after the reset succeeds.
+  FULL_RESET="true"
+  COLD_START_HOURS=$(( GAP_SECONDS / 3600 ))
+  COLD_START_MINUTES=$(( (GAP_SECONDS % 3600) / 60 ))
+  export COLD_START_HOURS COLD_START_MINUTES
+fi
 export FULL_RESET
+export IF_COLD_START
 
 # Resolve preferences path from forge.conf VAULT_PATH (see preferences.py).
 # Falls back to legacy ~/.claude/ location with a warning if forge.conf is missing.
@@ -61,6 +95,7 @@ import os
 from preferences import read_modify_write, now_iso
 
 full_reset = os.environ.get('FULL_RESET') == 'true'
+if_cold_start = os.environ.get('IF_COLD_START') == 'true'
 
 # Closure captures was_striking before mutation — avoids persisting a transient
 # signal as a stored field (which would land in PREFS as untracked-by-design noise).
@@ -86,9 +121,15 @@ def reset(prefs):
 
 read_modify_write(reset)
 
-mode = 'Full reset' if full_reset else 'Strike reset'
-if state['was_striking']:
-    print(f'{mode}: strike cleared, timers reset.')
+if if_cold_start:
+    # Single line, designed to surface verbatim in Forge entry summary.
+    h = os.environ.get('COLD_START_HOURS', '?')
+    m = os.environ.get('COLD_START_MINUTES', '?')
+    print(f'Wellness reset — Forge idle for {h}h{m}m, break clock zeroed.')
 else:
-    print(f'{mode}: no active strike, timers reset.')
+    mode = 'Full reset' if full_reset else 'Strike reset'
+    if state['was_striking']:
+        print(f'{mode}: strike cleared, timers reset.')
+    else:
+        print(f'{mode}: no active strike, timers reset.')
 "

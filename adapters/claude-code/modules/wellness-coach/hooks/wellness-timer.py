@@ -201,16 +201,28 @@ def main():
     if is_wellness_coach_skill(hook_input):
         if prefs.get("strike_active"):
             old_snooze = prefs.get("snooze_count", 0)
+            old_last_break = prefs.get("last_break_timestamp")
             def clear_strike(p):
+                # Mirror the "real" tier in _credit_auto_break — clearing the
+                # strike without resetting last_break_timestamp left the timer
+                # poised to re-fire moments later (the cold-start bug).
+                now = now_iso()
                 p["strike_active"] = False
-                p["strike_cleared_at"] = now_iso()
+                p["strike_cleared_at"] = now
                 p["snooze_count"] = 0
+                p["last_break_timestamp"] = now
+                p["last_micro_break_timestamp"] = now
+                p["last_reminder_timestamp"] = now
+                history = p.get("break_history", []) or []
+                history.append({"timestamp": now, "type": "strike-cleared"})
+                p["break_history"] = history
                 return p
             read_modify_write(clear_strike)
             log_event(prefs, "strike-cleared",
                 "Strike cleared via wellness skill invocation.",
                 {"strike_active": "true → false",
-                 "snooze_count": f"{old_snooze} → 0"})
+                 "snooze_count": f"{old_snooze} → 0",
+                 "last_break_timestamp": f"{old_last_break} → now"})
         sys.exit(0)
 
     # Auto-detect breaks from activity monitoring — runs BEFORE strike check
@@ -408,6 +420,9 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real"):
             p["strike_active"] = False
             p["strike_cleared_at"] = None
             p["snooze_count"] = 0
+            history = p.get("break_history", []) or []
+            history.append({"timestamp": auto_break, "type": "auto-real"})
+            p["break_history"] = history
             return p
         read_modify_write(credit)
         prefs["last_break_timestamp"] = auto_break
