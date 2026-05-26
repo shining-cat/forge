@@ -1,6 +1,6 @@
 ---
 name: forge-audit
-description: Run the Forge audits — prose-rules (scan skill/script files for MUST/Never/Remember/always/REQUIRED phrasing that smells script-replaceable) and skill line-budgets (compare each tracked SKILL.md / reference file against its configured budget, color-coded by drift).
+description: Run the Forge audits — prose-rules (script-replaceable phrasing in skills/scripts) and skill line-budgets (SKILL.md / reference file size drift).
 ---
 
 # Forge — Audits

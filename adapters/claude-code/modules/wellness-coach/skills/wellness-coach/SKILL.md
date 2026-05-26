@@ -1,6 +1,6 @@
 ---
 name: wellness-coach
-description: Use when the user addresses the wellness coach by name (check coach_name in ${VAULT_PATH}/_shared/wellness-preferences.json (or ~/.claude/ legacy)), mentions breaks, wellness, or asks about break status, meetings, weather in a wellness context. Also triggers when a wellness break reminder appears, when no wellness preferences file exists (trigger onboarding), or when the user wants to update wellness preferences
+description: Use when the user mentions breaks, wellness, asks about break/meeting/weather status, or addresses the wellness coach by their configured name (per wellness-preferences.json). Also fires on break reminders, missing preferences (onboarding), or preference updates.
 ---
 
 # Wellness Coach

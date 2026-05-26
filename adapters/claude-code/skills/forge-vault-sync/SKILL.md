@@ -1,6 +1,6 @@
 ---
 name: forge-vault-sync
-description: Use mid-session to commit + push the vault when drift accumulates. Invoke with /forge-vault-sync, when the Vault state report shows uncommitted work, or when the user wants to clear vault drift. Reports grouped commit candidates by default; the user re-runs with --commit in their shell for the interactive walkthrough.
+description: Use mid-session to commit + push the vault when drift accumulates. Invoke with /forge-vault-sync, when the Vault state report shows uncommitted work, or when the user wants to clear vault drift.
 ---
 
 # Forge Vault Sync
