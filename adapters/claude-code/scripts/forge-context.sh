@@ -316,7 +316,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -1719,24 +1719,35 @@ do_friction_tail() {
   # Sort-by-date (not by file position) because the file has historically
   # been a mix of prepended and appended entries; "last 5 by position"
   # returned a mix of old and new entries. Date is the right semantic.
-  local n=5 mode="headline"
+  #
+  # Pinned entries (those with `- **Pinned:** true` bullet) are filtered
+  # out by default — they are canonical references kept for grep, not
+  # routine recent-friction signal. Pass --include-pinned to see them.
+  local n=5 mode="headline" include_pinned=false
   while [ $# -gt 0 ]; do
     case "$1" in
-      --headline) mode="headline"; shift ;;
-      --full)     mode="full"; shift ;;
-      [0-9]*)     n="$1"; shift ;;
+      --headline)       mode="headline"; shift ;;
+      --full)           mode="full"; shift ;;
+      --include-pinned) include_pinned=true; shift ;;
+      [0-9]*)           n="$1"; shift ;;
       *) echo "[friction-tail] unknown arg: $1" >&2; return 2 ;;
     esac
   done
   local file="$VAULT_PATH/_shared/friction-log.md"
   [ -f "$file" ] || return 0
-  python3 - "$file" "$n" "$mode" <<'PYEOF'
+  python3 - "$file" "$n" "$mode" "$include_pinned" <<'PYEOF'
 import re, sys
-path, n, mode = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+path, n, mode, include_pinned_str = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+include_pinned = include_pinned_str == "true"
 with open(path) as f:
     text = f.read()
 parts = re.split(r'(?=^#{2,3} )', text, flags=re.MULTILINE)
 entries = [p for p in parts if re.match(r'^#{2,3} ', p)]
+def is_pinned(entry_text):
+    return bool(re.search(r'^\s*-\s+\*\*Pinned:\*\*\s+true\b',
+                          entry_text, re.MULTILINE | re.IGNORECASE))
+if not include_pinned:
+    entries = [e for e in entries if not is_pinned(e)]
 def date_key(e):
     m = re.search(r'(\d{4}-\d{2}-\d{2})', e)
     return m.group(1) if m else '0000-00-00'
@@ -1753,7 +1764,7 @@ PYEOF
 }
 
 do_append_friction() {
-  local date_arg="" desc="" pattern="" recurrence="" action_ref=""
+  local date_arg="" desc="" pattern="" recurrence="" action_ref="" pinned=false
   while [ $# -gt 0 ]; do
     case "$1" in
       --date)         date_arg="$2"; shift 2 ;;
@@ -1761,6 +1772,7 @@ do_append_friction() {
       --pattern)      pattern="$2"; shift 2 ;;
       --recurrence)   recurrence="$2"; shift 2 ;;
       --action-ref)   action_ref="$2"; shift 2 ;;
+      --pinned)       pinned=true; shift ;;
       *) echo "[append-friction] unknown arg: $1" >&2; exit 2 ;;
     esac
   done
@@ -1800,6 +1812,9 @@ do_append_friction() {
     printf -- '- **Pattern:** %s\n' "$pattern"
     printf -- '- **Recurrence:** %s\n' "$recurrence"
     printf -- '- **Action:** %s\n' "$action_ref"
+    if [ "$pinned" = "true" ]; then
+      printf -- '- **Pinned:** true\n'
+    fi
     if [ "$validation_failed" = "true" ]; then
       printf -- '- **Validation:** failed (original pattern: %s)\n' "$original_pattern"
     fi
@@ -1814,6 +1829,7 @@ do_append_friction() {
      --argjson r "$recurrence" \
      --arg a "$action_ref" \
      --argjson vf "$validation_failed" \
+     --argjson pin "$pinned" \
      '.entries += [{
         date: $d,
         description: $desc,
@@ -1821,7 +1837,8 @@ do_append_friction() {
         recurrence: $r,
         action_ref: $a,
         validation_failed: $vf,
-        original_pattern: $op
+        original_pattern: $op,
+        pinned: $pin
      }]' "$FRICTION_CLASSIFIED" > "$tmp_json"
   mv "$tmp_json" "$FRICTION_CLASSIFIED"
 
@@ -1880,6 +1897,511 @@ EOF
   if [ "$validation_failed" = "true" ]; then
     exit 1
   fi
+}
+
+# ── Subcommand: pin-friction ──────────────────────────────────────────
+# Mark an existing friction entry as pinned: it stays out of friction-tail's
+# default output and survives harvest archival. Useful for canonical
+# references cited by ongoing work (e.g. design rationale entries).
+#
+# Args:
+#   --entry "<YYYY-MM-DD>|<description-prefix>"   match by (date, prefix)
+#
+# Updates both surfaces in lockstep:
+#   1. friction-log.md — inserts `- **Pinned:** true` bullet right after the
+#      H2/H3 heading line, if not already present
+#   2. friction-classified.json — sets pinned: true on the matching entry
+#
+# Idempotent: pinning an already-pinned entry is a no-op (no duplicate bullet,
+# no JSON change). Exit 0 on success, 1 if no entry matched.
+do_pin_friction() {
+  local entry_spec=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --entry) entry_spec="$2"; shift 2 ;;
+      *) echo "[pin-friction] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ -z "$entry_spec" ]; then
+    echo "[pin-friction] missing required arg: --entry \"<date>|<desc-prefix>\"" >&2
+    return 2
+  fi
+  local date_part="${entry_spec%%|*}"
+  local prefix_part="${entry_spec#*|}"
+  if [ "$date_part" = "$entry_spec" ] || [ -z "$prefix_part" ]; then
+    echo "[pin-friction] --entry must be \"<date>|<desc-prefix>\"" >&2
+    return 2
+  fi
+  if [ ! -f "$FRICTION_LOG" ]; then
+    echo "[pin-friction] friction-log not found at $FRICTION_LOG" >&2
+    return 1
+  fi
+
+  # Edit markdown + JSON in one python pass so the match logic is shared.
+  python3 - "$FRICTION_LOG" "$FRICTION_CLASSIFIED" "$date_part" "$prefix_part" <<'PYEOF'
+import json, re, sys
+md_path, json_path, date, prefix = sys.argv[1:5]
+
+with open(md_path) as f:
+    text = f.read()
+parts = re.split(r'(?=^#{2,3} )', text, flags=re.MULTILINE)
+matched_md = False
+new_parts = []
+for p in parts:
+    head_match = re.match(r'^(#{2,3})\s+(\S+)\s+[—-]\s+(.+?)\n', p)
+    if head_match and head_match.group(2) == date and head_match.group(3).startswith(prefix):
+        if re.search(r'^\s*-\s+\*\*Pinned:\*\*\s+true\b', p, re.MULTILINE | re.IGNORECASE):
+            new_parts.append(p)
+            matched_md = True
+            continue
+        lines = p.split('\n', 1)
+        heading = lines[0]
+        rest = lines[1] if len(lines) > 1 else ''
+        new_parts.append(heading + '\n- **Pinned:** true\n' + rest)
+        matched_md = True
+    else:
+        new_parts.append(p)
+if matched_md:
+    with open(md_path, 'w') as f:
+        f.write(''.join(new_parts))
+
+matched_json = False
+if json_path and __import__('os').path.exists(json_path):
+    with open(json_path) as f:
+        data = json.load(f)
+    for entry in data.get('entries', []):
+        if entry.get('date') == date and entry.get('description', '').startswith(prefix):
+            if entry.get('pinned') is not True:
+                entry['pinned'] = True
+            matched_json = True
+    if matched_json:
+        with open(json_path, 'w') as f:
+            json.dump(data, f, separators=(',', ':'))
+
+if not matched_md and not matched_json:
+    print(f"[pin-friction] no entry matched date={date} prefix={prefix!r}", file=sys.stderr)
+    sys.exit(1)
+if not matched_md:
+    print(f"[pin-friction] WARN: JSON updated but no markdown entry matched date={date} prefix={prefix!r}", file=sys.stderr)
+if not matched_json:
+    print(f"[pin-friction] WARN: markdown updated but no JSON entry matched date={date} prefix={prefix!r}", file=sys.stderr)
+PYEOF
+}
+
+# ── Subcommand: archive-friction-entries ─────────────────────────────
+# Move matched friction-log entries to per-ISO-week archive files. Pure
+# mechanics — does NOT prompt or propose; callers (harvest-friction,
+# bootstrap-harvest) decide WHICH entries to archive.
+#
+# Args:
+#   --entry "<YYYY-MM-DD>|<description-prefix>"  (repeatable)
+#
+# Or read entries from stdin, one "<date>|<prefix>" per line.
+#
+# Updates both surfaces in lockstep:
+#   1. friction-log.md — removes matched entry blocks; trailing `---` separators
+#      collapsed so we don't leave double-divider artifacts
+#   2. friction-log-archive/YYYY-W<ISO-week>.md — appended (created on first
+#      entry for a given week). Routed per-entry by the entry's own date.
+#   3. friction-classified.json — sets archived_in: "YYYY-WNN" on matched
+#      entries (kept for pattern analytics; we don't delete from JSON)
+#
+# Idempotent: an entry already archived (archived_in set in JSON, or already
+# absent from friction-log.md) is a no-op. Exit 0 = success even if some
+# entries didn't match (logged to stderr). Exit non-zero only on hard errors.
+#
+# Pinned entries are NEVER archived even if requested. Caller's responsibility
+# to filter, but we also guard here as defense-in-depth.
+do_archive_friction_entries() {
+  local entries=()
+  local from_stdin=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --entry) entries+=("$2"); shift 2 ;;
+      --from-stdin) from_stdin=true; shift ;;
+      *) echo "[archive-friction-entries] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  # Read entries from stdin only when explicitly requested (avoids hanging
+  # in non-TTY contexts like Claude Code's bash tool, which never closes stdin)
+  if [ "$from_stdin" = "true" ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] && entries+=("$line")
+    done
+  fi
+  if [ ${#entries[@]} -eq 0 ]; then
+    echo "[archive-friction-entries] no entries specified (use --entry or --from-stdin)" >&2
+    return 2
+  fi
+  if [ ! -f "$FRICTION_LOG" ]; then
+    echo "[archive-friction-entries] friction-log not found at $FRICTION_LOG" >&2
+    return 1
+  fi
+  local archive_dir="$VAULT_PATH/_shared/friction-log-archive"
+  mkdir -p "$archive_dir"
+
+  # Hand the work to python — needs heading parsing, ISO-week calc, json edit.
+  # Entry specs come via argv (not stdin) because `python3 -` consumes stdin
+  # for the script itself, which would silently swallow piped entries.
+  python3 - "$FRICTION_LOG" "$FRICTION_CLASSIFIED" "$archive_dir" "${entries[@]}" <<'PYEOF'
+import datetime, json, os, re, sys
+md_path, json_path, archive_dir = sys.argv[1:4]
+specs = []
+for arg in sys.argv[4:]:
+    if not arg or '|' not in arg:
+        continue
+    date, prefix = arg.split('|', 1)
+    specs.append((date, prefix))
+
+def iso_week_tag(date_str):
+    y, m, d = (int(x) for x in date_str.split('-'))
+    iso_year, iso_week, _ = datetime.date(y, m, d).isocalendar()
+    return f"{iso_year}-W{iso_week:02d}"
+
+with open(md_path) as f:
+    text = f.read()
+parts = re.split(r'(?=^#{2,3} )', text, flags=re.MULTILINE)
+# parts[0] is the preamble (title + intro) before any heading; preserve.
+preamble = parts[0] if parts and not re.match(r'^#{2,3} ', parts[0]) else ''
+entry_parts = [p for p in parts if re.match(r'^#{2,3} ', p)]
+
+def is_pinned(entry_text):
+    return bool(re.search(r'^\s*-\s+\*\*Pinned:\*\*\s+true\b',
+                          entry_text, re.MULTILINE | re.IGNORECASE))
+
+def entry_key(p):
+    m = re.match(r'^#{2,3}\s+(\S+)\s+[—-]\s+(.+?)\n', p)
+    return (m.group(1), m.group(2)) if m else (None, None)
+
+matched_indices = set()
+archived_by_week = {}  # week_tag -> [entry_text]
+for i, p in enumerate(entry_parts):
+    date, title = entry_key(p)
+    if not date:
+        continue
+    for spec_date, spec_prefix in specs:
+        if date == spec_date and title.startswith(spec_prefix):
+            if is_pinned(p):
+                print(f"[archive-friction-entries] skip pinned: {date} {title[:40]!r}", file=sys.stderr)
+                continue
+            tag = iso_week_tag(date)
+            archived_by_week.setdefault(tag, []).append(p.rstrip() + '\n')
+            matched_indices.add(i)
+            break
+
+if not matched_indices:
+    print("[archive-friction-entries] no entries matched (idempotent no-op)", file=sys.stderr)
+else:
+    # Rewrite friction-log.md without matched entries.
+    kept = [p for i, p in enumerate(entry_parts) if i not in matched_indices]
+    # Each entry block already contains its leading separator if any; re-stitch
+    # with the original preamble. Collapse runs of `---\n---` introduced if a
+    # removed entry sat between two separators in the source.
+    new_text = preamble + ''.join(kept)
+    new_text = re.sub(r'(?:\n---\n){2,}', '\n---\n', new_text)
+    new_text = new_text.rstrip() + '\n'
+    with open(md_path, 'w') as f:
+        f.write(new_text)
+    # Append each entry to its week's archive file.
+    for week_tag, blocks in archived_by_week.items():
+        archive_path = os.path.join(archive_dir, f"{week_tag}.md")
+        is_new = not os.path.exists(archive_path)
+        with open(archive_path, 'a') as f:
+            if is_new:
+                f.write(f"# Friction Archive — {week_tag}\n\n")
+                f.write("Entries harvested and archived from `friction-log.md`. Searchable on demand; not read by recovery.\n\n---\n")
+            for block in blocks:
+                f.write('\n' + block)
+                if not block.endswith('---\n'):
+                    f.write('\n---\n')
+    print(f"[archive-friction-entries] archived {len(matched_indices)} entries across {len(archived_by_week)} week(s)", file=sys.stderr)
+
+# Update JSON: set archived_in on matched entries.
+if os.path.exists(json_path):
+    with open(json_path) as f:
+        data = json.load(f)
+    json_updates = 0
+    for entry in data.get('entries', []):
+        ed = entry.get('date', '')
+        edesc = entry.get('description_prefix', entry.get('description', ''))
+        for spec_date, spec_prefix in specs:
+            if ed == spec_date and edesc.startswith(spec_prefix):
+                if entry.get('pinned') is True:
+                    continue
+                if 'archived_in' in entry:
+                    continue  # idempotent
+                entry['archived_in'] = iso_week_tag(ed)
+                json_updates += 1
+                break
+    if json_updates:
+        with open(json_path, 'w') as f:
+            json.dump(data, f, separators=(',', ':'))
+        print(f"[archive-friction-entries] marked {json_updates} JSON entries with archived_in", file=sys.stderr)
+PYEOF
+}
+
+# ── Subcommand: harvest-friction ──────────────────────────────────────
+# Output JSON proposals for promoting/archiving friction entries.
+#
+# Reads FRICTION_CLASSIFIED, filters to: not pinned, not already archived,
+# date within --days N window (default 30). Applies the heuristic from
+# B-friction-log-lifecycle.md to propose a target per entry.
+#
+# Flags:
+#   --days N    look back window in days (default 30)
+#   --pretty    pretty-print the JSON output
+#
+# Output: JSON array of proposals (or empty `[]` if none).
+# Each proposal: {entry_id, date, description, pattern, recurrence,
+#                 action_ref, proposed_target, justification}
+#
+# entry_id format: "YYYY-MM-DD|<first-40-chars-of-description>"
+# (matches the format consumed by archive-friction-entries --entry)
+do_harvest_friction() {
+  local days=30
+  local pretty=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --days)   days="$2"; shift 2 ;;
+      --pretty) pretty=true; shift ;;
+      *) echo "[harvest-friction] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ ! -f "$FRICTION_CLASSIFIED" ]; then
+    echo "[harvest-friction] no friction-classified.json at $FRICTION_CLASSIFIED" >&2
+    echo "[]"; return 0
+  fi
+  python3 - "$FRICTION_CLASSIFIED" "$VAULT_PATH" "$days" "$pretty" <<'PYEOF'
+import datetime, json, os, sys
+classified_path, vault_path, days_str, pretty_str = sys.argv[1:5]
+days = int(days_str)
+pretty = pretty_str == "true"
+today = datetime.date.today()
+cutoff = today - datetime.timedelta(days=days)
+
+with open(classified_path) as f:
+    data = json.load(f)
+
+UNCLASSIFIED = {"needs_new_pattern", "", None}
+
+def classify(entry):
+    action_ref = entry.get('action_ref')
+    recurrence = entry.get('recurrence', 1)
+    entry_date_str = entry.get('date', '')
+    try:
+        entry_date = datetime.date.fromisoformat(entry_date_str)
+    except ValueError:
+        return ("archive-only", "malformed date — informational only")
+
+    if action_ref not in UNCLASSIFIED:
+        # action_ref looks like a path (vault-relative); check existence
+        ref_path = os.path.join(vault_path, action_ref)
+        if os.path.exists(ref_path):
+            return ("archive-only", f"already promoted to {action_ref}")
+        else:
+            return ("task", f"action_ref={action_ref} missing — rewrite")
+
+    if recurrence >= 2:
+        return ("task", f"pattern recurring (n={recurrence}) — structural fix needed")
+
+    age_days = (today - entry_date).days
+    if age_days < 14:
+        return ("task", "recent + unclassified — likely needs new pattern")
+
+    return ("archive-only", "old + unclassified — informational only")
+
+proposals = []
+for entry in data.get('entries', []):
+    if entry.get('pinned') is True:
+        continue
+    if 'archived_in' in entry and entry.get('archived_in'):
+        continue
+    entry_date_str = entry.get('date', '')
+    try:
+        entry_date = datetime.date.fromisoformat(entry_date_str)
+    except ValueError:
+        continue
+    if entry_date < cutoff:
+        continue
+
+    desc = entry.get('description', '')
+    desc_prefix = desc[:40]
+    target, justification = classify(entry)
+    proposals.append({
+        "entry_id": f"{entry_date_str}|{desc_prefix}",
+        "date": entry_date_str,
+        "description": desc,
+        "pattern": entry.get('pattern', ''),
+        "recurrence": entry.get('recurrence', 1),
+        "action_ref": entry.get('action_ref', ''),
+        "proposed_target": target,
+        "justification": justification,
+    })
+
+# Sort: tasks first (more urgent), then by date desc within each group
+proposals.sort(key=lambda p: (p['proposed_target'] != 'task', p['date']), reverse=False)
+proposals.sort(key=lambda p: (p['proposed_target'] != 'task', -int(p['date'].replace('-', ''))))
+
+if pretty:
+    print(json.dumps(proposals, indent=2, ensure_ascii=False))
+else:
+    print(json.dumps(proposals, separators=(',', ':'), ensure_ascii=False))
+PYEOF
+}
+
+# ── Subcommand: promote-friction ──────────────────────────────────────
+# Execute a promotion decision for a single friction entry.
+#
+# MVP scope: --target archive chains to archive-friction-entries.
+# For task/decision/feedback targets, the script doesn't auto-scaffold —
+# slug/title/body need conversation context, so Petra writes those files
+# directly via the Write tool. The script then can be called with
+# --target archive to clean up the raw entry.
+#
+# Flags:
+#   --entry "<date>|<desc-prefix>"   required, identifies the source entry
+#   --target <archive|task|decision|feedback>   required
+#
+# For non-archive targets, emits a hint with the suggested scaffold path
+# and exits 0 without modifying anything. Petra then writes the file
+# and re-invokes with --target archive.
+do_promote_friction() {
+  local entry=""
+  local target=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --entry)  entry="$2"; shift 2 ;;
+      --target) target="$2"; shift 2 ;;
+      *) echo "[promote-friction] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ -z "$entry" ] || [ -z "$target" ]; then
+    echo "[promote-friction] usage: promote-friction --entry '<date>|<prefix>' --target <archive|task|decision|feedback>" >&2
+    return 2
+  fi
+  case "$target" in
+    archive)
+      do_archive_friction_entries --entry "$entry"
+      ;;
+    task|decision|feedback)
+      local date_part="${entry%%|*}"
+      local prefix_part="${entry#*|}"
+      cat <<HINT >&2
+[promote-friction] target=$target needs Petra to scaffold the file.
+
+Source entry: $date_part — $prefix_part
+
+Suggested next steps:
+  1. Write the $target file with proper title/slug from conversation context:
+HINT
+      case "$target" in
+        task)
+          echo "       Path: \$VAULT_PATH/<ENV>/<project>/tasks/open/${date_part}-<slug>.md" >&2
+          ;;
+        decision)
+          echo "       Path: \$VAULT_PATH/<ENV>/<project>/decisions/${date_part}-<slug>.md" >&2
+          ;;
+        feedback)
+          echo "       Path: ~/.claude/projects/.../memory/feedback_<topic>.md" >&2
+          ;;
+      esac
+      cat <<HINT2 >&2
+  2. Add a back-link to the source friction entry.
+  3. Re-invoke: forge-context.sh promote-friction --entry '$entry' --target archive
+     (to remove the raw entry from friction-log.md)
+HINT2
+      return 0
+      ;;
+    *)
+      echo "[promote-friction] unknown target: $target (expected archive|task|decision|feedback)" >&2
+      return 2
+      ;;
+  esac
+}
+
+# ── Subcommand: bootstrap-harvest ────────────────────────────────────
+# Non-interactive sweep that archives all unpinned/unarchived friction entries
+# older than --older-than DAYS (default 30). No promotion prompts — old entries
+# go straight to the per-week archive. Designed for one-shot reduction of the
+# accumulated friction-log; subsequent maintenance happens via harvest-friction
+# + promote-friction (Slice 3).
+#
+# Flags:
+#   --older-than N    archive entries older than N days (default 30)
+#   --dry-run         show what would be archived; don't write
+#
+# Output: human-readable summary line + (if --dry-run) JSON list to stdout.
+do_bootstrap_harvest() {
+  local days=30
+  local dry_run=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --older-than) days="$2"; shift 2 ;;
+      --dry-run)    dry_run=true; shift ;;
+      *) echo "[bootstrap-harvest] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ ! -f "$FRICTION_CLASSIFIED" ]; then
+    echo "[bootstrap-harvest] no friction-classified.json at $FRICTION_CLASSIFIED" >&2
+    return 1
+  fi
+
+  # Compute list of entry_ids to archive via python (uses ISO dates)
+  local entry_ids_raw
+  entry_ids_raw="$(python3 - "$FRICTION_CLASSIFIED" "$days" <<'PYEOF'
+import datetime, json, sys
+classified_path, days_str = sys.argv[1:3]
+days = int(days_str)
+cutoff = datetime.date.today() - datetime.timedelta(days=days)
+with open(classified_path) as f:
+    data = json.load(f)
+ids = []
+for entry in data.get('entries', []):
+    if entry.get('pinned') is True:
+        continue
+    if entry.get('archived_in'):
+        continue
+    date_str = entry.get('date', '')
+    try:
+        d = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        continue
+    if d >= cutoff:
+        continue
+    desc = entry.get('description', '')[:80]
+    ids.append(f"{date_str}|{desc}")
+for i in ids:
+    print(i)
+PYEOF
+)"
+
+  if [ -z "$entry_ids_raw" ]; then
+    echo "[bootstrap-harvest] nothing to archive (no entries older than $days days)" >&2
+    return 0
+  fi
+
+  local count
+  count=$(printf '%s\n' "$entry_ids_raw" | wc -l | tr -d ' ')
+
+  if [ "$dry_run" = "true" ]; then
+    echo "[bootstrap-harvest] DRY-RUN: would archive $count entries older than $days days:" >&2
+    printf '%s\n' "$entry_ids_raw"
+    return 0
+  fi
+
+  echo "[bootstrap-harvest] archiving $count entries older than $days days..." >&2
+  # Build --entry args from the id list
+  local -a entry_args=()
+  while IFS= read -r line; do
+    [ -n "$line" ] && entry_args+=(--entry "$line")
+  done <<< "$entry_ids_raw"
+
+  # Match the description-prefix lengths used in friction-log.md headings.
+  # archive-friction-entries uses startswith match, so the 80-char prefix
+  # from JSON will match the heading title's first 80 chars (or full title
+  # if shorter). This relies on the JSON description being a verbatim copy
+  # of the markdown heading title — see do_append_friction.
+  do_archive_friction_entries "${entry_args[@]}"
 }
 
 # ── Subcommand: audit-prose-rules ──────────────────────────────────────
@@ -2294,6 +2816,11 @@ case "$SUBCMD" in
   append-braindump)    do_append_braindump "${@:2}" ;;
   append-friction)     do_append_friction "${@:2}" ;;
   friction-tail)       do_friction_tail "${@:2}" ;;
+  pin-friction)        do_pin_friction "${@:2}" ;;
+  archive-friction-entries) do_archive_friction_entries "${@:2}" ;;
+  harvest-friction)    do_harvest_friction "${@:2}" ;;
+  promote-friction)    do_promote_friction "${@:2}" ;;
+  bootstrap-harvest)   do_bootstrap_harvest "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   skill-budgets)       do_skill_budgets "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
@@ -2302,7 +2829,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac
