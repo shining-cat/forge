@@ -36,6 +36,15 @@ VAULT_DRIFT_DAYS_SINCE=7
 BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 BRAINDUMP_INTERVAL_MIN="${BRAINDUMP_INTERVAL_MIN:-10}"
 
+# End-of-week day (ISO day-of-week, Mon=1..Sun=7). Default 5 (Friday). On this
+# day, do_wrap_up_state upgrades eod_window→eow_window and past_eod→past_eow.
+EOW_DAY="$(grep '^EOW_DAY=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+EOW_DAY="${EOW_DAY:-5}"
+
+# Look-ahead horizon (minutes) for do_next_meeting. Default 30.
+MEETING_WINDOW_MIN="$(grep '^MEETING_WINDOW_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+MEETING_WINDOW_MIN="${MEETING_WINDOW_MIN:-30}"
+
 # Checkpoint-nag suppression (do_stop) — both gates must pass for the nag to fire.
 # Reframes the nag from "clock-driven" ("X minutes since checkpoint") to
 # "activity-driven" ("work done in this session that isn't recorded"). Covers
@@ -1397,12 +1406,20 @@ do_check_install() {
 #   too_early    — session < WRAP_UP_TOO_EARLY_MIN; suppress wrap-up suggestions
 #   eod_window   — within WRAP_UP_EOD_WINDOW_MIN of preferred_end_of_day; PROACTIVELY nudge
 #   past_eod     — past preferred_end_of_day; nudge harder
+#   eow_window   — same as eod_window, but on EOW_DAY (Friday by default); ALSO trigger weekly-wrap
+#   past_eow     — same as past_eod, but on EOW_DAY; ALSO trigger weekly-wrap
 #   mid_session  — neither extreme; no nudge either way
 #   unknown      — no marker, no preferred_end_of_day, or stat failed; default to silent
+#
+# The EOW states are strictly stronger than their EOD counterparts: callers
+# that only care about end-of-day behavior can treat eow_window like eod_window
+# (and past_eow like past_eod). Callers wanting weekly-wrap behavior dispatch
+# on the eow_* variants specifically.
 #
 # Reads:
 #   - $MARKER mtime as session-age proxy (when /forge entered)
 #   - $VAULT_PATH/_shared/wellness-preferences.json for preferred_end_of_day (HH:MM)
+#   - $EOW_DAY (loaded from forge.conf at startup, defaults to 5 = Friday)
 #
 # Petra consults this from her SKILL.md "wrap-up state awareness" rule before
 # suggesting wrap-up mid-session.
@@ -1454,12 +1471,25 @@ do_wrap_up_state() {
   fi
   minutes_to_eod=$((eod_min - now_min))
 
+  # Compute base eod state, then upgrade to eow on EOW_DAY.
+  local base_state today_dow
   if [ "$minutes_to_eod" -le 0 ]; then
-    echo "past_eod"
+    base_state="past_eod"
   elif [ "$minutes_to_eod" -le "$WRAP_UP_EOD_WINDOW_MIN" ]; then
-    echo "eod_window"
+    base_state="eod_window"
   else
     echo "mid_session"
+    return 0
+  fi
+
+  today_dow=$(date +%u 2>/dev/null)
+  if [ "$today_dow" = "$EOW_DAY" ]; then
+    case "$base_state" in
+      eod_window) echo "eow_window" ;;
+      past_eod)   echo "past_eow" ;;
+    esac
+  else
+    echo "$base_state"
   fi
 }
 
@@ -2231,6 +2261,22 @@ do_wind_down_list() {
   jq -r '.phrases[]?' "$file"
 }
 
+# ── Subcommand: next-meeting ──────────────────────────────────────────
+# Print the next non-declined calendar meeting starting within $MEETING_WINDOW_MIN
+# minutes (loaded from forge.conf at startup, default 30).
+#
+# Output: a single line `HH:MM|title|minutes_until`, or no output when nothing
+# is imminent / calendar disabled / fetch failed. Petra chains this with
+# `wrap-up-state` at wrap-up moments so she paces against both EOD and any
+# imminent meeting interruption.
+#
+# Delegates to forge-calendar.sh next-meeting which owns the gws call.
+do_next_meeting() {
+  local calendar_sh="$HOME_DIR/.claude/scripts/forge-calendar.sh"
+  [ -x "$calendar_sh" ] || return 0
+  "$calendar_sh" next-meeting "$MEETING_WINDOW_MIN" 2>/dev/null || true
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -2254,8 +2300,9 @@ case "$SUBCMD" in
   resolve-task)        do_resolve_task "${@:2}" ;;
   learn-wind-down)     do_learn_wind_down "${@:2}" ;;
   wind-down-list)      do_wind_down_list ;;
+  next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac
