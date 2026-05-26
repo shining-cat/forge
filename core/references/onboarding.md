@@ -70,6 +70,25 @@ jq -e '.enabledPlugins | keys[] | select(startswith("superpowers@"))' ~/.claude/
 
 Don't block — the user might install it later.
 
+### b-2) Maintainer mode
+
+Ask:
+
+> Forge has two postures: **end-user** (default) and **maintainer**.
+>
+> In end-user mode, Petra keeps Forge's own machinery out of your face — friction-log writes, INDEX maintenance, decision curation, vault hygiene, internal audits don't get surfaced as actionable threads. You can still do those things if you want; they just don't show up as suggestions.
+>
+> In maintainer mode, all of that becomes visible. Use this if you're extending Forge itself — adding skills, tuning hooks, reshaping the vault layout.
+>
+> Which posture? (You can flip it later by editing `MAINTAINER_MODE` in `~/.claude/forge.conf`.)
+
+Default to end-user if the user isn't sure. Then:
+
+- If **end-user**: leave `MAINTAINER_MODE=false` (already the install default) — no write needed.
+- If **maintainer**: `set_conf_key MAINTAINER_MODE true` (or hand-edit `~/.claude/forge.conf`).
+
+Don't write anything visible unless the user picked the non-default — keep onboarding tight.
+
 ### c) Vault project setup
 
 The vault root was created by the install script. Now set up the project structure for the current environment:
