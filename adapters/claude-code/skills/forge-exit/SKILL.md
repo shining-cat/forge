@@ -1,6 +1,6 @@
 ---
 name: forge-exit
-description: Use when ending a Forge session — writes final checkpoint, summarizes session, and deactivates Forge mode. Invoke with /forge-exit or when the user says "exit Forge", "done for today", or similar.
+description: Use when ending a Forge session. Invoke with /forge-exit or when the user says "exit Forge", "done for today", or similar.
 ---
 
 # Forge Exit

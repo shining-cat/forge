@@ -1,6 +1,6 @@
 ---
 name: forge
-description: Use when starting any development session — activates Forge mode with vault integration, agent roles, Petra persona, and visual identity. Invoke with /forge or when the user says "let's forge", "enter Forge", "start Forge", or similar.
+description: Use when starting any development session. Invoke with /forge or when the user says "let's forge", "enter Forge", "start Forge", or similar.
 ---
 
 # Forge — Session Entry
@@ -151,7 +151,7 @@ Still read separately (cross-project context not covered by recovery). Read `VAU
 1. `{VAULT_PATH}/_shared/OVERVIEW.md` — cross-project awareness (all projects, forge work, punctual tasks)
 2. `{VAULT_PATH}/_shared/current-checkpoint.md` — last known state of cross-project work (only if project != Forge — when project = Forge/forge, the project's own checkpoint at `{VAULT_PATH}/PERSO/forge/current-checkpoint.md` is used instead, picked up automatically by the recovery script via the routing in step 1)
 3. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
-4. **Run** `~/.claude/scripts/forge-context.sh friction-tail` for recent friction events (last 5 entries). Do NOT Read `friction-log.md` directly — the file grows unbounded (already 100+ KB / 30K+ tokens) and a naive Read charges the whole thing into context every session entry, driving compaction frequency. The subcommand emits only the tail.
+4. **Run** `~/.claude/scripts/forge-context.sh friction-tail` for recent friction headlines (default: last 5 entries, one line each as `<date>  <title>`). This is the priming view — just enough to know what surfaced recently. If a headline looks relevant to the current work, re-run with `--full` (optionally with `N`, e.g. `friction-tail 3 --full`) to read the body of those entries. Do NOT Read `friction-log.md` directly — the file grows unbounded (already 100+ KB / 30K+ tokens) and a naive Read charges the whole thing into context every session entry, driving compaction frequency.
 
 ### 2b. Load Knowledge Bases (optional)
 
@@ -225,7 +225,7 @@ PR sync results (from step 3) are shown first, then the context summary, then th
 
 **Time window check:** Check for upcoming interruptions to gauge available deep-work time. The **next interruption** is the soonest of:
 - Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — typically `${VAULT_PATH}/_shared/`, or `~/.claude/` legacy) (see `references/wellness-awareness.md`)
-- Next calendar meeting — **MUST invoke** skill `google-workspace:gws-calendar` when `calendar_enabled: true` in `wellness-preferences.json`. Not optional, not deferrable. Skip events where the user's `responseStatus` is `"declined"` in the `attendees` array.
+- Next calendar meeting — when `calendar_enabled: true` in `wellness-preferences.json`, **MUST run** `~/.claude/scripts/forge-calendar.sh entry-fetch`. Not optional, not deferrable. The script fetches today's remaining events (skipping declined), prints them, and persists a `last_fetch_at` timestamp so subsequent mid-session checks via `forge-calendar.sh delta-check` pass it as `updatedMin` to the API and return only what changed (~346 B empty response when nothing changed). This replaces invoking the `google-workspace:gws-calendar` SKILL at entry, avoiding its body-load cost. If the script fails or calendar is disabled, fall back to the SKILL once and **report the gap** per the honest-reporting rule below.
 
 **Honest reporting (never fill with false comfort):** If a check is skipped or fails for any reason — calendar API down, gws-auth scope missing, wellness prefs absent, etc. — REPORT THE GAP, never synthesize a comforting default. Wrong: *"Next interruption: nothing scheduled (haven't checked calendar)"*. Right: *"Next interruption: wellness break in 25min. Calendar not yet checked — invoking gws-calendar now."* OR *"Calendar check failed (403 — gws-auth scopes missing). Run `/gws-auth` to refresh, otherwise meeting awareness is unavailable this session."*
 

@@ -1668,31 +1668,45 @@ do_append_braindump() {
 #   --recurrence <N>
 #   --action-ref "tasks/open/<slug>.md|needs_new_pattern"
 do_friction_tail() {
-  # Print the N most recent entries (by date in H2 header, default 5) of
-  # friction-log.md. Used by the Forge SKILL at session entry instead of a
-  # naive Read of the whole file (the log grows unbounded — 128 KB / 32K
-  # tokens at the time of writing — and only the recent tail is useful as
-  # priming context).
+  # Print the N most recent entries of friction-log.md, sorted by date in
+  # the H2 header. Default mode is --headline: one line per entry
+  # ("<date>  <title>"), which is what session-entry priming needs.
+  # --full prints the entire entry body (the legacy behavior) — opt into
+  # this only when investigating a specific recent friction event.
   #
   # Sort-by-date (not by file position) because the file has historically
   # been a mix of prepended and appended entries; "last 5 by position"
   # returned a mix of old and new entries. Date is the right semantic.
-  local n="${1:-5}"
+  local n=5 mode="headline"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --headline) mode="headline"; shift ;;
+      --full)     mode="full"; shift ;;
+      [0-9]*)     n="$1"; shift ;;
+      *) echo "[friction-tail] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
   local file="$VAULT_PATH/_shared/friction-log.md"
   [ -f "$file" ] || return 0
-  python3 - "$file" "$n" <<'PYEOF'
+  python3 - "$file" "$n" "$mode" <<'PYEOF'
 import re, sys
-path, n = sys.argv[1], int(sys.argv[2])
+path, n, mode = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 with open(path) as f:
     text = f.read()
-# Split on H2 headers, keeping the header with each entry.
-parts = re.split(r'(?=^## )', text, flags=re.MULTILINE)
-entries = [p for p in parts if p.startswith('## ')]
+parts = re.split(r'(?=^#{2,3} )', text, flags=re.MULTILINE)
+entries = [p for p in parts if re.match(r'^#{2,3} ', p)]
 def date_key(e):
     m = re.search(r'(\d{4}-\d{2}-\d{2})', e)
     return m.group(1) if m else '0000-00-00'
 entries.sort(key=date_key)
-sys.stdout.write(''.join(entries[-n:]).rstrip() + '\n')
+last = entries[-n:]
+if mode == "full":
+    sys.stdout.write(''.join(last).rstrip() + '\n')
+else:
+    for e in last:
+        head = e.splitlines()[0]
+        head = re.sub(r'^#{2,3}\s+', '', head)
+        print(head)
 PYEOF
 }
 
