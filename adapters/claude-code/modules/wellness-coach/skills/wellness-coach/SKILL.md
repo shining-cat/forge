@@ -26,6 +26,8 @@ Preferences are split across two files in the same directory:
 
 Both files live in `${VAULT_PATH}/_shared/` (legacy fallback: `~/.claude/`). The Python helper (`preferences.py`) merges them on read and splits them on write — call sites that go through the helper see one combined dict.
 
+**To inspect current state from outside the hook**, run `~/.claude/skills/wellness-coach/scripts/wellness-status.sh --state`. It prints the canonical merged view (setup + runtime + next scheduled nags + recent break history) in human-readable form. Use this whenever you'd otherwise need to triangulate across both JSON files plus the activity log — much less error-prone, especially when reasoning about "did this lock credit?" or "why hasn't a nag fired yet?".
+
 ## Startup Check
 
 On every conversation start, check if `${VAULT_PATH}/_shared/wellness-preferences.json` exists. Always read BOTH files (preferences and runtime) and merge them — runtime fields override matching keys in prefs.

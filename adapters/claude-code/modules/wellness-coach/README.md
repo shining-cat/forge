@@ -123,7 +123,20 @@ All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. Break tak
 
 ## Configuration
 
-Preferences stored at `${VAULT_PATH}/_shared/wellness-preferences.json` (legacy: `~/.claude/wellness-preferences.json` if Forge is not installed). Editable directly or via conversation ("set break interval to 90 minutes", "change persona to professional").
+State is split across two files in `${VAULT_PATH}/_shared/` (legacy: `~/.claude/` if Forge isn't installed):
+
+- **`wellness-preferences.json`** — setup keys you choose during onboarding (persona, intervals, calendar/weather toggles, notes). Tracked in vault git. Edit directly or via conversation ("set break interval to 90 minutes", "change persona to professional").
+- **`wellness-runtime.json`** — runtime keys the coach auto-modifies (`last_break_timestamp`, `last_micro_break_timestamp`, `break_history`, `strike_active`, etc.). **Gitignored** to keep vault commits signal-only. Do not hand-edit unless you know what you're doing — `wellness-reset.sh` exists for safe resets.
+
+The Python code merges both files transparently via `read_prefs()`, so call sites see a single dict. The split is documented in `hooks/preferences.py:55-70` (`RUNTIME_FIELDS` frozenset).
+
+**See the current state at a glance** — instead of grepping both files, run:
+
+```bash
+~/.claude/skills/wellness-coach/scripts/wellness-status.sh --state
+```
+
+Prints all setup + runtime values, recent break history, and next predicted nag times — the single command for "what's the wellness coach thinking right now?".
 
 ## Files
 

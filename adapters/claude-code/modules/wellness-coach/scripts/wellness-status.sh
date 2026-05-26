@@ -93,10 +93,10 @@ if [ "${1:-}" = "--diagnose" ]; then
         hint "Or re-run: ~/.claude/skills/wellness-coach/scripts/install-monitor.sh"
     fi
 
-    # Show active thresholds (defaults: 2 / 10). Helpful when a user is
-    # debugging why a particular lock did or didn't get credited.
-    MICRO_T=$(jq -r '.micro_break_lock_threshold_minutes // 2' "$PREFS" 2>/dev/null)
-    REAL_T=$(jq -r '.real_break_lock_threshold_minutes // 10' "$PREFS" 2>/dev/null)
+    # Show active thresholds (defaults: 5 / 15 — per preferences.py).
+    # Helpful when debugging why a particular lock did or didn't get credited.
+    MICRO_T=$(jq -r '.micro_break_lock_threshold_minutes // 5' "$PREFS" 2>/dev/null)
+    REAL_T=$(jq -r '.real_break_lock_threshold_minutes // 15' "$PREFS" 2>/dev/null)
     pass "Lock thresholds:" "< ${MICRO_T}min ignore | ${MICRO_T}–${REAL_T}min micro | ≥ ${REAL_T}min real"
 
     echo
@@ -182,6 +182,176 @@ if [ "${1:-}" = "--diagnose" ]; then
         printf "${C_FAIL}One or more components need attention. See hints above.${C_RST}\n"
         exit 1
     fi
+fi
+
+# ----- state mode (canonical runtime dump) ----------------------------------
+#
+# Print all runtime + setup values that determine current wellness behaviour,
+# in one human-readable view. Built specifically to short-circuit the
+# triangulation-across-files debugging pattern that recurs whenever something
+# seems off with break crediting (see task
+# 2026-05-26-wellness-runtime-state-observability).
+#
+# Canonical sources:
+#   - wellness-preferences.json  — setup keys (tracked)
+#   - wellness-runtime.json      — runtime keys (gitignored, auto-modified)
+# See preferences.py:55-70 for the split. read_prefs() merges both transparently.
+
+if [ "${1:-}" = "--state" ]; then
+    FORGE_CONF="$HOME/.claude/forge.conf"
+    if [ ! -f "$FORGE_CONF" ]; then
+        echo "forge.conf missing at $FORGE_CONF — wellness coach not installed via Forge." >&2
+        exit 1
+    fi
+    VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
+    if [ -z "$VAULT_PATH" ] || [ ! -d "$VAULT_PATH" ]; then
+        echo "VAULT_PATH unset or not a directory: ${VAULT_PATH:-<unset>}" >&2
+        exit 1
+    fi
+
+    PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
+    RUNTIME="$VAULT_PATH/_shared/wellness-runtime.json"
+    ACTIVITY_LOG="$HOME/.claude/wellness-activity-log.md"
+
+    if [ ! -f "$PREFS" ]; then
+        echo "Preferences file missing: $PREFS" >&2
+        echo "Wellness onboarding hasn't run." >&2
+        exit 1
+    fi
+
+    NOW_EPOCH=$(date +%s)
+    NOW_ISO=$(date +"%Y-%m-%dT%H:%M %Z")
+
+    # Helper: format "(N min ago)" or "(N min from now)" for an ISO timestamp.
+    age_str() {
+        local iso="$1"
+        [ -z "$iso" ] || [ "$iso" = "null" ] && { echo ""; return; }
+        local t
+        t=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$iso" +%s 2>/dev/null) || { echo "(unparseable)"; return; }
+        local delta=$(( NOW_EPOCH - t ))
+        if [ "$delta" -ge 0 ]; then
+            echo "($(( delta / 60 )) min ago)"
+        else
+            echo "($(( -delta / 60 )) min from now)"
+        fi
+    }
+
+    # Read prefs
+    PERSONA=$(jq -r '.persona // "(unset)"' "$PREFS")
+    COACH=$(jq -r '.coach_name // "(unset)"' "$PREFS")
+    MICRO_INT=$(jq -r '.micro_break_interval_minutes // 0' "$PREFS")
+    REAL_INT=$(jq -r '.real_break_interval_minutes // 0' "$PREFS")
+    INSIST=$(jq -r '.insistence_level // "(unset)"' "$PREFS")
+    STRIKE_DELAY=$(jq -r '.strike_delay_minutes // 0' "$PREFS")
+    MAX_SNOOZE=$(jq -r '.max_snoozes // 0' "$PREFS")
+    CAL_EN=$(jq -r '.calendar_enabled // false' "$PREFS")
+    WX_EN=$(jq -r '.weather_enabled // false' "$PREFS")
+    WX_CITY=$(jq -r '.weather_city // ""' "$PREFS")
+    AM_EN=$(jq -r '.activity_monitor_enabled // false' "$PREFS")
+    AM_INST=$(jq -r '.activity_monitor_installed // false' "$PREFS")
+    MICRO_T=$(jq -r '.micro_break_lock_threshold_minutes // 5' "$PREFS")
+    REAL_T=$(jq -r '.real_break_lock_threshold_minutes // 15' "$PREFS")
+    EOD=$(jq -r '.preferred_end_of_day // "(unset)"' "$PREFS")
+
+    # Read runtime (may not exist on fresh install)
+    if [ -f "$RUNTIME" ]; then
+        LAST_BREAK=$(jq -r '.last_break_timestamp // ""' "$RUNTIME")
+        LAST_MICRO=$(jq -r '.last_micro_break_timestamp // ""' "$RUNTIME")
+        LAST_REMIND=$(jq -r '.last_reminder_timestamp // ""' "$RUNTIME")
+        STRIKE_ACTIVE=$(jq -r '.strike_active // false' "$RUNTIME")
+        STRIKE_CLEARED=$(jq -r '.strike_cleared_at // ""' "$RUNTIME")
+        SNOOZE_COUNT=$(jq -r '.snooze_count // 0' "$RUNTIME")
+        HIST_COUNT=$(jq -r '.break_history // [] | length' "$RUNTIME")
+    else
+        LAST_BREAK=""; LAST_MICRO=""; LAST_REMIND=""
+        STRIKE_ACTIVE="false"; STRIKE_CLEARED=""; SNOOZE_COUNT=0; HIST_COUNT=0
+    fi
+
+    # ---- Header
+    echo "Wellness state — ${COACH} (${NOW_ISO})"
+    echo "================================================================"
+
+    # ---- Setup
+    echo
+    echo "Setup"
+    printf "  %-22s : %s\n" "Persona" "${PERSONA} (${COACH})"
+    printf "  %-22s : %s min\n" "Micro interval" "${MICRO_INT}"
+    printf "  %-22s : %s min\n" "Real interval" "${REAL_INT}"
+    printf "  %-22s : %s\n" "Insistence" "${INSIST}"
+    printf "  %-22s : %s min\n" "Strike delay" "${STRIKE_DELAY}"
+    printf "  %-22s : %s\n" "Max snoozes" "${MAX_SNOOZE}"
+    printf "  %-22s : %s\n" "Calendar enabled" "${CAL_EN}"
+    if [ "$WX_EN" = "true" ] && [ -n "$WX_CITY" ]; then
+        printf "  %-22s : %s (%s)\n" "Weather enabled" "${WX_EN}" "${WX_CITY}"
+    else
+        printf "  %-22s : %s\n" "Weather enabled" "${WX_EN}"
+    fi
+    printf "  %-22s : enabled=%s installed=%s\n" "Activity monitor" "${AM_EN}" "${AM_INST}"
+    printf "  %-22s : <%sm ignore | %s–%sm micro | ≥%sm real\n" "Lock thresholds" "${MICRO_T}" "${MICRO_T}" "${REAL_T}" "${REAL_T}"
+    printf "  %-22s : %s\n" "Preferred end-of-day" "${EOD}"
+
+    # ---- Runtime
+    echo
+    echo "Runtime"
+    printf "  %-22s : %s %s\n" "last_break" "${LAST_BREAK:-(unset)}" "$(age_str "$LAST_BREAK")"
+    printf "  %-22s : %s %s\n" "last_micro_break" "${LAST_MICRO:-(unset)}" "$(age_str "$LAST_MICRO")"
+    printf "  %-22s : %s %s\n" "last_reminder" "${LAST_REMIND:-(unset)}" "$(age_str "$LAST_REMIND")"
+    printf "  %-22s : %s\n" "strike_active" "${STRIKE_ACTIVE}"
+    printf "  %-22s : %s\n" "strike_cleared_at" "${STRIKE_CLEARED:-(none)}"
+    printf "  %-22s : %s\n" "snooze_count" "${SNOOZE_COUNT}"
+    printf "  %-22s : %s entries\n" "break_history" "${HIST_COUNT}"
+
+    # ---- Next scheduled (only computable if runtime + intervals present)
+    echo
+    echo "Next scheduled"
+    if [ -n "$LAST_MICRO" ] && [ "$MICRO_INT" -gt 0 ]; then
+        MICRO_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$LAST_MICRO" +%s 2>/dev/null)
+        if [ -n "$MICRO_EPOCH" ]; then
+            MICRO_NEXT_EPOCH=$(( MICRO_EPOCH + MICRO_INT * 60 ))
+            MICRO_NEXT_ISO=$(date -j -f "%s" "$MICRO_NEXT_EPOCH" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null)
+            MICRO_DELTA=$(( MICRO_NEXT_EPOCH - NOW_EPOCH ))
+            if [ "$MICRO_DELTA" -le 0 ]; then
+                printf "  %-22s : %s (%d min ago — DUE)\n" "micro nag at" "${MICRO_NEXT_ISO}" "$(( -MICRO_DELTA / 60 ))"
+            else
+                printf "  %-22s : %s (in %d min)\n" "micro nag at" "${MICRO_NEXT_ISO}" "$(( MICRO_DELTA / 60 ))"
+            fi
+        fi
+    else
+        printf "  %-22s : (insufficient state)\n" "micro nag at"
+    fi
+    if [ -n "$LAST_BREAK" ] && [ "$REAL_INT" -gt 0 ]; then
+        BREAK_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$LAST_BREAK" +%s 2>/dev/null)
+        if [ -n "$BREAK_EPOCH" ]; then
+            REAL_NEXT_EPOCH=$(( BREAK_EPOCH + REAL_INT * 60 ))
+            REAL_NEXT_ISO=$(date -j -f "%s" "$REAL_NEXT_EPOCH" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null)
+            REAL_DELTA=$(( REAL_NEXT_EPOCH - NOW_EPOCH ))
+            if [ "$REAL_DELTA" -le 0 ]; then
+                printf "  %-22s : %s (%d min ago — DUE)\n" "real nag at" "${REAL_NEXT_ISO}" "$(( -REAL_DELTA / 60 ))"
+            else
+                printf "  %-22s : %s (in %d min)\n" "real nag at" "${REAL_NEXT_ISO}" "$(( REAL_DELTA / 60 ))"
+            fi
+        fi
+    else
+        printf "  %-22s : (insufficient state)\n" "real nag at"
+    fi
+
+    # ---- Recent break history (last 5)
+    echo
+    echo "Recent break history (last 5)"
+    if [ -f "$RUNTIME" ] && [ "$HIST_COUNT" -gt 0 ]; then
+        jq -r '.break_history // [] | .[-5:] | reverse | .[] | "  \(.timestamp)  \(.type)"' "$RUNTIME"
+    else
+        echo "  (none)"
+    fi
+
+    # ---- Files
+    echo
+    echo "Files"
+    printf "  %-13s : %s\n" "Prefs" "$PREFS"
+    printf "  %-13s : %s\n" "Runtime" "$RUNTIME"
+    printf "  %-13s : %s\n" "Activity log" "$ACTIVITY_LOG"
+
+    exit 0
 fi
 
 # ----- statusline chip mode (default) ---------------------------------------
