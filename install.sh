@@ -336,9 +336,9 @@ if [ "$DRY_RUN" = true ]; then
   ok "forge.conf would be written/updated (vault: $VAULT_PATH)"
 elif [ -f "$CLAUDE_DIR/forge.conf" ]; then
   # Existing config — only update install-managed keys, preserve user-set values.
-  # Other keys (ONBOARDING_COMPLETE, WELLNESS_ENABLED, MAINTAINER_MODE, MODEL_*,
-  # VAULT_GIT_DECLINED) are left untouched. Consumer code uses sensible defaults
-  # when keys are missing.
+  # Other keys (ONBOARDING_COMPLETE, WELLNESS_ENABLED, MAINTAINER_MODE, EOW_DAY,
+  # MEETING_WINDOW_MIN, MODEL_*, VAULT_GIT_DECLINED) are left untouched.
+  # Consumer code uses sensible defaults when keys are missing.
   set_conf_key VAULT_PATH "$VAULT_PATH"
   set_conf_key FORGE_REPO "$FORGE_ROOT"
   # MAINTAINER_MODE was introduced after some installs existed. If missing,
@@ -346,6 +346,18 @@ elif [ -f "$CLAUDE_DIR/forge.conf" ]; then
   # already set it, leave their value untouched.
   if ! grep -q "^MAINTAINER_MODE=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
     echo "MAINTAINER_MODE=false" >> "$CLAUDE_DIR/forge.conf"
+  fi
+  # EOW_DAY (ISO day-of-week, Mon=1..Sun=7; Friday=5 default) was introduced
+  # after some installs existed. If missing, append the default so the key is
+  # discoverable. If the user has already set it, leave their value untouched.
+  if ! grep -q "^EOW_DAY=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    echo "EOW_DAY=5" >> "$CLAUDE_DIR/forge.conf"
+  fi
+  # MEETING_WINDOW_MIN (minutes) was introduced after some installs existed.
+  # Caps the look-ahead for wrap-up meeting awareness. If missing, append the
+  # default (30). If the user has already set it, leave their value untouched.
+  if ! grep -q "^MEETING_WINDOW_MIN=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    echo "MEETING_WINDOW_MIN=30" >> "$CLAUDE_DIR/forge.conf"
   fi
   ok "forge.conf updated (preserved existing user-set values)"
 else
@@ -370,6 +382,18 @@ MAINTAINER_MODE=false
 # summary. Default 4h covers lunch + a meeting block; tune up if you typically
 # return to deep work after shorter pauses, down if you want stricter resets.
 WELLNESS_COLD_START_HOURS=4
+
+# EOW_DAY = ISO day-of-week treated as end-of-week (Mon=1..Sun=7). Default 5
+# (Friday). On EOW_DAY, the eod_window/past_eod states emitted by
+# \`forge-context.sh wrap-up-state\` are upgraded to eow_window/past_eow, which
+# trigger weekly-wrap behavior in addition to the daily-wrap surface.
+EOW_DAY=5
+
+# MEETING_WINDOW_MIN = look-ahead horizon (minutes) for the
+# \`forge-context.sh next-meeting\` subcommand. At wrap-up moments Petra queries
+# this window to detect imminent calendar interruptions; meetings further out
+# are filtered out as not actionable for the current wrap-up decision.
+MEETING_WINDOW_MIN=30
 
 # Model assignments per role — valid values: opus, sonnet, haiku
 # Empty value = inherit from session model

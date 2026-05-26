@@ -232,12 +232,80 @@ do_reset() {
   fi
 }
 
+do_next_meeting() {
+  # Print the next non-declined meeting starting within $1 minutes, or nothing.
+  # Output format (single line): HH:MM|title|minutes_until
+  # Silent (no output, exit 0) when calendar disabled, no events in window,
+  # or fetch fails — caller treats absence as "nothing imminent". Errors that
+  # need surfacing go to stderr.
+  local window_min="${1:-30}"
+  if ! check_calendar_enabled; then
+    return 0
+  fi
+
+  local now_iso end_iso
+  { read -r now_iso; read -r end_iso; } < <(WIN="$window_min" python3 -c "
+import datetime, os
+win = int(os.environ['WIN'])
+now = datetime.datetime.now().astimezone()
+end = now + datetime.timedelta(minutes=win)
+print(now.isoformat())
+print(end.isoformat())
+")
+
+  local params
+  params=$(NOW="$now_iso" END="$end_iso" python3 -c "
+import json, os
+print(json.dumps({
+  'calendarId': 'primary',
+  'timeMin': os.environ['NOW'],
+  'timeMax': os.environ['END'],
+  'singleEvents': True,
+  'orderBy': 'startTime',
+  'maxResults': 5,
+}))")
+
+  local resp
+  resp=$(gws_list_events "$params") || return 0
+
+  RESP="$resp" NOW_ISO="$now_iso" python3 - <<'PYEOF'
+import json, os, sys, datetime
+raw = os.environ['RESP']
+now_iso = os.environ['NOW_ISO']
+try:
+    resp = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(0)
+
+now = datetime.datetime.fromisoformat(now_iso)
+for e in resp.get('items', []):
+    self_attendee = next((a for a in e.get('attendees', []) if a.get('self')), None)
+    if self_attendee and self_attendee.get('responseStatus') == 'declined':
+        continue
+    start = e.get('start', {})
+    if 'dateTime' not in start:
+        continue
+    try:
+        start_dt = datetime.datetime.fromisoformat(start['dateTime'])
+    except ValueError:
+        continue
+    minutes_until = int((start_dt - now).total_seconds() // 60)
+    if minutes_until < 0:
+        continue
+    hh_mm = start['dateTime'].split('T')[1][:5]
+    title = e.get('summary', '(no title)').replace('|', '/')
+    print(f"{hh_mm}|{title}|{minutes_until}")
+    break
+PYEOF
+}
+
 case "${1:-}" in
   entry-fetch) do_entry_fetch ;;
   delta-check) do_delta_check ;;
+  next-meeting) shift; do_next_meeting "${1:-30}" ;;
   reset)       do_reset ;;
   *)
-    echo "Usage: forge-calendar.sh {entry-fetch|delta-check|reset}" >&2
+    echo "Usage: forge-calendar.sh {entry-fetch|delta-check|next-meeting [window_min]|reset}" >&2
     exit 1
     ;;
 esac
