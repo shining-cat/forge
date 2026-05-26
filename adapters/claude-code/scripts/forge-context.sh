@@ -355,16 +355,28 @@ case "$SUBCMD_PEEK" in
 esac
 
 # ── Helper: age of checkpoint in minutes ────────────────────────────────
+# Returns min(wall-clock-age, gap-since-last-signal) so a 13h checkpoint after
+# a 14h Forge-idle gap (overnight, weekend, vacation) isn't flagged stale —
+# the user hasn't been working, so the checkpoint isn't actually behind.
+# Sentinel: when gap == 999999999 (no signals — fresh install), fall through
+# to raw age so the nag still fires on a genuinely empty vault.
 get_checkpoint_age_minutes() {
   if [ ! -f "$CHECKPOINT_FILE" ]; then
     echo "9999"
     return
   fi
-  local now
+  local now mtime raw_age_sec gap effective_sec
   now="$(date +%s)"
-  local mtime
   mtime="$(stat -f %m "$CHECKPOINT_FILE" 2>/dev/null || stat -c %Y "$CHECKPOINT_FILE" 2>/dev/null || echo 0)"
-  echo $(( (now - mtime) / 60 ))
+  raw_age_sec=$(( now - mtime ))
+
+  gap="$("$HOME/.claude/scripts/forge-gap-since-last-signal.sh" 2>/dev/null || echo 999999999)"
+  if [ "$gap" = "999999999" ] || [ "$gap" -ge "$raw_age_sec" ]; then
+    effective_sec=$raw_age_sec
+  else
+    effective_sec=$gap
+  fi
+  echo $(( effective_sec / 60 ))
 }
 
 # ── Helper: age of braindump in minutes ─────────────────────────────────
