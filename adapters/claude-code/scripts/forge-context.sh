@@ -316,7 +316,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -2140,6 +2140,185 @@ if os.path.exists(json_path):
 PYEOF
 }
 
+# ── Subcommand: harvest-friction ──────────────────────────────────────
+# Output JSON proposals for promoting/archiving friction entries.
+#
+# Reads FRICTION_CLASSIFIED, filters to: not pinned, not already archived,
+# date within --days N window (default 30). Applies the heuristic from
+# B-friction-log-lifecycle.md to propose a target per entry.
+#
+# Flags:
+#   --days N    look back window in days (default 30)
+#   --pretty    pretty-print the JSON output
+#
+# Output: JSON array of proposals (or empty `[]` if none).
+# Each proposal: {entry_id, date, description, pattern, recurrence,
+#                 action_ref, proposed_target, justification}
+#
+# entry_id format: "YYYY-MM-DD|<first-40-chars-of-description>"
+# (matches the format consumed by archive-friction-entries --entry)
+do_harvest_friction() {
+  local days=30
+  local pretty=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --days)   days="$2"; shift 2 ;;
+      --pretty) pretty=true; shift ;;
+      *) echo "[harvest-friction] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ ! -f "$FRICTION_CLASSIFIED" ]; then
+    echo "[harvest-friction] no friction-classified.json at $FRICTION_CLASSIFIED" >&2
+    echo "[]"; return 0
+  fi
+  python3 - "$FRICTION_CLASSIFIED" "$VAULT_PATH" "$days" "$pretty" <<'PYEOF'
+import datetime, json, os, sys
+classified_path, vault_path, days_str, pretty_str = sys.argv[1:5]
+days = int(days_str)
+pretty = pretty_str == "true"
+today = datetime.date.today()
+cutoff = today - datetime.timedelta(days=days)
+
+with open(classified_path) as f:
+    data = json.load(f)
+
+UNCLASSIFIED = {"needs_new_pattern", "", None}
+
+def classify(entry):
+    action_ref = entry.get('action_ref')
+    recurrence = entry.get('recurrence', 1)
+    entry_date_str = entry.get('date', '')
+    try:
+        entry_date = datetime.date.fromisoformat(entry_date_str)
+    except ValueError:
+        return ("archive-only", "malformed date — informational only")
+
+    if action_ref not in UNCLASSIFIED:
+        # action_ref looks like a path (vault-relative); check existence
+        ref_path = os.path.join(vault_path, action_ref)
+        if os.path.exists(ref_path):
+            return ("archive-only", f"already promoted to {action_ref}")
+        else:
+            return ("task", f"action_ref={action_ref} missing — rewrite")
+
+    if recurrence >= 2:
+        return ("task", f"pattern recurring (n={recurrence}) — structural fix needed")
+
+    age_days = (today - entry_date).days
+    if age_days < 14:
+        return ("task", "recent + unclassified — likely needs new pattern")
+
+    return ("archive-only", "old + unclassified — informational only")
+
+proposals = []
+for entry in data.get('entries', []):
+    if entry.get('pinned') is True:
+        continue
+    if 'archived_in' in entry and entry.get('archived_in'):
+        continue
+    entry_date_str = entry.get('date', '')
+    try:
+        entry_date = datetime.date.fromisoformat(entry_date_str)
+    except ValueError:
+        continue
+    if entry_date < cutoff:
+        continue
+
+    desc = entry.get('description', '')
+    desc_prefix = desc[:40]
+    target, justification = classify(entry)
+    proposals.append({
+        "entry_id": f"{entry_date_str}|{desc_prefix}",
+        "date": entry_date_str,
+        "description": desc,
+        "pattern": entry.get('pattern', ''),
+        "recurrence": entry.get('recurrence', 1),
+        "action_ref": entry.get('action_ref', ''),
+        "proposed_target": target,
+        "justification": justification,
+    })
+
+# Sort: tasks first (more urgent), then by date desc within each group
+proposals.sort(key=lambda p: (p['proposed_target'] != 'task', p['date']), reverse=False)
+proposals.sort(key=lambda p: (p['proposed_target'] != 'task', -int(p['date'].replace('-', ''))))
+
+if pretty:
+    print(json.dumps(proposals, indent=2, ensure_ascii=False))
+else:
+    print(json.dumps(proposals, separators=(',', ':'), ensure_ascii=False))
+PYEOF
+}
+
+# ── Subcommand: promote-friction ──────────────────────────────────────
+# Execute a promotion decision for a single friction entry.
+#
+# MVP scope: --target archive chains to archive-friction-entries.
+# For task/decision/feedback targets, the script doesn't auto-scaffold —
+# slug/title/body need conversation context, so Petra writes those files
+# directly via the Write tool. The script then can be called with
+# --target archive to clean up the raw entry.
+#
+# Flags:
+#   --entry "<date>|<desc-prefix>"   required, identifies the source entry
+#   --target <archive|task|decision|feedback>   required
+#
+# For non-archive targets, emits a hint with the suggested scaffold path
+# and exits 0 without modifying anything. Petra then writes the file
+# and re-invokes with --target archive.
+do_promote_friction() {
+  local entry=""
+  local target=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --entry)  entry="$2"; shift 2 ;;
+      --target) target="$2"; shift 2 ;;
+      *) echo "[promote-friction] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ -z "$entry" ] || [ -z "$target" ]; then
+    echo "[promote-friction] usage: promote-friction --entry '<date>|<prefix>' --target <archive|task|decision|feedback>" >&2
+    return 2
+  fi
+  case "$target" in
+    archive)
+      do_archive_friction_entries --entry "$entry"
+      ;;
+    task|decision|feedback)
+      local date_part="${entry%%|*}"
+      local prefix_part="${entry#*|}"
+      cat <<HINT >&2
+[promote-friction] target=$target needs Petra to scaffold the file.
+
+Source entry: $date_part — $prefix_part
+
+Suggested next steps:
+  1. Write the $target file with proper title/slug from conversation context:
+HINT
+      case "$target" in
+        task)
+          echo "       Path: \$VAULT_PATH/<ENV>/<project>/tasks/open/${date_part}-<slug>.md" >&2
+          ;;
+        decision)
+          echo "       Path: \$VAULT_PATH/<ENV>/<project>/decisions/${date_part}-<slug>.md" >&2
+          ;;
+        feedback)
+          echo "       Path: ~/.claude/projects/.../memory/feedback_<topic>.md" >&2
+          ;;
+      esac
+      cat <<HINT2 >&2
+  2. Add a back-link to the source friction entry.
+  3. Re-invoke: forge-context.sh promote-friction --entry '$entry' --target archive
+     (to remove the raw entry from friction-log.md)
+HINT2
+      return 0
+      ;;
+    *)
+      echo "[promote-friction] unknown target: $target (expected archive|task|decision|feedback)" >&2
+      return 2
+      ;;
+  esac
+}
+
 # ── Subcommand: audit-prose-rules ──────────────────────────────────────
 # Scans for prose patterns that smell script-replaceable (MUST/Never/Remember/
 # always/REQUIRED). Cross-references friction-log for recurrence signal.
@@ -2554,6 +2733,8 @@ case "$SUBCMD" in
   friction-tail)       do_friction_tail "${@:2}" ;;
   pin-friction)        do_pin_friction "${@:2}" ;;
   archive-friction-entries) do_archive_friction_entries "${@:2}" ;;
+  harvest-friction)    do_harvest_friction "${@:2}" ;;
+  promote-friction)    do_promote_friction "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   skill-budgets)       do_skill_budgets "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
@@ -2562,7 +2743,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac
