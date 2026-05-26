@@ -98,8 +98,12 @@ DEFAULT_PREFS = {
     # does NOT clear strike, logs as "auto-micro").
     # Locks ≥ real are credited as real (resets both timers, clears strike,
     # logs as "auto-real").
-    "micro_break_lock_threshold_minutes": 2,
-    "real_break_lock_threshold_minutes": 10
+    #
+    # 5min micro = stretch / restroom / drink water (a genuine reset, not
+    # a screensaver flash). 15min real = left the desk (long enough that
+    # the user physically moved away, not just looked away).
+    "micro_break_lock_threshold_minutes": 5,
+    "real_break_lock_threshold_minutes": 15
 }
 
 IDLE_LOG_PATH = Path.home() / ".claude" / "wellness-idle-log.json"
@@ -107,8 +111,8 @@ IDLE_LOG_MAX_AGE_MINUTES = 120  # log is stale if no sample in this window
 
 # Defaults for tiered lock-duration detection. User-configurable via the
 # matching prefs keys above. See DEFAULT_PREFS comment for the tier semantics.
-MICRO_BREAK_LOCK_THRESHOLD_MINUTES = 2
-REAL_BREAK_LOCK_THRESHOLD_MINUTES = 10
+MICRO_BREAK_LOCK_THRESHOLD_MINUTES = 5
+REAL_BREAK_LOCK_THRESHOLD_MINUTES = 15
 
 
 def read_prefs():
