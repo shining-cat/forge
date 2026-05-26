@@ -37,6 +37,7 @@ from preferences import (
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(PLUGIN_DIR), "scripts")
 REMINDER_COOLDOWN_MINUTES = 5
+AUTO_CREDIT_MIN_GAP_SECONDS = 60
 
 
 # ── Notifications ──────────────────────────────────────────
@@ -238,7 +239,27 @@ def main():
         # Without this, micros re-fire on every hook tick.
         prior = (prefs.get("last_break_timestamp") if tier == "real"
                  else prefs.get("last_micro_break_timestamp"))
-        if not prior or auto_break > prior:
+        # Rate-limit guard against detector-drift cascades: the activity-monitor
+        # path synthesizes a "screen on" sample with fresh time.time() each
+        # call, so auto_break creeps forward by seconds per tool call and the
+        # auto_break > prior dedup never trips. Anchored on break_history's
+        # last entry (only the real-tier credit path writes there), this caps
+        # auto-credits to once per AUTO_CREDIT_MIN_GAP_SECONDS regardless of
+        # which detector fires. Friction 2026-05-26: 10 credits in 25s at
+        # session entry.
+        rate_limited = False
+        history = prefs.get("break_history") or []
+        if history:
+            try:
+                last_credit_epoch = time.mktime(
+                    time.strptime(history[-1]["timestamp"],
+                                  "%Y-%m-%dT%H:%M:%S")
+                )
+                if time.time() - last_credit_epoch < AUTO_CREDIT_MIN_GAP_SECONDS:
+                    rate_limited = True
+            except (ValueError, KeyError, TypeError):
+                pass  # Malformed entry — fall through to existing dedup
+        if not rate_limited and (not prior or auto_break > prior):
             _credit_auto_break(prefs, auto_break, last_break, coach_name, tier)
             # Re-read prefs after crediting — strike may have been cleared
             prefs = read_prefs() or prefs
