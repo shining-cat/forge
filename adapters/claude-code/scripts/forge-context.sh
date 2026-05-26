@@ -316,7 +316,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -2319,6 +2319,91 @@ HINT2
   esac
 }
 
+# ── Subcommand: bootstrap-harvest ────────────────────────────────────
+# Non-interactive sweep that archives all unpinned/unarchived friction entries
+# older than --older-than DAYS (default 30). No promotion prompts — old entries
+# go straight to the per-week archive. Designed for one-shot reduction of the
+# accumulated friction-log; subsequent maintenance happens via harvest-friction
+# + promote-friction (Slice 3).
+#
+# Flags:
+#   --older-than N    archive entries older than N days (default 30)
+#   --dry-run         show what would be archived; don't write
+#
+# Output: human-readable summary line + (if --dry-run) JSON list to stdout.
+do_bootstrap_harvest() {
+  local days=30
+  local dry_run=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --older-than) days="$2"; shift 2 ;;
+      --dry-run)    dry_run=true; shift ;;
+      *) echo "[bootstrap-harvest] unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+  if [ ! -f "$FRICTION_CLASSIFIED" ]; then
+    echo "[bootstrap-harvest] no friction-classified.json at $FRICTION_CLASSIFIED" >&2
+    return 1
+  fi
+
+  # Compute list of entry_ids to archive via python (uses ISO dates)
+  local entry_ids_raw
+  entry_ids_raw="$(python3 - "$FRICTION_CLASSIFIED" "$days" <<'PYEOF'
+import datetime, json, sys
+classified_path, days_str = sys.argv[1:3]
+days = int(days_str)
+cutoff = datetime.date.today() - datetime.timedelta(days=days)
+with open(classified_path) as f:
+    data = json.load(f)
+ids = []
+for entry in data.get('entries', []):
+    if entry.get('pinned') is True:
+        continue
+    if entry.get('archived_in'):
+        continue
+    date_str = entry.get('date', '')
+    try:
+        d = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        continue
+    if d >= cutoff:
+        continue
+    desc = entry.get('description', '')[:80]
+    ids.append(f"{date_str}|{desc}")
+for i in ids:
+    print(i)
+PYEOF
+)"
+
+  if [ -z "$entry_ids_raw" ]; then
+    echo "[bootstrap-harvest] nothing to archive (no entries older than $days days)" >&2
+    return 0
+  fi
+
+  local count
+  count=$(printf '%s\n' "$entry_ids_raw" | wc -l | tr -d ' ')
+
+  if [ "$dry_run" = "true" ]; then
+    echo "[bootstrap-harvest] DRY-RUN: would archive $count entries older than $days days:" >&2
+    printf '%s\n' "$entry_ids_raw"
+    return 0
+  fi
+
+  echo "[bootstrap-harvest] archiving $count entries older than $days days..." >&2
+  # Build --entry args from the id list
+  local -a entry_args=()
+  while IFS= read -r line; do
+    [ -n "$line" ] && entry_args+=(--entry "$line")
+  done <<< "$entry_ids_raw"
+
+  # Match the description-prefix lengths used in friction-log.md headings.
+  # archive-friction-entries uses startswith match, so the 80-char prefix
+  # from JSON will match the heading title's first 80 chars (or full title
+  # if shorter). This relies on the JSON description being a verbatim copy
+  # of the markdown heading title — see do_append_friction.
+  do_archive_friction_entries "${entry_args[@]}"
+}
+
 # ── Subcommand: audit-prose-rules ──────────────────────────────────────
 # Scans for prose patterns that smell script-replaceable (MUST/Never/Remember/
 # always/REQUIRED). Cross-references friction-log for recurrence signal.
@@ -2735,6 +2820,7 @@ case "$SUBCMD" in
   archive-friction-entries) do_archive_friction_entries "${@:2}" ;;
   harvest-friction)    do_harvest_friction "${@:2}" ;;
   promote-friction)    do_promote_friction "${@:2}" ;;
+  bootstrap-harvest)   do_bootstrap_harvest "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   skill-budgets)       do_skill_budgets "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
@@ -2743,7 +2829,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac
