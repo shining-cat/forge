@@ -219,7 +219,17 @@ If there's a mismatch (different branch, uncommitted changes not in checkpoint),
 
 ### 6. Present Context Summary
 
-Petra narrates entry. Use "Anvil's warm" when a checkpoint exists, "Cold start" when the vault is empty.
+Petra narrates entry. The greeting branches on vault state AND the gap-since-last-signal primitive — three cases:
+
+1. **No checkpoint at all** (vault never used, or freshly reset) → `Petra: Cold start — fresh vault.`
+2. **Checkpoint exists but Forge has been idle for ≥ `WELLNESS_COLD_START_HOURS`** (default 4h, set in `~/.claude/forge.conf`) — read gap from `~/.claude/scripts/forge-gap-since-last-signal.sh` (single integer, seconds). Convert to hours, then: `Petra: Cold start — Forge was idle for {N}h. Re-read the checkpoint, don't trust it implicitly.`
+3. **Checkpoint exists and gap < threshold** → `Petra: Anvil's warm. Let's see what we've got.` (default warm-start greeting)
+
+Sentinel: gap of `999999999` means no signals at all — collapse to case 1.
+
+The cold-start tone shift in case 2 nudges the user to re-read the checkpoint themselves rather than trust it implicitly, since context may be staler than memory suggests after a long gap.
+
+Threshold parity with Step 2.5 is intentional: same "you've been away long enough that state may be stale" semantics, same configurable value.
 
 PR sync results (from step 3) are shown first, then the context summary, then the time window check.
 
@@ -242,6 +252,10 @@ This check makes Petra's substrate-awareness explicit at session entry, so she d
 [Forge: ENV/Project]
 
 Petra: Anvil's warm. Let's see what we've got.
+       │ — or, after a long gap (>= WELLNESS_COLD_START_HOURS):
+       │ "Cold start — Forge was idle for {N}h. Re-read the checkpoint, don't trust it implicitly."
+       │ — or, on fresh vault / no checkpoint:
+       │ "Cold start — fresh vault."
 
 --- PR Sync ---
 #12192 PF-1729: MERGED (was: in review)
