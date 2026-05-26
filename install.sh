@@ -336,10 +336,17 @@ if [ "$DRY_RUN" = true ]; then
   ok "forge.conf would be written/updated (vault: $VAULT_PATH)"
 elif [ -f "$CLAUDE_DIR/forge.conf" ]; then
   # Existing config — only update install-managed keys, preserve user-set values.
-  # Other keys (ONBOARDING_COMPLETE, WELLNESS_ENABLED, MODEL_*, VAULT_GIT_DECLINED)
-  # are left untouched. Consumer code uses sensible defaults when keys are missing.
+  # Other keys (ONBOARDING_COMPLETE, WELLNESS_ENABLED, MAINTAINER_MODE, MODEL_*,
+  # VAULT_GIT_DECLINED) are left untouched. Consumer code uses sensible defaults
+  # when keys are missing.
   set_conf_key VAULT_PATH "$VAULT_PATH"
   set_conf_key FORGE_REPO "$FORGE_ROOT"
+  # MAINTAINER_MODE was introduced after some installs existed. If missing,
+  # append the default (false) so the key is discoverable. If the user has
+  # already set it, leave their value untouched.
+  if ! grep -q "^MAINTAINER_MODE=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    echo "MAINTAINER_MODE=false" >> "$CLAUDE_DIR/forge.conf"
+  fi
   ok "forge.conf updated (preserved existing user-set values)"
 else
   # First install — write full template with defaults.
@@ -349,6 +356,14 @@ VAULT_PATH=$VAULT_PATH
 FORGE_REPO=$FORGE_ROOT
 ONBOARDING_COMPLETE=false
 WELLNESS_ENABLED=false
+
+# MAINTAINER_MODE distinguishes Forge end-users from Forge maintainers (people
+# extending Forge itself). Default false = end-user mode: Petra suppresses
+# meta-work invitations (friction-log writes, decisions/ curation, INDEX.md
+# maintenance, OVERVIEW.md updates, vault hygiene, forge-internal audits) from
+# entry summaries and checkpoint Next-Steps. Set to true if you're working on
+# Forge itself and want those surfaces surfaced as actionable threads.
+MAINTAINER_MODE=false
 
 # Cold-start threshold (hours). When session entry detects no Forge signal for
 # longer than this, Petra runs wellness-reset.sh --full-reset before the entry

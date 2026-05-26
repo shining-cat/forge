@@ -61,6 +61,7 @@ At natural checkpoints (task done, topic shift, before long ops, user request), 
 - Always OVERWRITE, never append
 - **After context compression**: immediately read `current-checkpoint.md` to reorient
 - Archive old checkpoints to `checkpoints/` with date prefix if needed
+- **Respect `MAINTAINER_MODE`** (read from `~/.claude/forge.conf`): when `MAINTAINER_MODE=false` (default), do NOT write meta-work into the **Next steps** / **Open follow-up** sections — friction-log curation, decisions/ archival, INDEX.md grooming, OVERVIEW.md updates, BACKLOG triage, vault hygiene, forge-internal audits all stay out unless the user explicitly asked for them in the current session. Project work is what belongs in Next steps. (See the **Maintainer mode** rule in the `forge` skill for the full meta-work definition.)
 
 ## 3. PR Scope Monitoring
 
@@ -75,30 +76,47 @@ At natural checkpoints (task done, topic shift, before long ops, user request), 
 - Keep INDEX.md lean: one line per entry, under 50 active entries
 - Never bulk-read all decision files -- always go through INDEX.md first
 
-## Subagent Dispatch
+## Inline vs Subagent Dispatch
 
-When dispatching Keeper as a subagent via the Agent tool:
+**Default: inline.** The main session writes the checkpoint itself via Write/Edit. This is the reliable path under current Claude Code — see the platform-limit note below for why.
+
+Use inline (no subagent) for:
+- Routine checkpoint writes at pause points (task done, topic shift, before long operations)
+- Checkpoints the user explicitly requested
+- Session exit
+- Decision logging (requires conversation context to identify what was decided)
+- After context compression (must reorient the main session)
+
+**Subagent dispatch is opt-in, not default.**
+
+### Platform limitation
+
+Claude Code subagents do NOT inherit path-scoped Write permissions from the parent session, and `run_in_background: true` has no UI surface for granting permission prompts mid-run. So a background-dispatched Keeper that needs to Write into the vault will silently fail with a permission denial that the user can't see and can't approve.
+
+Only use background dispatch when BOTH of:
+1. The user has explicitly authorized the pattern in the current session
+2. The vault Write path is already covered by the subagent's allowlist for this run
+
+When in doubt: inline.
+
+### If you do dispatch (advanced)
+
+When the conditions above are met:
 
 - **Model:** `sonnet` — checkpoint writes are formulaic, don't need opus
 - **Name:** `Forge-Keeper`
-- **Background:** Yes — checkpoint writes don't block user work
+- **Background:** `run_in_background: true` only if the user has authorized; otherwise foreground
 
 The main session must include all necessary context in the prompt: current branch, completed items, in-progress work, next steps, vault paths. The subagent has no conversation history.
 
-Example:
+Example (foreground):
 ```
 Agent({
   description: "Forge-Keeper checkpoint",
   model: "sonnet",
-  run_in_background: true,
   prompt: "Write a checkpoint to {vault_path}/current-checkpoint.md. ..."
 })
 ```
-
-Use inline (no subagent) when:
-- The checkpoint is the primary action (user requested, session exit)
-- Decision logging is needed (requires conversation context to identify what was decided)
-- After context compression (must reorient the main session)
 
 ## Active Reminders
 
