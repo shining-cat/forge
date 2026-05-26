@@ -405,17 +405,29 @@ def _detect_auto_break(prefs):
 
     # System wake / boot fallback — always real tier. Gate on the real-break
     # threshold so a 7-min nap doesn't masquerade as a real break.
-    if last_break:
-        real_threshold = (prefs.get("real_break_lock_threshold_minutes")
-                          or REAL_BREAK_LOCK_THRESHOLD_MINUTES)
-        wake_time = get_system_wake_time()
-        if wake_time and wake_time > last_break:
-            if minutes_since(last_break) - minutes_since(wake_time) >= real_threshold:
+    # When last_break is None (fresh install / post-reset), any wake/boot
+    # event older than the real threshold IS by definition the first signal.
+    real_threshold = (prefs.get("real_break_lock_threshold_minutes")
+                      or REAL_BREAK_LOCK_THRESHOLD_MINUTES)
+
+    wake_time = get_system_wake_time()
+    if wake_time:
+        wake_age_min = minutes_since(wake_time)
+        if last_break:
+            if wake_time > last_break and (minutes_since(last_break) - wake_age_min) >= real_threshold:
+                return (wake_time, "real")
+        else:
+            if wake_age_min >= real_threshold:
                 return (wake_time, "real")
 
-        boot_time = get_system_boot_time()
-        if boot_time and boot_time > last_break:
-            if minutes_since(last_break) - minutes_since(boot_time) >= real_threshold:
+    boot_time = get_system_boot_time()
+    if boot_time:
+        boot_age_min = minutes_since(boot_time)
+        if last_break:
+            if boot_time > last_break and (minutes_since(last_break) - boot_age_min) >= real_threshold:
+                return (boot_time, "real")
+        else:
+            if boot_age_min >= real_threshold:
                 return (boot_time, "real")
 
     return None
