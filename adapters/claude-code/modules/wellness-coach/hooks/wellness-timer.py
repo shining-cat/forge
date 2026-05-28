@@ -278,12 +278,34 @@ def main():
             sys.exit(0)
 
         elapsed = minutes_since(prefs.get("last_break_timestamp"))
+        short_reason = f"On strike — {int(elapsed)} min without a break"
+
+        # Dedup parallel-tool-call spam: N concurrent tool calls each fire
+        # this hook, each emitting the full strike box → N identical boxes.
+        # Denial must apply to every call (semantic correctness), but only
+        # the lock-winner renders the visible box; others deny silently.
+        lock_fd = try_reminder_lock()
+        if lock_fd is None:
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": short_reason,
+                },
+            }))
+            sys.exit(2)
+
+        # Hold the lock long enough for sibling processes to start, attempt,
+        # and miss. Without this, the winner releases in <5ms — well before
+        # the next concurrent process even reaches try_reminder_lock (Python
+        # startup ~50ms). Measured inter-process spread across 5 parallel
+        # tool calls: ~120ms. 300ms gives margin without harming UX (the
+        # user is already blocked during strike, so the delay is invisible).
+        time.sleep(0.3)
+
         lines, _ = get_persona_messages(prefs, "strike", elapsed)
         box = format_box(coach_name, lines, "strike")
-        emit_deny(
-            f"On strike — {int(elapsed)} min without a break",
-            center_block(box),
-        )
+        emit_deny(short_reason, center_block(box))
 
     elapsed = minutes_since(prefs.get("last_break_timestamp"))
     level = determine_level(prefs, elapsed)
