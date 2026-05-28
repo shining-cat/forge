@@ -1370,7 +1370,8 @@ do_check_install_drift() {
   echo "--- Install state ---"
   if [ "$behind" -gt 0 ]; then
     echo "[!] Forge install is $behind commit(s) behind upstream."
-    echo "    Update: (cd $forge_repo && git pull && ./install.sh)"
+    echo "    Update:  (cd $forge_repo && git pull && ./install.sh --interactive)"
+    echo "    Preview: (cd $forge_repo && git pull && ./install.sh --preview)"
   fi
   if [ "$ahead" -gt 0 ]; then
     echo "    Local: $ahead commit(s) ahead of upstream (maintainer-side work)."
