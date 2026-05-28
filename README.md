@@ -101,6 +101,8 @@ git pull
 ./install.sh
 ```
 
+The installer offers (once, opt-in) to enable a post-merge git hook that prints a one-liner after `git pull` whenever installed files change — a nudge to re-run `./install.sh`. The hook is checked into `.githooks/post-merge`; opting in sets `core.hooksPath` on this clone only. `/forge` entry also surfaces drift via `do_check_install_drift`, but the hook fires the instant a stale install starts.
+
 ## First session
 
 After install, start Claude Code and type `/forge`. On first run, Forge will:
