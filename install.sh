@@ -183,6 +183,79 @@ set_conf_key() {
   fi
 }
 
+# build_manifest — emit the absolute paths install.sh would write under
+# $CLAUDE_DIR for the current source tree. One path per line, sorted. No side
+# effects. Resolves at call time, so depends on $CLAUDE_DIR, $SKILLS_DIR,
+# $AGENTS_DIR, $ADAPTER being set before invocation.
+#
+# Scope: only files install.sh ships as 1:1 copies (or symlinks) from FORGE_ROOT.
+# Excluded by design:
+#   - $CLAUDE_DIR/forge.conf       (user-mutable; removing on "upstream dropped" would be catastrophic)
+#   - $CLAUDE_DIR/settings.json    (merged into, not owned)
+#   - shell rc edits               (line-level mutation, not file ownership)
+#   - vault contents               (lives outside ~/.claude/)
+#
+# Used by:
+#   - apply (writes the output to $CLAUDE_DIR/.forge-manifest at end of run)
+#   - --preview (next run reads the old manifest, diffs against current output
+#                to compute removals)
+build_manifest() {
+  {
+    # Core skills (SKILL.md per skill dir)
+    for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+      echo "$SKILLS_DIR/$skill/SKILL.md"
+    done
+
+    # Forge skill references (symlinks to core/references/*)
+    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md; do
+      echo "$SKILLS_DIR/forge/references/$ref"
+    done
+
+    # Quartermaster reference (scoped symlink under forge-weekly skill)
+    echo "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
+
+    # Wellness coach (skill + hooks + scripts + src + references)
+    local wc_dst="$SKILLS_DIR/wellness-coach"
+    local wc_src="$ADAPTER/modules/wellness-coach"
+    echo "$wc_dst/SKILL.md"
+    echo "$wc_dst/README.md"
+    for hook in "$wc_src/hooks/"*.py; do
+      [ -e "$hook" ] && echo "$wc_dst/hooks/$(basename "$hook")"
+    done
+    for script in "$wc_src/scripts/"*; do
+      [ -e "$script" ] && echo "$wc_dst/scripts/$(basename "$script")"
+    done
+    echo "$wc_dst/src/screen_state.c"
+    for ref in onboarding.md conflict-resolution.md; do
+      echo "$wc_dst/references/$ref"
+    done
+
+    # Agent definitions (forge-* adapter files)
+    for agent in forge-architect forge-debugger forge-impl forge-keeper forge-refiner forge-release forge-reviewer forge-toolsmith; do
+      echo "$AGENTS_DIR/$agent.md"
+    done
+
+    # Hooks (5)
+    echo "$CLAUDE_DIR/hooks/forge-compaction.sh"
+    echo "$CLAUDE_DIR/hooks/approval-notifier.sh"
+    echo "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh"
+    echo "$CLAUDE_DIR/hooks/forge-session-end.sh"
+    echo "$CLAUDE_DIR/hooks/inject-current-time.sh"
+
+    # Scripts (5)
+    echo "$CLAUDE_DIR/scripts/forge-context.sh"
+    echo "$CLAUDE_DIR/scripts/forge-permission-lint.sh"
+    echo "$CLAUDE_DIR/scripts/forge-classify-friction.sh"
+    echo "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
+    echo "$CLAUDE_DIR/scripts/forge-calendar.sh"
+
+    # Top-level files under ~/.claude/
+    echo "$CLAUDE_DIR/statusline.sh"
+    echo "$CLAUDE_DIR/forge-shell-init.sh"
+    echo "$CLAUDE_DIR/forge-tmux.conf"
+  } | sort
+}
+
 # ─── Detect repo root ────────────────────────────────────────────────────────
 FORGE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
@@ -921,6 +994,20 @@ else
   echo "    Fix the patterns and re-run install.sh."
   echo "    (If the bad patterns came from install.sh itself, file a forge bug.)"
   exit 1
+fi
+
+# ─── Write manifest ──────────────────────────────────────────────────────────
+# Snapshot the absolute paths install.sh wrote in this run. Atomic (write .tmp
+# then mv). Read by `--preview` on the next run to compute removals (files in
+# the old manifest that the current run wouldn't write = upstream-removed).
+#
+# Lives at $CLAUDE_DIR/.forge-manifest, sorted, one absolute path per line.
+# Plain text on purpose — diffable with `diff`, greppable, easy to hand-audit.
+if [ "$DRY_RUN" = false ]; then
+  manifest="$CLAUDE_DIR/.forge-manifest"
+  build_manifest > "${manifest}.tmp" && mv "${manifest}.tmp" "$manifest"
+  manifest_count=$(wc -l < "$manifest" | tr -d ' ')
+  ok "Manifest written ($manifest_count paths tracked at .forge-manifest)"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
