@@ -119,6 +119,7 @@ After install, start Claude Code and type `/forge`. On first run, Forge will:
   work...               → Keeper tracks decisions, writes checkpoints
   /forge-checkpoint     → Manual checkpoint (also happens automatically)
   correction...         → Refiner identifies root cause, proposes fix
+  /forge-weekly         → Friday wrap: harvest friction, audit decisions, log week (Quartermaster persona)
 /forge-exit             → Final checkpoint, session summary
 ```
 

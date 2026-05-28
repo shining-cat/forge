@@ -94,3 +94,4 @@ If calendar is disabled or empty: say so explicitly (*"Calendar disabled."* or *
 
 - If the user just closes the terminal without `/forge-exit`, the proactive Keeper should have already written mid-session checkpoints. The exit is a clean wrap-up, not the only checkpoint.
 - If no work was done (e.g., user entered Forge then immediately exits), skip the summary and just confirm exit.
+- **Friday weekly-wrap nudge.** Before Step 3 (Deactivate), call `~/.claude/scripts/forge-context.sh weekly-wrap-due`. If it returns `due` AND today is the configured `EOW_DAY` (default Friday, check `date +%u` matches `EOW_DAY` from `~/.claude/forge.conf`), suggest `/forge-weekly` once: *"It's Friday and the weekly wrap is due — want to run `/forge-weekly` before exiting? (or skip and exit now)"*. Invite, don't auto-run — wrap is wellness practice, not gate. This is distinct from Step 0's wellness reset, which always runs regardless.
