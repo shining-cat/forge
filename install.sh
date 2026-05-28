@@ -1,11 +1,16 @@
 #!/bin/bash
 # Forge Installer — copies Forge components into ~/.claude/ and wires hooks/permissions
 #
-# Usage: ./install.sh [--vault-path PATH] [--dry-run]
+# Usage: ./install.sh [--vault-path PATH] [--dry-run] [--preview] [--interactive]
 #
 # Options:
 #   --vault-path PATH  Set vault location (default: ~/Vault)
 #   --dry-run          Show what would be done without changing anything
+#   --preview          Read-only summary of pending changes (new/modified/removed files
+#                      + settings.json additions). Exit 0 = in sync, 1 = drift, 2 = error.
+#                      No prompts, no writes — safe to run from drift-detection hooks.
+#   --interactive      Run --preview first; if changes pending, prompt Y/n; on Y, apply.
+#                      On N (or empty/non-tty), exit without applying.
 #
 # Idempotent: safe to re-run after updates (git pull && ./install.sh)
 
@@ -28,11 +33,15 @@ hint()  { printf "${DIM}    %s${NC}\n" "$1"; }
 # ─── Parse arguments ─────────────────────────────────────────────────────────
 VAULT_PATH=""
 DRY_RUN=false
+PREVIEW=false
+INTERACTIVE=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --vault-path) VAULT_PATH="$2"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
+    --preview) PREVIEW=true; shift ;;
+    --interactive) INTERACTIVE=true; shift ;;
     -h|--help)
       sed -n '2,/^$/s/^# //p' "$0"
       exit 0
@@ -40,6 +49,12 @@ while [[ $# -gt 0 ]]; do
     *) fail "Unknown option: $1" ;;
   esac
 done
+
+# --preview and --interactive are mutually exclusive: --preview is read-only-then-exit,
+# --interactive is read-only-then-prompt-then-apply. Mixing them is ambiguous.
+if [ "$PREVIEW" = true ] && [ "$INTERACTIVE" = true ]; then
+  fail "--preview and --interactive are mutually exclusive."
+fi
 
 # Dry-run helper: prints the command instead of running it
 run() {
@@ -183,11 +198,448 @@ set_conf_key() {
   fi
 }
 
+# build_pairs — single source of truth for "what install.sh ships".
+# Emits TAB-separated triples: <src>\t<dst>\t<type>, sorted by dst.
+#
+# Types:
+#   file      — plain copy (safe_cp / cp)
+#   skill_md  — SKILL.md going through install_skill_md ({{VAULT}}-aware)
+#   symlink   — `ln -s <src> <dst>` (src is the symlink TARGET, not a content file)
+#
+# Resolves at call time; depends on $CLAUDE_DIR, $SKILLS_DIR, $AGENTS_DIR,
+# $ADAPTER, $FORGE_ROOT being set before invocation.
+#
+# Scope: only files install.sh ships as 1:1 copies/symlinks from FORGE_ROOT.
+# Excluded by design (same as the old build_manifest contract):
+#   - $CLAUDE_DIR/forge.conf       (user-mutable; removal would be catastrophic)
+#   - $CLAUDE_DIR/settings.json    (merged into, not owned)
+#   - shell rc edits               (line-level mutation, not file ownership)
+#   - vault contents               (lives outside ~/.claude/)
+build_pairs() {
+  {
+    # Core skills (SKILL.md per skill dir) — install_skill_md handles {{VAULT}}
+    for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+      printf "%s\t%s\tskill_md\n" "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
+    done
+
+    # Forge skill references (symlinks to core/references/*)
+    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md; do
+      printf "%s\t%s\tsymlink\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
+    done
+
+    # Quartermaster reference (scoped symlink under forge-weekly skill)
+    printf "%s\t%s\tsymlink\n" "$FORGE_ROOT/core/references/quartermaster.md" "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
+
+    # Wellness coach (skill + hooks + scripts + src + references)
+    local wc_dst="$SKILLS_DIR/wellness-coach"
+    local wc_src="$ADAPTER/modules/wellness-coach"
+    printf "%s\t%s\tfile\n" "$wc_src/skills/wellness-coach/SKILL.md" "$wc_dst/SKILL.md"
+    printf "%s\t%s\tfile\n" "$wc_src/README.md" "$wc_dst/README.md"
+    for hook in "$wc_src/hooks/"*.py; do
+      [ -e "$hook" ] && printf "%s\t%s\tfile\n" "$hook" "$wc_dst/hooks/$(basename "$hook")"
+    done
+    for script in "$wc_src/scripts/"*; do
+      [ -e "$script" ] && printf "%s\t%s\tfile\n" "$script" "$wc_dst/scripts/$(basename "$script")"
+    done
+    printf "%s\t%s\tfile\n" "$wc_src/src/screen_state.c" "$wc_dst/src/screen_state.c"
+    for ref in onboarding.md conflict-resolution.md; do
+      printf "%s\t%s\tsymlink\n" "$wc_src/references/$ref" "$wc_dst/references/$ref"
+    done
+
+    # Agent definitions (forge-* adapter files)
+    for agent in forge-architect forge-debugger forge-impl forge-keeper forge-refiner forge-release forge-reviewer forge-toolsmith; do
+      printf "%s\t%s\tfile\n" "$ADAPTER/agents/$agent.md" "$AGENTS_DIR/$agent.md"
+    done
+
+    # Hooks (5)
+    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/forge-compaction.sh"          "$CLAUDE_DIR/hooks/forge-compaction.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/approval-notifier.sh"         "$CLAUDE_DIR/hooks/approval-notifier.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/forge-vault-plan-guard.sh"    "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/forge-session-end.sh"         "$CLAUDE_DIR/hooks/forge-session-end.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/inject-current-time.sh"       "$CLAUDE_DIR/hooks/inject-current-time.sh"
+
+    # Scripts (5)
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-context.sh"               "$CLAUDE_DIR/scripts/forge-context.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-permission-lint.sh"       "$CLAUDE_DIR/scripts/forge-permission-lint.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-classify-friction.sh"     "$CLAUDE_DIR/scripts/forge-classify-friction.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
+
+    # Top-level files under ~/.claude/
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/statusline.sh"        "$CLAUDE_DIR/statusline.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-shell-init.sh"  "$CLAUDE_DIR/forge-shell-init.sh"
+    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-tmux.conf"      "$CLAUDE_DIR/forge-tmux.conf"
+  } | sort -t$'\t' -k2,2
+}
+
+# build_manifest — destination paths only, one per line, sorted.
+# Compatibility shim around build_pairs. Read by `--preview` on subsequent runs
+# to compute removals (paths in old manifest absent from current build_pairs).
+build_manifest() {
+  build_pairs | cut -f2
+}
+
+# files_equal — return 0 if dst matches what install.sh would write for src+type.
+# Returns 1 on missing dst or content/target mismatch.
+#
+# Match rules:
+#   file      — cmp -s src dst
+#   skill_md  — substitute {{VAULT}} → $VAULT_PATH (absolute, same as install_skill_md)
+#               then cmp the substituted form against dst
+#   symlink   — dst must be a symlink AND readlink == src
+files_equal() {
+  local src="$1" dst="$2" type="$3"
+  case "$type" in
+    file)
+      [ -f "$dst" ] || return 1
+      cmp -s "$src" "$dst" 2>/dev/null
+      ;;
+    skill_md)
+      [ -f "$dst" ] || return 1
+      if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+        local tmp rc
+        tmp=$(mktemp)
+        sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$tmp"
+        cmp -s "$tmp" "$dst" 2>/dev/null; rc=$?
+        rm -f "$tmp"
+        return $rc
+      else
+        cmp -s "$src" "$dst" 2>/dev/null
+      fi
+      ;;
+    symlink)
+      [ -L "$dst" ] || return 1
+      [ "$(readlink "$dst")" = "$src" ]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# resolve_install_state — populate VAULT_PATH / WELLNESS_ENABLED /
+# PERMISSIVE_BASH_WRAPPERS from forge.conf without prompting or writing.
+# Used by the --preview / --interactive short-circuit before the full apply
+# flow's vault-prompt + forge.conf-write steps.
+#
+# Resolution order for VAULT_PATH:
+#   1. Already set (e.g. by --vault-path arg) — keep it
+#   2. forge.conf VAULT_PATH= entry
+#   3. Default: $HOME/Vault
+resolve_install_state() {
+  local conf="$CLAUDE_DIR/forge.conf"
+  if [ -z "$VAULT_PATH" ] && [ -f "$conf" ]; then
+    VAULT_PATH=$(grep '^VAULT_PATH=' "$conf" 2>/dev/null | head -1 | cut -d= -f2- || true)
+  fi
+  [ -z "$VAULT_PATH" ] && VAULT_PATH="$HOME/Vault"
+  VAULT_PATH="${VAULT_PATH/#\~/$HOME}"
+
+  WELLNESS_ENABLED=false
+  if [ -f "$conf" ] && grep -qE '^WELLNESS_ENABLED=true' "$conf" 2>/dev/null; then
+    WELLNESS_ENABLED=true
+  fi
+  PERMISSIVE_BASH_WRAPPERS=false
+  if [ -f "$conf" ] && grep -qE '^PERMISSIVE_BASH_WRAPPERS=true' "$conf" 2>/dev/null; then
+    PERMISSIVE_BASH_WRAPPERS=true
+  fi
+}
+
+# expected_perms — emit the permission strings install.sh would add, one per
+# line. Mirrors the PERMS_TO_ADD block further down. Single source of truth
+# means preview and apply can't drift.
+expected_perms() {
+  local perms=(
+    "Bash($HOME/.claude/scripts/forge-context.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
+    "Bash($HOME/.claude/statusline.sh:*)"
+    "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
+    "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
+    "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
+    "Read($HOME/.claude/forge.conf)"
+    "Edit($HOME/.claude/forge.conf)"
+    "Read($VAULT_PATH/**)"
+    "Write($VAULT_PATH/**)"
+    "Edit($VAULT_PATH/**)"
+  )
+  if [ "$WELLNESS_ENABLED" = "true" ]; then
+    perms+=(
+      "Bash(python3:$HOME/.claude/skills/wellness-coach/hooks/*)"
+      "Bash($HOME/.claude/skills/wellness-coach/scripts/*)"
+    )
+  fi
+  if [ "$PERMISSIVE_BASH_WRAPPERS" = "true" ]; then
+    perms+=("Bash(bash -c:*)" "Bash(zsh -c:*)")
+  fi
+  printf '%s\n' "${perms[@]}"
+}
+
+# expected_hooks — emit the hook commands install.sh would register, one per
+# line as `<event>\t<matcher>\t<command>` (matcher is `null` if unscoped).
+# Tilde-aware dedup is the caller's job; this just enumerates intent.
+expected_hooks() {
+  printf '%s\t%s\t%s\n' \
+    "PreToolUse"        "null"        "$HOME/.claude/hooks/approval-notifier.sh" \
+    "PreToolUse"        "Bash"        "$HOME/.claude/scripts/forge-context.sh gate" \
+    "PreToolUse"        "Write|Edit"  "$HOME/.claude/hooks/forge-vault-plan-guard.sh" \
+    "PreCompact"        "null"        "$HOME/.claude/hooks/forge-compaction.sh pre" \
+    "PostCompact"       "null"        "$HOME/.claude/hooks/forge-compaction.sh post" \
+    "PostToolUse"       "null"        "$HOME/.claude/scripts/forge-context.sh post-tool" \
+    "Stop"              "null"        "$HOME/.claude/scripts/forge-context.sh stop" \
+    "SessionEnd"        "null"        "$HOME/.claude/hooks/forge-session-end.sh" \
+    "UserPromptSubmit"  "null"        "$HOME/.claude/hooks/inject-current-time.sh"
+}
+
+# do_preview — read-only categorized diff of source vs installed state.
+# Exits:
+#   0 — in sync (no file changes, no settings additions pending)
+#   1 — drift detected (changes would be applied by a normal install run)
+#   2 — error (currently unused; reserved for future "can't read source" cases)
+#
+# Surfaces:
+#   File-level: new (+), modified (~), removed (-)
+#   Settings.json additions: permissions, hooks (computed from expected_*)
+#
+# Excluded from the diff (deliberately):
+#   - forge.conf (user-mutable; install handles merge separately)
+#   - shell-rc source line (line edit, not file ownership)
+#   - vault git-init / hooks-opt-in / permissive-wrappers prompts (apply-time)
+do_preview() {
+  local manifest_old="$CLAUDE_DIR/.forge-manifest"
+  local pairs_tmp old_tmp new_tmp
+  pairs_tmp=$(mktemp)
+  old_tmp=$(mktemp)
+  new_tmp=$(mktemp)
+  build_pairs > "$pairs_tmp"
+  cut -f2 < "$pairs_tmp" > "$new_tmp"
+  if [ -f "$manifest_old" ]; then
+    sort "$manifest_old" > "$old_tmp"
+  else
+    : > "$old_tmp"
+  fi
+
+  local new_files=() mod_files=() rm_files=()
+  local src dst type
+  while IFS=$'\t' read -r src dst type; do
+    if [ ! -e "$dst" ] && [ ! -L "$dst" ]; then
+      new_files+=("$dst")
+    elif ! files_equal "$src" "$dst" "$type"; then
+      mod_files+=("$dst")
+    fi
+  done < "$pairs_tmp"
+
+  # Removals = old manifest paths NOT in current build_pairs output, AND still
+  # present on disk (paths the user already deleted shouldn't surface as "will
+  # remove" — they're already gone).
+  while IFS= read -r old_dst; do
+    if [ -n "$old_dst" ] && ! grep -qxF "$old_dst" "$new_tmp"; then
+      if [ -e "$old_dst" ] || [ -L "$old_dst" ]; then
+        rm_files+=("$old_dst")
+      fi
+    fi
+  done < "$old_tmp"
+
+  # Settings.json additions
+  local perms_missing=() hooks_missing=()
+  if [ -f "$SETTINGS_FILE" ]; then
+    local settings
+    settings=$(cat "$SETTINGS_FILE")
+    local perm
+    while IFS= read -r perm; do
+      [ -z "$perm" ] && continue
+      if ! echo "$settings" | jq -e --arg p "$perm" '.permissions.allow // [] | index($p)' &>/dev/null; then
+        perms_missing+=("$perm")
+      fi
+    done < <(expected_perms)
+    local event matcher command
+    while IFS=$'\t' read -r event matcher command; do
+      [ -z "$event" ] && continue
+      if ! echo "$settings" | jq -e --arg e "$event" --arg cmd "$command" --arg home "$HOME" \
+        '.hooks[$e] // [] | .. | .command? // empty
+         | (gsub($home; "~")) as $stored
+         | ($cmd | gsub($home; "~")) as $incoming
+         | select($stored == $incoming)' &>/dev/null 2>&1; then
+        hooks_missing+=("$event|$matcher|$command")
+      fi
+    done < <(expected_hooks)
+  else
+    # No settings.json — everything would be added
+    while IFS= read -r perm; do
+      [ -n "$perm" ] && perms_missing+=("$perm")
+    done < <(expected_perms)
+    while IFS=$'\t' read -r event matcher command; do
+      [ -n "$event" ] && hooks_missing+=("$event|$matcher|$command")
+    done < <(expected_hooks)
+  fi
+
+  rm -f "$pairs_tmp" "$old_tmp" "$new_tmp"
+
+  # ─── Print summary ───
+  echo ""
+  info "Preview of changes that install.sh would apply"
+  if [ ! -f "$manifest_old" ]; then
+    hint "No prior manifest at $manifest_old — treating as first install."
+  fi
+  echo ""
+
+  local total_changes=$(( ${#new_files[@]} + ${#mod_files[@]} + ${#rm_files[@]} + ${#perms_missing[@]} + ${#hooks_missing[@]} ))
+
+  if [ ${#new_files[@]} -gt 0 ]; then
+    printf "  ${GREEN}+ %d new file(s)${NC} — would install:\n" "${#new_files[@]}"
+    for f in "${new_files[@]}"; do printf "      ${GREEN}+${NC} %s\n" "$f"; done
+    echo ""
+  fi
+  if [ ${#mod_files[@]} -gt 0 ]; then
+    printf "  ${YELLOW}~ %d modified file(s)${NC} — would back up + overwrite:\n" "${#mod_files[@]}"
+    for f in "${mod_files[@]}"; do printf "      ${YELLOW}~${NC} %s\n" "$f"; done
+    hint "Backup naming: <file>.pre-update.<timestamp>"
+    echo ""
+  fi
+  if [ ${#rm_files[@]} -gt 0 ]; then
+    printf "  ${RED}- %d removed file(s)${NC} — no longer in source, would back up + delete:\n" "${#rm_files[@]}"
+    for f in "${rm_files[@]}"; do printf "      ${RED}-${NC} %s\n" "$f"; done
+    hint "Backup naming: <file>.pre-remove.<timestamp>"
+    echo ""
+  fi
+  if [ ${#perms_missing[@]} -gt 0 ]; then
+    printf "  ${CYAN}+ %d permission(s)${NC} — would add to settings.json:\n" "${#perms_missing[@]}"
+    for p in "${perms_missing[@]}"; do printf "      ${CYAN}+${NC} %s\n" "$p"; done
+    echo ""
+  fi
+  if [ ${#hooks_missing[@]} -gt 0 ]; then
+    printf "  ${CYAN}+ %d hook(s)${NC} — would register in settings.json:\n" "${#hooks_missing[@]}"
+    for h in "${hooks_missing[@]}"; do
+      local hev="${h%%|*}"; local rest="${h#*|}"; local hmat="${rest%%|*}"; local hcmd="${rest#*|}"
+      if [ "$hmat" = "null" ]; then
+        printf "      ${CYAN}+${NC} %-16s %s\n" "$hev" "$hcmd"
+      else
+        printf "      ${CYAN}+${NC} %-16s [%s] %s\n" "$hev" "$hmat" "$hcmd"
+      fi
+    done
+    echo ""
+  fi
+
+  if [ "$total_changes" -eq 0 ]; then
+    ok "Forge install is in sync — nothing to do."
+    return 0
+  fi
+
+  info "Summary: $total_changes change(s) pending."
+  hint "Apply now:        ./install.sh"
+  hint "Apply with prompt: ./install.sh --interactive"
+  return 1
+}
+
+# remove_orphans — back up + delete files present in the previous manifest but
+# absent from the current build_pairs output. Always-backup policy (per Q1 of
+# the locked Slice 2 plan): even when the file is byte-identical to what we'd
+# write, we keep a .pre-remove.<ts> copy. Cheap insurance against "I didn't
+# realize that was important".
+#
+# Honors --dry-run by listing what would happen without touching files.
+# Updates BACKUP_COUNT so the install summary reflects the backups.
+remove_orphans() {
+  local manifest_old="$CLAUDE_DIR/.forge-manifest"
+  [ -f "$manifest_old" ] || return 0   # no prior manifest = nothing to remove
+
+  local new_tmp orphans
+  new_tmp=$(mktemp)
+  build_manifest > "$new_tmp"
+  orphans=()
+  while IFS= read -r old_dst; do
+    [ -z "$old_dst" ] && continue
+    if ! grep -qxF "$old_dst" "$new_tmp"; then
+      if [ -e "$old_dst" ] || [ -L "$old_dst" ]; then
+        orphans+=("$old_dst")
+      fi
+    fi
+  done < "$manifest_old"
+  rm -f "$new_tmp"
+
+  [ ${#orphans[@]} -eq 0 ] && return 0
+
+  echo ""
+  info "Removing ${#orphans[@]} file(s) no longer shipped by source..."
+  local ts
+  ts=$(date +%Y%m%d-%H%M%S)
+  local f backup
+  for f in "${orphans[@]}"; do
+    backup="${f}.pre-remove.${ts}"
+    if [ "$DRY_RUN" = true ]; then
+      printf "${DIM}    would back up + remove: %s${NC}\n" "$f"
+      continue
+    fi
+    if [ -L "$f" ]; then
+      # Symlinks: copy preserves target text via `cp -P`; rm removes the link.
+      cp -P "$f" "$backup" 2>/dev/null || true
+    elif [ -f "$f" ]; then
+      cp "$f" "$backup"
+    fi
+    rm -f "$f"
+    warn "Removed $(basename "$f") (backup: $(basename "$backup"))"
+    BACKUP_COUNT=$((BACKUP_COUNT + 1))
+  done
+}
+
 # ─── Detect repo root ────────────────────────────────────────────────────────
 FORGE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 if [ ! -d "$FORGE_ROOT/core" ] || [ ! -d "$FORGE_ROOT/adapters/claude-code" ]; then
   fail "Can't find Forge repo structure. Run this from the forge repo root."
+fi
+
+# ─── Path definitions ────────────────────────────────────────────────────────
+# Hoisted above prereq checks + banner so the --preview / --interactive
+# short-circuit (immediately below) can resolve manifest + source paths
+# without running the full setup. Apply path also references these.
+CLAUDE_DIR="$HOME/.claude"
+SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+ADAPTER="$FORGE_ROOT/adapters/claude-code"
+SKILLS_DIR="$CLAUDE_DIR/skills"
+AGENTS_DIR="$CLAUDE_DIR/agents"
+
+# ─── --preview / --interactive short-circuit ─────────────────────────────────
+# Preview is the read-only path: resolve install state from forge.conf (no
+# prompts, no writes), diff source vs installed, print categorized summary,
+# exit. Interactive layers a single Y/n prompt on top and falls through to the
+# normal apply flow on Y. Both must run BEFORE prereq checks and BEFORE the
+# banner — preview deliberately requires no terminal, no jq prompt for missing
+# packages, no vault setup. (jq IS required for the settings.json diff; if
+# it's missing the preview surfaces fewer details but still exits cleanly.)
+if [ "$PREVIEW" = true ] || [ "$INTERACTIVE" = true ]; then
+  if [ ! -d "$CLAUDE_DIR" ]; then
+    fail "~/.claude/ not found — Claude Code must be installed first."
+  fi
+  resolve_install_state
+  # Capture do_preview's exit code explicitly — `if do_preview; then` swallows
+  # the non-zero return (the `if` statement's own exit code is 0 when no branch
+  # body executes), so we need the `|| true` + explicit capture to get the real
+  # value while respecting `set -e`.
+  preview_rc=0
+  do_preview || preview_rc=$?
+  if [ "$preview_rc" -eq 0 ]; then
+    # In sync — nothing to do regardless of which flag was passed.
+    exit 0
+  fi
+  if [ "$PREVIEW" = true ]; then
+    exit "$preview_rc"
+  fi
+  # --interactive: prompt before applying
+  echo ""
+  apply_answer=$(prompt_or_default \
+    "$(printf "${CYAN}[forge]${NC} Apply the changes above? [y/N]: ")" \
+    "n")
+  case "${apply_answer:-n}" in
+    [Yy]*)
+      info "Proceeding with install..."
+      # Fall through to the normal apply flow below.
+      ;;
+    *)
+      info "Aborted — no changes applied."
+      exit 0
+      ;;
+  esac
 fi
 
 echo ""
@@ -198,8 +650,6 @@ info "Installing Forge from $FORGE_ROOT"
 echo ""
 
 # ─── Prerequisites ───────────────────────────────────────────────────────────
-CLAUDE_DIR="$HOME/.claude"
-SETTINGS_FILE="$CLAUDE_DIR/settings.json"
 PREREQ_FAILED=false
 WARNINGS=""
 
@@ -511,8 +961,7 @@ if git -C "$FORGE_ROOT" rev-parse --git-dir &>/dev/null; then
 fi
 
 # ─── Copy skills ─────────────────────────────────────────────────────────────
-ADAPTER="$FORGE_ROOT/adapters/claude-code"
-SKILLS_DIR="$CLAUDE_DIR/skills"
+# ADAPTER / SKILLS_DIR defined alongside other paths near the top of this file.
 
 echo ""
 info "Installing skills..."
@@ -563,7 +1012,7 @@ ok "Wellness coach files (activation offered during first /forge session)"
 echo ""
 info "Installing agent definitions..."
 
-AGENTS_DIR="$CLAUDE_DIR/agents"
+# AGENTS_DIR defined alongside other paths near the top of this file.
 run mkdir -p "$AGENTS_DIR"
 
 for agent in forge-architect forge-debugger forge-impl forge-keeper forge-refiner forge-release forge-reviewer forge-toolsmith; do
@@ -921,6 +1370,25 @@ else
   echo "    Fix the patterns and re-run install.sh."
   echo "    (If the bad patterns came from install.sh itself, file a forge bug.)"
   exit 1
+fi
+
+# ─── Remove orphans + write manifest ─────────────────────────────────────────
+# remove_orphans deletes (with backup) files present in the previous manifest
+# but absent from the current build_pairs output — i.e. files install.sh used
+# to ship and no longer does. Must run BEFORE manifest write so the new
+# manifest reflects post-removal state.
+#
+# Manifest snapshot: atomic .tmp + mv. Read by `--preview` on the next run to
+# compute removals (files in the old manifest the current run wouldn't write).
+# Lives at $CLAUDE_DIR/.forge-manifest, sorted, one absolute path per line.
+# Plain text on purpose — diffable with `diff`, greppable, easy to hand-audit.
+remove_orphans
+
+if [ "$DRY_RUN" = false ]; then
+  manifest="$CLAUDE_DIR/.forge-manifest"
+  build_manifest > "${manifest}.tmp" && mv "${manifest}.tmp" "$manifest"
+  manifest_count=$(wc -l < "$manifest" | tr -d ' ')
+  ok "Manifest written ($manifest_count paths tracked at .forge-manifest)"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────

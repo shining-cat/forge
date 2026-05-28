@@ -90,15 +90,19 @@ The installer will:
 Options:
 ```bash
 ./install.sh --vault-path ~/my/vault    # Custom vault location
+./install.sh --preview                  # Read-only: what would change (new/modified/removed)
+./install.sh --interactive              # Preview + Y/n prompt before applying
 ./install.sh -h                         # Help
 ```
 
-**Updating:** Pull and re-run. The installer is idempotent — it won't duplicate hooks or permissions.
+**Updating:** Pull and re-run. The installer is idempotent — it won't duplicate hooks or permissions. Modified user files are backed up as `<file>.pre-update.<timestamp>` before overwrite, and files dropped from upstream are backed up as `<file>.pre-remove.<timestamp>` before deletion.
 
 ```bash
 cd forge
 git pull
-./install.sh
+./install.sh --interactive   # see the diff, confirm, apply  (recommended)
+./install.sh                 # apply directly
+./install.sh --preview       # read-only — exits 0 if in sync, 1 if drift
 ```
 
 The installer offers (once, opt-in) to enable a post-merge git hook that prints a one-liner after `git pull` whenever installed files change — a nudge to re-run `./install.sh`. The hook is checked into `.githooks/post-merge`; opting in sets `core.hooksPath` on this clone only. `/forge` entry also surfaces drift via `do_check_install_drift`, but the hook fires the instant a stale install starts.
