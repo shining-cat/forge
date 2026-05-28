@@ -1372,6 +1372,9 @@ do_check_install_drift() {
     echo "[!] Forge install is $behind commit(s) behind upstream."
     echo "    Update:  (cd $forge_repo && git pull && ./install.sh --interactive)"
     echo "    Preview: (cd $forge_repo && git pull && ./install.sh --preview)"
+    echo "    Note: --preview splits overwrites (~) from preserved customizations (≈)."
+    echo "          Locally-tuned files (statusline.sh, references) are never overwritten;"
+    echo "          their upstream content is written as a <file>.upstream.<ts> sibling."
   fi
   if [ "$ahead" -gt 0 ]; then
     echo "    Local: $ahead commit(s) ahead of upstream (maintainer-side work)."

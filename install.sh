@@ -69,27 +69,54 @@ run() {
 # Surfaced in the final summary so the user sees the count + can find them.
 BACKUP_COUNT=0
 
-# safe_cp — backup-then-copy if destination differs from source.
+# safe_cp — backup-then-copy with optional preserve policy.
 # Used for runtime files that ship from the repo but may have been customized
-# by the user (skills/hooks/scripts/templates). On re-runs of install.sh,
-# any local modification is preserved as `<dest>.pre-update.<timestamp>` BEFORE
-# being overwritten. Default cp is destructive; this is the safety net.
+# by the user (skills/hooks/scripts/templates). On re-runs of install.sh, the
+# default "overwrite" policy preserves any local modification as
+# `<dest>.pre-update.<timestamp>` BEFORE writing upstream. The "preserve" policy
+# (Slice 3, A2 bucket) leaves modified destinations untouched and instead writes
+# `<dest>.upstream.<ts>` so the user can diff at leisure.
 #
-# Behavior:
+# Args: $1=src $2=dst [$3=policy: overwrite|preserve; default overwrite]
+#
+# overwrite behavior:
 #   - dest missing             → plain cp (first install)
 #   - dest identical to src    → plain cp (no-op, no backup)
 #   - dest exists AND differs  → backup dest to <dest>.pre-update.<ts>, then cp
+#
+# preserve behavior (Apache-config style):
+#   - dest missing             → plain cp (first install, no sibling)
+#   - dest identical to src    → no-op
+#   - dest exists AND differs  → write_upstream_sibling (leaves dest untouched)
 #
 # Supports file→file and file→dir destinations (dest resolved via basename if dir).
 # For glob sources, call safe_cp in a for-loop — keeps the logic single-file per call.
 # Honors --dry-run by printing what would happen without writing anything.
 safe_cp() {
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" policy="${3:-overwrite}"
   # Resolve actual destination path when dst is a directory
   local actual_dst="$dst"
   if [ -d "$dst" ]; then
     actual_dst="${dst%/}/$(basename "$src")"
   fi
+
+  if [ "$policy" = "preserve" ]; then
+    if [ ! -e "$actual_dst" ] && [ ! -L "$actual_dst" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        printf "${DIM}    would run: cp %s %s${NC}\n" "$src" "$actual_dst"
+      else
+        cp "$src" "$actual_dst"
+      fi
+      return 0
+    fi
+    if [ -f "$actual_dst" ] && cmp -s "$src" "$actual_dst" 2>/dev/null; then
+      return 0  # already matches, no-op
+    fi
+    write_upstream_sibling "$src" "$actual_dst" "file"
+    return 0
+  fi
+
+  # overwrite (default — Slice 2 behavior)
   if [ "$DRY_RUN" = true ]; then
     if [ -f "$actual_dst" ] && ! cmp -s "$src" "$actual_dst" 2>/dev/null; then
       printf "${DIM}    would back up modified: %s${NC}\n" "$actual_dst"
@@ -106,6 +133,132 @@ safe_cp() {
     BACKUP_COUNT=$((BACKUP_COUNT + 1))
   fi
   cp "$src" "$dst"
+}
+
+# write_upstream_sibling — write a `.upstream.<ts>` sibling beside `dst`
+# capturing what install.sh would have installed (src content for files,
+# link target for symlinks). The "preserve" branch of safe_cp /
+# install_symlink calls this when local has been tuned away from upstream
+# and we don't want to overwrite it.
+#
+# Args: $1=src $2=dst $3=type ("file"|"skill_md"|"symlink")
+#
+# Clutter control (Slice 3 plan Q1 (b)): if the most recent existing
+# sibling already matches `src`, skip — a user who hasn't touched their
+# statusline shouldn't accumulate N siblings from N install re-runs that
+# didn't change upstream.
+#
+# Side effects: writes sibling, bumps BACKUP_COUNT, emits a warn line.
+# Honors --dry-run.
+write_upstream_sibling() {
+  local src="$1" dst="$2" type="$3"
+  local dir base latest_sibling
+  dir="$(dirname "$dst")"
+  base="$(basename "$dst")"
+
+  # Q1(b) — latest sibling lex-sort == chronological (ts format guarantees it).
+  # `|| true` defends against `set -euo pipefail`: ls with no matches exits
+  # non-zero and pipefail propagates that to the pipeline. We want an empty
+  # string when nothing exists, not an aborted function.
+  latest_sibling=""
+  if [ -d "$dir" ]; then
+    # shellcheck disable=SC2012  # ls is fine here; sibling names contain only safe chars
+    latest_sibling=$(ls -1 "$dir/$base".upstream.* 2>/dev/null | sort | tail -1 || true)
+  fi
+
+  local should_skip=false
+  if [ -n "$latest_sibling" ] && { [ -e "$latest_sibling" ] || [ -L "$latest_sibling" ]; }; then
+    case "$type" in
+      file)
+        cmp -s "$src" "$latest_sibling" 2>/dev/null && should_skip=true
+        ;;
+      skill_md)
+        local sub_tmp
+        sub_tmp=$(mktemp)
+        if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+          sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$sub_tmp"
+        else
+          cp "$src" "$sub_tmp"
+        fi
+        cmp -s "$sub_tmp" "$latest_sibling" 2>/dev/null && should_skip=true
+        rm -f "$sub_tmp"
+        ;;
+      symlink)
+        if [ -L "$latest_sibling" ] && [ "$(readlink "$latest_sibling")" = "$src" ]; then
+          should_skip=true
+        fi
+        ;;
+    esac
+  fi
+
+  if [ "$should_skip" = true ]; then
+    return 0
+  fi
+
+  local ts sibling
+  ts=$(date +%Y%m%d-%H%M%S)
+  sibling="${dst}.upstream.${ts}"
+
+  if [ "$DRY_RUN" = true ]; then
+    printf "${DIM}    would preserve %s; upstream sibling: %s${NC}\n" "$dst" "$sibling"
+    return 0
+  fi
+
+  case "$type" in
+    file)
+      cp "$src" "$sibling"
+      ;;
+    skill_md)
+      if grep -q '{{VAULT}}' "$src" 2>/dev/null; then
+        sed "s|{{VAULT}}|${VAULT_PATH}|g" "$src" > "$sibling"
+      else
+        cp "$src" "$sibling"
+      fi
+      ;;
+    symlink)
+      ln -s "$src" "$sibling"
+      ;;
+  esac
+  warn "Preserved local $(basename "$dst") — upstream at $(basename "$sibling")"
+  BACKUP_COUNT=$((BACKUP_COUNT + 1))
+}
+
+# install_symlink — install or preserve a symlink with policy support.
+# Args: $1=src (link target) $2=dst (link path) [$3=policy: overwrite|preserve; default overwrite]
+#
+# overwrite policy (default): rm -f + ln -s (legacy Slice 2 behavior).
+# preserve policy (Slice 3 A2):
+#   - dst missing                                  → ln -s (no sibling)
+#   - dst is symlink AND readlink(dst) == src      → no-op
+#   - dst is symlink with different target, OR dst is a regular file (user
+#     copy-converted to edit locally)              → write_upstream_sibling,
+#                                                    leave dst untouched.
+install_symlink() {
+  local src="$1" dst="$2" policy="${3:-overwrite}"
+
+  if [ "$policy" = "preserve" ]; then
+    if [ ! -e "$dst" ] && [ ! -L "$dst" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        printf "${DIM}    would run: ln -s %s %s${NC}\n" "$src" "$dst"
+      else
+        ln -s "$src" "$dst"
+      fi
+      return 0
+    fi
+    if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+      return 0  # already correct
+    fi
+    write_upstream_sibling "$src" "$dst" "symlink"
+    return 0
+  fi
+
+  # overwrite (default)
+  if [ "$DRY_RUN" = true ]; then
+    printf "${DIM}    would run: rm -f %s && ln -s %s %s${NC}\n" "$dst" "$src" "$dst"
+    return 0
+  fi
+  rm -f "$dst"
+  ln -s "$src" "$dst"
 }
 
 # prompt_or_default — read input from tty or fall back to a safe default.
@@ -199,12 +352,23 @@ set_conf_key() {
 }
 
 # build_pairs — single source of truth for "what install.sh ships".
-# Emits TAB-separated triples: <src>\t<dst>\t<type>, sorted by dst.
+# Emits TAB-separated 4-tuples: <src>\t<dst>\t<type>\t<policy>, sorted by dst.
 #
 # Types:
 #   file      — plain copy (safe_cp / cp)
 #   skill_md  — SKILL.md going through install_skill_md ({{VAULT}}-aware)
 #   symlink   — `ln -s <src> <dst>` (src is the symlink TARGET, not a content file)
+#
+# Policies (Slice 3):
+#   overwrite — Slice-2 behavior: back up local mods to .pre-update.<ts> then
+#               install upstream. Use for everything install.sh fully owns
+#               (code, machinery, persona-bearing prose, agent definitions).
+#   preserve  — Apache-config-style: if dst is missing → install. If dst matches
+#               src → skip. If dst differs from src → leave dst untouched and
+#               write <dst>.upstream.<ts> sibling so the user can diff. Use for
+#               files designed to be tuned locally (statusline.sh, forge-tmux.conf,
+#               reference symlinks). See "preserve-always (A2)" in the Slice 3
+#               plan (`Vault/PERSO/forge/tasks/open/2026-04-24-forge-install-sync-with-source.md`).
 #
 # Resolves at call time; depends on $CLAUDE_DIR, $SKILLS_DIR, $AGENTS_DIR,
 # $ADAPTER, $FORGE_ROOT being set before invocation.
@@ -219,56 +383,59 @@ build_pairs() {
   {
     # Core skills (SKILL.md per skill dir) — install_skill_md handles {{VAULT}}
     for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
-      printf "%s\t%s\tskill_md\n" "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
+      printf "%s\t%s\tskill_md\toverwrite\n" "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
     done
 
-    # Forge skill references (symlinks to core/references/*)
+    # Forge skill references (symlinks to core/references/*) — A2: preserve local edits
     for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md; do
-      printf "%s\t%s\tsymlink\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
+      printf "%s\t%s\tsymlink\tpreserve\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
     done
 
-    # Quartermaster reference (scoped symlink under forge-weekly skill)
-    printf "%s\t%s\tsymlink\n" "$FORGE_ROOT/core/references/quartermaster.md" "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
+    # Quartermaster reference (scoped symlink under forge-weekly skill) — A2
+    printf "%s\t%s\tsymlink\tpreserve\n" "$FORGE_ROOT/core/references/quartermaster.md" "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
 
     # Wellness coach (skill + hooks + scripts + src + references)
     local wc_dst="$SKILLS_DIR/wellness-coach"
     local wc_src="$ADAPTER/modules/wellness-coach"
-    printf "%s\t%s\tfile\n" "$wc_src/skills/wellness-coach/SKILL.md" "$wc_dst/SKILL.md"
-    printf "%s\t%s\tfile\n" "$wc_src/README.md" "$wc_dst/README.md"
+    printf "%s\t%s\tfile\toverwrite\n" "$wc_src/skills/wellness-coach/SKILL.md" "$wc_dst/SKILL.md"
+    printf "%s\t%s\tfile\toverwrite\n" "$wc_src/README.md" "$wc_dst/README.md"
     for hook in "$wc_src/hooks/"*.py; do
-      [ -e "$hook" ] && printf "%s\t%s\tfile\n" "$hook" "$wc_dst/hooks/$(basename "$hook")"
+      [ -e "$hook" ] && printf "%s\t%s\tfile\toverwrite\n" "$hook" "$wc_dst/hooks/$(basename "$hook")"
     done
     for script in "$wc_src/scripts/"*; do
-      [ -e "$script" ] && printf "%s\t%s\tfile\n" "$script" "$wc_dst/scripts/$(basename "$script")"
+      [ -e "$script" ] && printf "%s\t%s\tfile\toverwrite\n" "$script" "$wc_dst/scripts/$(basename "$script")"
     done
-    printf "%s\t%s\tfile\n" "$wc_src/src/screen_state.c" "$wc_dst/src/screen_state.c"
+    printf "%s\t%s\tfile\toverwrite\n" "$wc_src/src/screen_state.c" "$wc_dst/src/screen_state.c"
+    # Wellness-coach references — A2 (same logic as forge skill references)
     for ref in onboarding.md conflict-resolution.md; do
-      printf "%s\t%s\tsymlink\n" "$wc_src/references/$ref" "$wc_dst/references/$ref"
+      printf "%s\t%s\tsymlink\tpreserve\n" "$wc_src/references/$ref" "$wc_dst/references/$ref"
     done
 
     # Agent definitions (forge-* adapter files)
     for agent in forge-architect forge-debugger forge-impl forge-keeper forge-refiner forge-release forge-reviewer forge-toolsmith; do
-      printf "%s\t%s\tfile\n" "$ADAPTER/agents/$agent.md" "$AGENTS_DIR/$agent.md"
+      printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/agents/$agent.md" "$AGENTS_DIR/$agent.md"
     done
 
     # Hooks (5)
-    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/forge-compaction.sh"          "$CLAUDE_DIR/hooks/forge-compaction.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/approval-notifier.sh"         "$CLAUDE_DIR/hooks/approval-notifier.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/forge-vault-plan-guard.sh"    "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/forge-session-end.sh"         "$CLAUDE_DIR/hooks/forge-session-end.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/hooks/inject-current-time.sh"       "$CLAUDE_DIR/hooks/inject-current-time.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-compaction.sh"          "$CLAUDE_DIR/hooks/forge-compaction.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/approval-notifier.sh"         "$CLAUDE_DIR/hooks/approval-notifier.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-vault-plan-guard.sh"    "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-session-end.sh"         "$CLAUDE_DIR/hooks/forge-session-end.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/inject-current-time.sh"       "$CLAUDE_DIR/hooks/inject-current-time.sh"
 
     # Scripts (5)
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-context.sh"               "$CLAUDE_DIR/scripts/forge-context.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-permission-lint.sh"       "$CLAUDE_DIR/scripts/forge-permission-lint.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-classify-friction.sh"     "$CLAUDE_DIR/scripts/forge-classify-friction.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-context.sh"               "$CLAUDE_DIR/scripts/forge-context.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-permission-lint.sh"       "$CLAUDE_DIR/scripts/forge-permission-lint.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-classify-friction.sh"     "$CLAUDE_DIR/scripts/forge-classify-friction.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
 
     # Top-level files under ~/.claude/
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/statusline.sh"        "$CLAUDE_DIR/statusline.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-shell-init.sh"  "$CLAUDE_DIR/forge-shell-init.sh"
-    printf "%s\t%s\tfile\n" "$ADAPTER/scripts/forge-tmux.conf"      "$CLAUDE_DIR/forge-tmux.conf"
+    # statusline.sh + forge-tmux.conf are A2 (preserve) — power users tune them.
+    # forge-shell-init.sh is C (overwrite) — bootstrap script, not a tunable config.
+    printf "%s\t%s\tfile\tpreserve\n" "$ADAPTER/scripts/statusline.sh"        "$CLAUDE_DIR/statusline.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-shell-init.sh" "$CLAUDE_DIR/forge-shell-init.sh"
+    printf "%s\t%s\tfile\tpreserve\n" "$ADAPTER/scripts/forge-tmux.conf"      "$CLAUDE_DIR/forge-tmux.conf"
   } | sort -t$'\t' -k2,2
 }
 
@@ -419,13 +586,17 @@ do_preview() {
     : > "$old_tmp"
   fi
 
-  local new_files=() mod_files=() rm_files=()
-  local src dst type
-  while IFS=$'\t' read -r src dst type; do
+  local new_files=() mod_overwrite=() mod_preserve=() rm_files=()
+  local src dst type policy
+  while IFS=$'\t' read -r src dst type policy; do
     if [ ! -e "$dst" ] && [ ! -L "$dst" ]; then
       new_files+=("$dst")
     elif ! files_equal "$src" "$dst" "$type"; then
-      mod_files+=("$dst")
+      if [ "$policy" = "preserve" ]; then
+        mod_preserve+=("$dst")
+      else
+        mod_overwrite+=("$dst")
+      fi
     fi
   done < "$pairs_tmp"
 
@@ -483,17 +654,23 @@ do_preview() {
   fi
   echo ""
 
-  local total_changes=$(( ${#new_files[@]} + ${#mod_files[@]} + ${#rm_files[@]} + ${#perms_missing[@]} + ${#hooks_missing[@]} ))
+  local total_changes=$(( ${#new_files[@]} + ${#mod_overwrite[@]} + ${#mod_preserve[@]} + ${#rm_files[@]} + ${#perms_missing[@]} + ${#hooks_missing[@]} ))
 
   if [ ${#new_files[@]} -gt 0 ]; then
     printf "  ${GREEN}+ %d new file(s)${NC} — would install:\n" "${#new_files[@]}"
     for f in "${new_files[@]}"; do printf "      ${GREEN}+${NC} %s\n" "$f"; done
     echo ""
   fi
-  if [ ${#mod_files[@]} -gt 0 ]; then
-    printf "  ${YELLOW}~ %d modified file(s)${NC} — would back up + overwrite:\n" "${#mod_files[@]}"
-    for f in "${mod_files[@]}"; do printf "      ${YELLOW}~${NC} %s\n" "$f"; done
+  if [ ${#mod_overwrite[@]} -gt 0 ]; then
+    printf "  ${YELLOW}~ %d modified file(s)${NC} — would back up + overwrite:\n" "${#mod_overwrite[@]}"
+    for f in "${mod_overwrite[@]}"; do printf "      ${YELLOW}~${NC} %s\n" "$f"; done
     hint "Backup naming: <file>.pre-update.<timestamp>"
+    echo ""
+  fi
+  if [ ${#mod_preserve[@]} -gt 0 ]; then
+    printf "  ${CYAN}≈ %d preserved file(s)${NC} — local differs from upstream; would write .upstream.<ts> sibling, leave local untouched:\n" "${#mod_preserve[@]}"
+    for f in "${mod_preserve[@]}"; do printf "      ${CYAN}≈${NC} %s\n" "$f"; done
+    hint "Sibling naming: <file>.upstream.<timestamp>"
     echo ""
   fi
   if [ ${#rm_files[@]} -gt 0 ]; then
@@ -973,19 +1150,21 @@ for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-au
 done
 ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
-# Symlink core references into forge skill
+# Symlink core references into forge skill — A2 preserve policy:
+# users may copy a ref to a real file and edit it (e.g. tweaking
+# wellness-cold-start thresholds). install_symlink with preserve leaves
+# those copies alone and writes a `.upstream.<ts>` sibling for diff.
 run mkdir -p "$SKILLS_DIR/forge/references"
 for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md; do
-  run rm -f "$SKILLS_DIR/forge/references/$ref"
-  run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
+  install_symlink "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref" preserve
 done
-ok "References symlinked (updates with git pull)"
+ok "References symlinked (updates with git pull; A2-preserve for local edits)"
 
 # Symlink Quartermaster reference into forge-weekly skill (scoped — only loaded
 # when /forge-weekly fires, keeps weekly-only persona out of /forge entry cost).
+# A2 preserve policy — same logic as the forge skill refs above.
 run mkdir -p "$SKILLS_DIR/forge-weekly/references"
-run rm -f "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
-run ln -s "$FORGE_ROOT/core/references/quartermaster.md" "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
+install_symlink "$FORGE_ROOT/core/references/quartermaster.md" "$SKILLS_DIR/forge-weekly/references/quartermaster.md" preserve
 ok "Quartermaster reference symlinked into forge-weekly"
 
 # Wellness coach files (always copied — hooks wired during onboarding)
@@ -1000,11 +1179,10 @@ for script in "$WC_SRC/scripts/"*; do safe_cp "$script" "$WC_DST/scripts/"; done
 safe_cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
 run chmod +x "$WC_DST/scripts/"*.sh
 
-# Symlink wellness-coach references (lazy-loaded by SKILL.md stubs)
+# Symlink wellness-coach references (lazy-loaded by SKILL.md stubs) — A2 preserve.
 run mkdir -p "$WC_DST/references"
 for ref in onboarding.md conflict-resolution.md; do
-  run rm -f "$WC_DST/references/$ref"
-  run ln -s "$WC_SRC/references/$ref" "$WC_DST/references/$ref"
+  install_symlink "$WC_SRC/references/$ref" "$WC_DST/references/$ref" preserve
 done
 ok "Wellness coach files (activation offered during first /forge session)"
 
@@ -1036,7 +1214,7 @@ safe_cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-classify-friction.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-calendar.sh" "$CLAUDE_DIR/scripts/"
-safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh"
+safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh" preserve
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
@@ -1278,7 +1456,7 @@ ok "Wrapper installed at $WRAPPER_FILE"
 TMUX_CONF_FILE="$CLAUDE_DIR/forge-tmux.conf"
 TMUX_CONF_SOURCE="$ADAPTER/scripts/forge-tmux.conf"
 
-safe_cp "$TMUX_CONF_SOURCE" "$TMUX_CONF_FILE"
+safe_cp "$TMUX_CONF_SOURCE" "$TMUX_CONF_FILE" preserve
 ok "tmux config installed at $TMUX_CONF_FILE"
 
 # Detect user's shell rc file
