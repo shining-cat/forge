@@ -227,6 +227,8 @@ The coach has personality. If the user just wants to chat:
 
 ## Strike Conversation
 
+**When the user addresses the coach by name (matching `coach_name` in preferences) AND `strike_active` is true, your FIRST tool call MUST be `Skill(wellness-coach)`.** Do not retry blocked tools first — they will return the strike denial without progressing recovery. The Skill invocation is the only path that clears the strike. This applies whether the user said "Pip, lift the strike", "hey coach", or any other address-by-name phrase: open the skill, then act.
+
 During an active strike, the PreToolUse hook (`wellness-timer.py`) exempts a specific set of surfaces so recovery is reachable:
 
 - **Invoking the wellness-coach skill itself** — clears the strike and enters the strike conversation flow below. This is the primary recovery path.

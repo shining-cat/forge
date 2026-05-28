@@ -278,12 +278,27 @@ def main():
             sys.exit(0)
 
         elapsed = minutes_since(prefs.get("last_break_timestamp"))
+        short_reason = f"On strike — {int(elapsed)} min without a break"
+
+        # Dedup parallel-tool-call spam: 9 concurrent tool calls in a single
+        # turn each fire this hook concurrently, each emitting the full strike
+        # box → 9 identical boxes. The denial must still apply to every call
+        # (semantic correctness), but only the lock-winner renders the visible
+        # box; the others deny silently. Friction 2026-05-27.
+        lock_fd = try_reminder_lock()
+        if lock_fd is None:
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": short_reason,
+                },
+            }))
+            sys.exit(2)
+
         lines, _ = get_persona_messages(prefs, "strike", elapsed)
         box = format_box(coach_name, lines, "strike")
-        emit_deny(
-            f"On strike — {int(elapsed)} min without a break",
-            center_block(box),
-        )
+        emit_deny(short_reason, center_block(box))
 
     elapsed = minutes_since(prefs.get("last_break_timestamp"))
     level = determine_level(prefs, elapsed)
