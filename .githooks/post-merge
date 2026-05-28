@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Forge post-merge hook — nudges to re-run install.sh when installed-path
+# files changed in the merge.
+#
+# Opt-in: enabled by `install.sh` (with consent) via `git config core.hooksPath
+# .githooks`. Not on by default — git refuses to run hooks from untrusted
+# directories unless the user has explicitly pointed at them.
+#
+# Fires on `git pull` (fast-forward or merge commit) but NOT on `git pull
+# --rebase` — rebase uses post-rewrite, not post-merge. Acceptable for the
+# common case; rebase users will still see the drift warning at /forge entry
+# via `do_check_install_drift`.
+
+set -e
+
+# ORIG_HEAD is set by git before the merge. If absent (rare — fresh clone,
+# no prior history), skip silently.
+git rev-parse ORIG_HEAD >/dev/null 2>&1 || exit 0
+
+# Paths install.sh reads from. If anything under these changed in the merge,
+# the install under ~/.claude/ is now stale relative to the source repo.
+changed=$(git diff --name-only ORIG_HEAD HEAD -- \
+  install.sh \
+  adapters/ \
+  core/ 2>/dev/null || true)
+
+[ -z "$changed" ] && exit 0
+
+cnt=$(printf "%s\n" "$changed" | wc -l | tr -d ' ')
+printf "\n\033[33m[forge]\033[0m %d installed file(s) changed in this pull.\n" "$cnt"
+printf "        Run \`./install.sh\` to apply the updates.\n\n"

@@ -468,6 +468,48 @@ if ! git -C "$VAULT_PATH" rev-parse --git-dir &>/dev/null; then
   fi
 fi
 
+# ─── Offer post-merge nudge hook (opt-in) ────────────────────────────────────
+# A `.githooks/post-merge` ships in this repo. Git won't run it unless the user
+# explicitly points `core.hooksPath` at it — that's the security model for hooks
+# living in source-controlled directories. We prompt once; the flag in
+# forge.conf keeps subsequent installs silent.
+#
+# When enabled: after `git pull` (or any merge), the hook prints a one-liner if
+# install.sh or any path under adapters/ or core/ changed, reminding the user
+# to re-run install.sh.
+
+if git -C "$FORGE_ROOT" rev-parse --git-dir &>/dev/null; then
+  existing_hooks_path=$(git -C "$FORGE_ROOT" config --get core.hooksPath 2>/dev/null || true)
+  if [ -n "$existing_hooks_path" ]; then
+    : # already configured (by user or previous install) — leave alone
+  elif grep -q '^FORGE_HOOKS_DECLINED=true' "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    : # user previously declined — silent skip
+  elif [ "$DRY_RUN" = true ]; then
+    info "Would prompt: enable .githooks/post-merge nudge after git pull"
+  else
+    echo ""
+    printf "${CYAN}[forge]${NC} A repo-side post-merge hook is available.\n"
+    printf "        After \`git pull\` updates installed files, it prints a\n"
+    printf "        one-liner reminding you to re-run \`./install.sh\`.\n"
+    printf "        Opt-in by setting \`core.hooksPath\` to \`.githooks\` in this repo.\n"
+    hooks_answer=$(prompt_or_default \
+      "$(printf "        Enable now? [Y/n]: ")" \
+      "n")
+    case "${hooks_answer:-Y}" in
+      [Yy]*|"")
+        run git -C "$FORGE_ROOT" config core.hooksPath .githooks
+        ok "core.hooksPath = .githooks (post-merge nudge enabled for this repo)"
+        ;;
+      *)
+        if [ -t 0 ]; then
+          set_conf_key FORGE_HOOKS_DECLINED true
+        fi
+        info "Hook left disabled per user choice."
+        ;;
+    esac
+  fi
+fi
+
 # ─── Copy skills ─────────────────────────────────────────────────────────────
 ADAPTER="$FORGE_ROOT/adapters/claude-code"
 SKILLS_DIR="$CLAUDE_DIR/skills"
