@@ -95,7 +95,7 @@ Options:
 ./install.sh -h                         # Help
 ```
 
-**Updating:** Pull and re-run. The installer is idempotent — it won't duplicate hooks or permissions. Modified user files are backed up as `<file>.pre-update.<timestamp>` before overwrite, and files dropped from upstream are backed up as `<file>.pre-remove.<timestamp>` before deletion.
+**Updating:** Pull and re-run. The installer is idempotent — it won't duplicate hooks or permissions. How a modified file is treated depends on its policy (see **Customization & upgrades** below).
 
 ```bash
 cd forge
@@ -106,6 +106,17 @@ git pull
 ```
 
 The installer offers (once, opt-in) to enable a post-merge git hook that prints a one-liner after `git pull` whenever installed files change — a nudge to re-run `./install.sh`. The hook is checked into `.githooks/post-merge`; opting in sets `core.hooksPath` on this clone only. `/forge` entry also surfaces drift via `do_check_install_drift`, but the hook fires the instant a stale install starts.
+
+### Customization & upgrades
+
+Every installed file has one of two upgrade policies, declared in `build_pairs()` inside `install.sh`:
+
+- **overwrite (default)** — code, machinery, persona-bearing prose, agent definitions, SKILL.md files. On upgrade, any local modification is backed up as `<file>.pre-update.<timestamp>` and the upstream version is installed. Files removed from upstream are backed up as `<file>.pre-remove.<timestamp>` before deletion. This is the right policy for anything Forge fully owns.
+- **preserve (A2 — Apache-config style)** — files you're expected to tune locally: `statusline.sh`, `forge-tmux.conf`, and the per-skill reference symlinks (`forge/references/*`, `forge-weekly/references/quartermaster.md`, `wellness-coach/references/*`). On upgrade, if your local copy differs from upstream, **install.sh leaves your file untouched** and writes the upstream version as a `<file>.upstream.<timestamp>` sibling so you can diff at leisure. Missing files are still installed; matching files are no-ops. No sibling is written if it would duplicate a previous one (clutter control).
+
+`./install.sh --preview` makes the distinction visible: `~` marks files that would be overwritten, `≈` marks files that would be preserved (sibling written, local kept). Both count as drift for the exit code — divergence is divergence — but `≈` reflects a customization you opted into, not a missed update.
+
+If you want a preserved file restored to upstream wholesale, `rm` it and re-run `./install.sh` — the missing-file branch installs from upstream cleanly.
 
 ## First session
 
