@@ -45,6 +45,13 @@ EOW_DAY="${EOW_DAY:-5}"
 MEETING_WINDOW_MIN="$(grep '^MEETING_WINDOW_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 MEETING_WINDOW_MIN="${MEETING_WINDOW_MIN:-30}"
 
+# Gap (in days) after which a weekly wrap-up is "due" again. Default 5 — so a
+# wrap done on Friday morning won't re-trigger if the user re-enters Forge
+# Friday afternoon, but a wrap not done by next Wednesday will. Override via
+# forge.conf or env (tests use env=0 to force `due`).
+FORGE_WEEKLY_WRAP_GAP_DAYS="${FORGE_WEEKLY_WRAP_GAP_DAYS:-$(grep '^FORGE_WEEKLY_WRAP_GAP_DAYS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)}"
+FORGE_WEEKLY_WRAP_GAP_DAYS="${FORGE_WEEKLY_WRAP_GAP_DAYS:-5}"
+
 # Checkpoint-nag suppression (do_stop) — both gates must pass for the nag to fire.
 # Reframes the nag from "clock-driven" ("X minutes since checkpoint") to
 # "activity-driven" ("work done in this session that isn't recorded"). Covers
@@ -316,7 +323,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -1491,6 +1498,75 @@ do_wrap_up_state() {
   else
     echo "$base_state"
   fi
+}
+
+# ── Subcommand: weekly-wrap-due ───────────────────────────────────────
+# Print `due` if the weekly wrap hasn't run within FORGE_WEEKLY_WRAP_GAP_DAYS,
+# else `not-due`. Read from $VAULT_PATH/_shared/forge-runtime.json. Missing or
+# malformed file → `due` (treat as "never run"). Exit 0 either way.
+#
+# Used by:
+#   - forge SKILL.md Step 6 entry summary (conditionally render "Weekly wrap: due")
+#   - forge-exit SKILL.md Notes (suggest /forge-weekly on Friday exit)
+#   - forge-weekly SKILL.md Step 0 idempotency guard
+FORGE_RUNTIME_FILE="$VAULT_PATH/_shared/forge-runtime.json"
+
+do_weekly_wrap_due() {
+  if [ ! -f "$FORGE_RUNTIME_FILE" ]; then
+    echo "due"
+    return 0
+  fi
+  local last_ts last_epoch now_epoch age_days
+  last_ts=$(jq -r '.last_weekly_wrap_timestamp // empty' "$FORGE_RUNTIME_FILE" 2>/dev/null)
+  if [ -z "$last_ts" ] || [ "$last_ts" = "null" ]; then
+    echo "due"
+    return 0
+  fi
+  # Parse ISO8601 timestamp. Try BSD date first (macOS), then GNU date.
+  last_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$last_ts" "+%s" 2>/dev/null \
+            || date -d "$last_ts" "+%s" 2>/dev/null \
+            || echo "")
+  if [ -z "$last_epoch" ]; then
+    # Malformed timestamp — treat as never run, force re-wrap
+    echo "due"
+    return 0
+  fi
+  now_epoch=$(date +%s)
+  age_days=$(( (now_epoch - last_epoch) / 86400 ))
+  if [ "$age_days" -ge "$FORGE_WEEKLY_WRAP_GAP_DAYS" ]; then
+    echo "due"
+  else
+    echo "not-due"
+  fi
+}
+
+# ── Subcommand: mark-weekly-wrap-done ─────────────────────────────────
+# Write last_weekly_wrap_timestamp=now + last_weekly_wrap_week=YYYY-WNN to
+# $VAULT_PATH/_shared/forge-runtime.json. Creates the file if missing.
+# Idempotent — re-running just overwrites with current timestamp.
+#
+# Called by forge-weekly SKILL.md Step 5 once the ceremony has completed.
+do_mark_weekly_wrap_done() {
+  local now_ts iso_week
+  now_ts=$(date "+%Y-%m-%dT%H:%M:%S")
+  # ISO 8601 week (YYYY-WNN). Both BSD and GNU date support %G-W%V.
+  iso_week=$(date "+%G-W%V")
+
+  if [ ! -f "$FORGE_RUNTIME_FILE" ]; then
+    # Lazy-create with just the keys we care about
+    printf '{\n  "last_weekly_wrap_timestamp": "%s",\n  "last_weekly_wrap_week": "%s"\n}\n' \
+      "$now_ts" "$iso_week" > "$FORGE_RUNTIME_FILE"
+    echo "marked: $now_ts ($iso_week)"
+    return 0
+  fi
+
+  # Merge into existing file — preserve any other keys other tooling may add.
+  local tmp
+  tmp=$(mktemp)
+  jq --arg ts "$now_ts" --arg wk "$iso_week" \
+     '.last_weekly_wrap_timestamp = $ts | .last_weekly_wrap_week = $wk' \
+     "$FORGE_RUNTIME_FILE" > "$tmp" && mv "$tmp" "$FORGE_RUNTIME_FILE"
+  echo "marked: $now_ts ($iso_week)"
 }
 
 # ── Subcommand: vault-sync ────────────────────────────────────────────
@@ -2811,6 +2887,8 @@ case "$SUBCMD" in
   status)              do_status ;;
   vault-sync)          do_vault_sync "${@:2}" ;;
   wrap-up-state)       do_wrap_up_state ;;
+  weekly-wrap-due)     do_weekly_wrap_due ;;
+  mark-weekly-wrap-done) do_mark_weekly_wrap_done ;;
   check-install)       do_check_install ;;
   set-marker)          do_set_marker "${@:2}" ;;
   append-braindump)    do_append_braindump "${@:2}" ;;
@@ -2829,7 +2907,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac

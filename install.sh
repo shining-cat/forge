@@ -476,11 +476,11 @@ echo ""
 info "Installing skills..."
 
 # Core skills
-for skill in forge forge-checkpoint forge-exit forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
   run mkdir -p "$SKILLS_DIR/$skill"
   install_skill_md "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
-ok "Core skills (forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
+ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
 
 # Symlink core references into forge skill
 run mkdir -p "$SKILLS_DIR/forge/references"
@@ -489,6 +489,13 @@ for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-p
   run ln -s "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
 done
 ok "References symlinked (updates with git pull)"
+
+# Symlink Quartermaster reference into forge-weekly skill (scoped — only loaded
+# when /forge-weekly fires, keeps weekly-only persona out of /forge entry cost).
+run mkdir -p "$SKILLS_DIR/forge-weekly/references"
+run rm -f "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
+run ln -s "$FORGE_ROOT/core/references/quartermaster.md" "$SKILLS_DIR/forge-weekly/references/quartermaster.md"
+ok "Quartermaster reference symlinked into forge-weekly"
 
 # Wellness coach files (always copied — hooks wired during onboarding)
 WC_SRC="$ADAPTER/modules/wellness-coach"

@@ -268,7 +268,10 @@ Friction events: {count recent or "none"}
 Git state: {clean / N uncommitted changes}
 Team substrate: {ready / missing — Pattern A would fall back to inline}
 Next interruption: {break in Xmin / meeting "Name" in Xmin / none in sight}
+Weekly wrap: {due (last ran N days ago) — only rendered when conditions match, see below}
 ```
+
+**Weekly-wrap line (conditional).** After the Next interruption line, call BOTH `~/.claude/scripts/forge-context.sh wrap-up-state` AND `~/.claude/scripts/forge-context.sh weekly-wrap-due`. Render the "Weekly wrap: due" line ONLY when wrap-up-state ∈ {`eow_window`, `past_eow`} AND weekly-wrap-due returns `due`. In that case Petra adds a one-line nudge: *"It's Friday afternoon — want to run the weekly wrap before logging off? `/forge-weekly`"*. On any other combination, omit the line entirely — no noise on weekdays, no noise when the wrap has already run this week.
 
 If the next interruption is < 30 minutes, Petra notes it: *"Standup in 18 minutes — let's fetch coal, not heat anything up."*
 
