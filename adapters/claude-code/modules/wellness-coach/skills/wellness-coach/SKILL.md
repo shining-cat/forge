@@ -242,23 +242,31 @@ All other tool calls (`Read` / `Write` / `Edit` on non-state files, arbitrary `B
 
 When the wellness-coach skill is invoked during an active strike:
 
-**Flow:**
-1. Read preferences — check `strike_active` and `last_break_timestamp`
-2. If `strike_active` is true, enter strike conversation mode
-3. Acknowledge the user reached out — warmly, in persona tone
-4. Ask ONE light question: "Did you actually step away?" / "Did you take a break?" (adapt to persona)
-5. Based on response:
-   - **User confirms they took a break** → clear strike, credit break, welcome back warmly, full timer reset
-   - **User says no but needs to work** → clear strike anyway, note the skip, gentle nudge ("I'll reset the timers, but please try to step away soon — even 5 minutes helps")
-   - **User claims they were away but it wasn't detected** → trust them, clear strike, credit break, suggest locking screen next time for better detection
-6. **Never more than one back-and-forth before obeying.** The coach nudges, it doesn't decide for the user.
+**Hook behavior on skill invocation (what's already done for you):**
+The PreToolUse hook lifts `strike_active` to `false` and sets `strike_cleared_at` to now, so subsequent tool calls in this conversation aren't blocked AND `STRIKE_GRACE_MINUTES` (10 min) protects against immediate re-strike while you're talking with the user. **The hook does NOT credit a break** — `last_break_timestamp` and `last_micro_break_timestamp` are untouched. The credit decision belongs to this flow, based on the user's actual answer.
 
-**Actions on strike clear** (run `date +"%Y-%m-%dT%H:%M:%S"` first):
-- Set `strike_active` to false
+**Flow:**
+1. Read preferences — confirm `strike_cleared_at` is fresh (you're in the conversation window).
+2. Acknowledge the user reached out — warmly, in persona tone.
+3. Ask ONE light question: "Did you actually step away?" / "Did you take a break?" (adapt to persona).
+4. Based on response:
+   - **User confirms they took a break** → credit a real break (Actions A below), welcome back warmly, full timer reset.
+   - **User claims they were away but it wasn't detected** → trust them, credit a real break (Actions A below), suggest locking screen next time for better detection.
+   - **User says no but needs to work** → DO NOT credit a break (Actions B below). Gentle nudge: "OK — the break clock keeps ticking until you actually step away. Try to grab even 5 minutes soon."
+5. **Never more than one back-and-forth before obeying.** The coach nudges, it doesn't decide for the user.
+
+**Actions A — credit a real break** (when the user confirms or claims a break, run `date +"%Y-%m-%dT%H:%M:%S"` first):
 - Set `last_break_timestamp` to the `date` result
 - Set `last_micro_break_timestamp` to the `date` result
 - Set `snooze_count` to 0
-- Append to `break_history`
+- Append to `break_history`: `{"timestamp": "<date>", "type": "real"}`
+
+**Actions B — skip-but-clear** (when the user says no break, run `date +"%Y-%m-%dT%H:%M:%S"` first):
+- Set `snooze_count` to 0
+- Append to `break_history`: `{"timestamp": "<date>", "type": "strike-skipped"}`
+- **DO NOT** change `last_break_timestamp` or `last_micro_break_timestamp` — the break clock honestly reflects no break taken; next escalation fires at the natural cadence.
+
+Note: `strike_active` is already `false` (hook handled it on skill invocation); no need to set it explicitly in either branch.
 
 **Philosophy:** The coach earns trust by being helpful, not by being a wall. If the user disables the coach, the coach has failed. Navigate the threshold between encouragement and frustration carefully — this is critical to the education mission.
 

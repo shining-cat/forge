@@ -199,31 +199,29 @@ def main():
     hook_input = read_hook_input()
 
     # Always allow the wellness-coach skill through — even during strike.
+    # When invoked during an active strike, ONLY lift the strike flag (so the
+    # skill body's subsequent state-writes and persona conversation can run).
+    # Do NOT auto-credit a break — `last_break_timestamp` and
+    # `last_micro_break_timestamp` are left untouched. The skill body's Strike
+    # Conversation flow (SKILL.md) decides whether to credit based on the
+    # user's actual answer to "did you step away?".
+    #
+    # Re-strike protection during the conversation: `strike_cleared_at` is
+    # set to now, which engages the STRIKE_GRACE_MINUTES (10 min) check
+    # downstream so subsequent tool calls don't re-strike while the
+    # conversation is in flight, even though `last_break_timestamp` is still
+    # stale.
     if is_wellness_coach_skill(hook_input):
         if prefs.get("strike_active"):
-            old_snooze = prefs.get("snooze_count", 0)
-            old_last_break = prefs.get("last_break_timestamp")
-            def clear_strike(p):
-                # Mirror the "real" tier in _credit_auto_break — clearing the
-                # strike without resetting last_break_timestamp left the timer
-                # poised to re-fire moments later (the cold-start bug).
+            def lift_strike_for_conversation(p):
                 now = now_iso()
                 p["strike_active"] = False
                 p["strike_cleared_at"] = now
-                p["snooze_count"] = 0
-                p["last_break_timestamp"] = now
-                p["last_micro_break_timestamp"] = now
-                p["last_reminder_timestamp"] = now
-                history = p.get("break_history", []) or []
-                history.append({"timestamp": now, "type": "strike-cleared"})
-                p["break_history"] = history
                 return p
-            read_modify_write(clear_strike)
-            log_event(prefs, "strike-cleared",
-                "Strike cleared via wellness skill invocation.",
-                {"strike_active": "true → false",
-                 "snooze_count": f"{old_snooze} → 0",
-                 "last_break_timestamp": f"{old_last_break} → now"})
+            read_modify_write(lift_strike_for_conversation)
+            log_event(prefs, "strike-lifted",
+                "Strike flag lifted for wellness-coach conversation; skill body owns the credit decision.",
+                {"strike_active": "true → false"})
         sys.exit(0)
 
     # Auto-detect breaks from activity monitoring — runs BEFORE strike check
