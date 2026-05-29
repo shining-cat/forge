@@ -169,6 +169,18 @@ session_owns_forge() {
   [ "$marker_session" = "$current_session" ]
 }
 
+# Returns 0 (true) if MAINTAINER_MODE=true in forge.conf, 1 otherwise.
+# Used to gate maintainer-only surfaces (open-task audit, BACKLOG staleness
+# audit) from session-entry output so end-user mode stays focused on project
+# work. Persona-level gates (Petra's proactive suggestions about
+# decisions/INDEX/OVERVIEW/etc.) live in the forge SKILL.md "Maintainer mode"
+# section — this script-level gate complements them by suppressing the raw
+# audit data that would otherwise feed those suggestions.
+is_maintainer_mode() {
+  [ -f "$FORGE_CONF" ] || return 1
+  grep -q '^MAINTAINER_MODE=true$' "$FORGE_CONF"
+}
+
 # Reconcile marker against most-recent-checkpoint frontmatter.
 # Emits a one-line warning to stderr if marker disagrees with truth.
 # Skips silently for missing/empty/__pending__ markers.
@@ -1206,8 +1218,14 @@ for pr in json.load(sys.stdin):
   # Drift safety net — auto-archive only catches tasks whose frontmatter already
   # says `status: resolved`. These audits surface candidates that the trigger
   # (manual frontmatter flip) missed. Visibility-only, no auto-mutation.
-  do_open_task_audit
-  do_backlog_audit
+  # Gated to maintainer mode: in end-user mode these are vault-hygiene noise
+  # that distracts from project work. The subcommands themselves remain
+  # callable directly (`forge-context.sh open-task-audit`) if a user wants
+  # an explicit one-off check.
+  if is_maintainer_mode; then
+    do_open_task_audit
+    do_backlog_audit
+  fi
 
   # Install drift — surface if Forge runtime is behind the source repo.
   do_check_install_drift
@@ -3383,6 +3401,8 @@ case "$SUBCMD" in
   mark-weekly-wrap-done) do_mark_weekly_wrap_done ;;
   check-install)       do_check_install ;;
   rollback-install)    do_rollback_install "${@:2}" ;;
+  open-task-audit)     do_open_task_audit ;;
+  backlog-audit)       do_backlog_audit ;;
   set-marker)          do_set_marker "${@:2}" ;;
   append-braindump)    do_append_braindump "${@:2}" ;;
   append-friction)     do_append_friction "${@:2}" ;;
@@ -3400,7 +3420,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac

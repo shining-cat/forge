@@ -229,6 +229,41 @@ The list is vault-resident — it travels with your vault across machines.
 
 **Why offer exit, not checkpoint?** Closing the forge cleanly at end of day is a wellness practice — same family as the wellness coach. An offered checkpoint that you don't follow with an exit leaves the marker stale and hooks firing into a dead session; the exit flow writes the final checkpoint *and* tears down session state in one move.
 
+### Maintainer mode
+
+Two postures, picked during onboarding (and flippable anytime via `MAINTAINER_MODE` in `~/.claude/forge.conf`):
+
+- **End-user mode (default, `MAINTAINER_MODE=false`)** — Petra stays focused on your project work. Forge's own machinery (decisions/INDEX/OVERVIEW maintenance, friction-log curation, BACKLOG triage, vault hygiene threads) doesn't get surfaced as ambient suggestions. Session-entry recovery skips the open-task and BACKLOG-staleness audits to keep the summary tight.
+- **Maintainer mode (`MAINTAINER_MODE=true`)** — for people extending Forge itself (adding skills, tuning hooks, reshaping the vault layout). Audit surfaces fire at every session entry, Petra proactively suggests vault-hygiene threads (friction-log promotions, decision archival, stale-task triage), and `decisions/` / `INDEX.md` get treated as actionable surfaces rather than noise.
+
+What stays identical in both modes:
+
+- Project work, the Keeper's checkpoint cadence, the Refiner's correction loop, wellness reminders, PR sync, commit/push nudges, brain-dump prompts, install drift + rollback hints. These are productivity surfaces, not Forge-internal machinery, so they fire the same way.
+
+What changes in user mode (suppressed by default):
+
+| Surface | Where it's gated |
+|---|---|
+| Open-task audit (`Possibly-shipped tasks (>Nd, not in checkpoint)`) at session entry | `forge-context.sh` (script-level) |
+| BACKLOG staleness audit at session entry | `forge-context.sh` (script-level) |
+| Petra proactively raising friction-log / decisions / INDEX / OVERVIEW / BACKLOG / vault-hygiene threads in checkpoint Next-Steps | `forge/SKILL.md` (persona-level) |
+| Keeper writing meta-work items into Next-Steps / Open-follow-up sections | `keeper/SKILL.md` (persona-level) |
+
+End-user mode doesn't disable these capabilities — you can still ask for any of them explicitly, or run the audits one-off:
+
+```bash
+~/.claude/scripts/forge-context.sh open-task-audit
+~/.claude/scripts/forge-context.sh backlog-audit
+```
+
+Flip the mode by editing `~/.claude/forge.conf`:
+
+```ini
+MAINTAINER_MODE=true   # or false
+```
+
+The change takes effect on the next `/forge` invocation.
+
 ## Extending
 
 ### Adding a project
