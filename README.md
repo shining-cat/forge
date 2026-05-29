@@ -118,6 +118,38 @@ Every installed file has one of two upgrade policies, declared in `build_pairs()
 
 If you want a preserved file restored to upstream wholesale, `rm` it and re-run `./install.sh` — the missing-file branch installs from upstream cleanly.
 
+### Rollback
+
+Every `install.sh` run leaves backup artifacts under `~/.claude/`:
+
+- `<file>.pre-update.<ts>` — overwrite-policy file backed up before being replaced
+- `<file>.pre-remove.<ts>` — overwrite-policy file backed up before being deleted
+- `<file>.upstream.<ts>` — preserve-policy sibling holding upstream content (your local file is untouched)
+
+The `rollback-install` subcommand of `forge-context.sh` operates on them:
+
+```bash
+~/.claude/scripts/forge-context.sh rollback-install              # default: list
+
+# Inventory all artifacts grouped by target
+~/.claude/scripts/forge-context.sh rollback-install list
+
+# Restore a .pre-update / .pre-remove backup over its target
+# (diff is shown, prompt confirms; current target is saved as .pre-rollback.<ts> first)
+~/.claude/scripts/forge-context.sh rollback-install restore <path>
+
+# For a preserve-policy file: replace the local copy with the .upstream sibling
+# (the A2-style "I changed my mind, take upstream" path)
+~/.claude/scripts/forge-context.sh rollback-install accept-upstream <path>
+
+# Prune old backups — keep the N most recent per (kind, target), drop the rest
+~/.claude/scripts/forge-context.sh rollback-install clean --dry-run        # default: keep last 3
+~/.claude/scripts/forge-context.sh rollback-install clean --keep-last 5
+~/.claude/scripts/forge-context.sh rollback-install clean --older-than 7 --yes
+```
+
+`/forge` entry surfaces a "Rollback available" hint alongside the install-drift block when artifacts exist — your cue that there's something to revert if the latest update misbehaves.
+
 ## First session
 
 After install, start Claude Code and type `/forge`. On first run, Forge will:

@@ -1383,6 +1383,14 @@ do_check_install_drift() {
     echo "Last upstream fetch: $fetch_age_days days ago."
     echo "    Refresh: git -C $forge_repo fetch  (then re-run /forge to recheck)"
   fi
+
+  # Rollback hint: if any backup artifacts exist under ~/.claude/, surface that
+  # restoration is available. Only fires when drift is already being reported
+  # (the early-return at the top guards the silent in-sync case), so this reads
+  # as "you might want to roll back instead of/alongside updating".
+  if [ -n "$(_rollback_discover)" ]; then
+    echo "    Rollback available: ~/.claude/scripts/forge-context.sh rollback-install list"
+  fi
 }
 
 # ── Subcommand: check-install ─────────────────────────────────────────
@@ -1410,6 +1418,486 @@ do_check_install() {
   if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
     echo "Forge install is in sync with upstream."
   fi
+}
+
+# ── Subcommand: rollback-install ────────────────────────────────────────
+# User-facing entry point for consuming the backup artifacts that install.sh
+# leaves behind under ~/.claude/:
+#   *.pre-update.<ts>   — saved by safe_cp before overwriting (Slice 2)
+#   *.pre-remove.<ts>   — saved by remove_path before deleting (Slice 2)
+#   *.upstream.<ts>     — A2 preserve-policy sibling, never auto-cleaned (Slice 3)
+#
+# Verb surface (default = list when no verb given):
+#   list             — grouped inventory of all backup artifacts
+#   restore <path>   — restore a .pre-update / .pre-remove backup over its target
+#   accept-upstream <path>
+#                    — replace target with the .upstream sibling (A2 update opt-in)
+#   clean            — prune old backups; --keep-last N (default 3) / --older-than DAYS / --dry-run
+do_rollback_install() {
+  local verb="${1:-list}"
+  case "$verb" in
+    list)            _rollback_list "${@:2}" ;;
+    restore)         _rollback_restore "${@:2}" ;;
+    accept-upstream) _rollback_accept_upstream "${@:2}" ;;
+    clean)           _rollback_clean "${@:2}" ;;
+    -h|--help|help)
+      cat <<'EOF'
+Usage: forge-context.sh rollback-install [verb] [args...]
+
+Verbs:
+  list                       Inventory of backup artifacts under ~/.claude/ (default)
+  restore <path>             Restore a .pre-update / .pre-remove backup over its target
+  accept-upstream <path>     Replace target with the .upstream sibling (A2 update opt-in)
+  clean [--keep-last N]      Prune old backups (default: keep last 3 per target)
+        [--older-than DAYS]  Only consider backups older than DAYS days
+        [--dry-run]          Show what would be removed without removing
+EOF
+      ;;
+    *)
+      echo "rollback-install: unknown verb '$verb'" >&2
+      echo "Run 'forge-context.sh rollback-install --help' for usage." >&2
+      return 1
+      ;;
+  esac
+}
+
+_rollback_discover() {
+  local home_claude="$HOME_DIR/.claude"
+  [ -d "$home_claude" ] || return 0
+
+  find "$home_claude" \
+    \( -path "$home_claude/projects" -o \
+       -path "$home_claude/worktrees" -o \
+       -path "$home_claude/todos" -o \
+       -path "$home_claude/shell-snapshots" -o \
+       -path "$home_claude/statsig" -o \
+       -path "$home_claude/sessions" -o \
+       -path "$home_claude/file-history" -o \
+       -path "$home_claude/paste-cache" -o \
+       -path "$home_claude/image-cache" -o \
+       -path "$home_claude/cache" \) -prune \
+    -o \( -name '*.pre-update.[0-9]*-[0-9]*' -o \
+          -name '*.pre-remove.[0-9]*-[0-9]*' -o \
+          -name '*.upstream.[0-9]*-[0-9]*' \) \
+       \( -type f -o -type l \) -print 2>/dev/null | \
+  while IFS= read -r backup; do
+    local base kind ts target ftype
+    base="${backup##*/}"
+    case "$base" in
+      *.pre-update.[0-9]*-[0-9]*) kind=pre-update ;;
+      *.pre-remove.[0-9]*-[0-9]*) kind=pre-remove ;;
+      *.upstream.[0-9]*-[0-9]*)   kind=upstream ;;
+      *) continue ;;
+    esac
+    ts="${backup##*.}"
+    target="${backup%.${kind}.${ts}}"
+    if [ -L "$backup" ]; then
+      ftype=symlink
+    else
+      ftype=file
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$target" "$backup" "$ts" "$ftype"
+  done
+}
+
+_rollback_list() {
+  local home_claude="$HOME_DIR/.claude"
+  local c_yellow=$'\033[33m' c_red=$'\033[31m' c_cyan=$'\033[36m' c_dim=$'\033[2m' c_off=$'\033[0m'
+  local tsv
+  tsv=$(_rollback_discover)
+  if [ -z "$tsv" ]; then
+    echo "No rollback artifacts under $home_claude."
+    echo "(install.sh creates them under .pre-update.<ts> / .pre-remove.<ts> / .upstream.<ts>.)"
+    return 0
+  fi
+
+  echo "Rollback artifacts under $home_claude"
+  echo
+
+  _rollback_list_kind() {
+    local kind="$1" glyph="$2" color="$3" label="$4"
+    local rows
+    rows=$(printf '%s\n' "$tsv" | awk -F'\t' -v k="$kind" '$1==k')
+    printf '%s%s%s %s — %s\n' "$color" "$glyph" "$c_off" "$kind" "$label"
+    if [ -z "$rows" ]; then
+      printf '  %s(none)%s\n\n' "$c_dim" "$c_off"
+      return 0
+    fi
+    printf '%s\n' "$rows" | awk -F'\t' '
+      { tgt=$2; ts=$4; ftype=$5
+        count[tgt]++
+        if (ts > latest[tgt]) { latest[tgt]=ts; latest_ftype[tgt]=ftype }
+      }
+      END {
+        for (t in count) printf "%s\t%d\t%s\t%s\n", t, count[t], latest[t], latest_ftype[t]
+      }' | sort | while IFS=$'\t' read -r target count latest ftype; do
+      local display plural
+      display="${target/#$HOME_DIR/~}"
+      [ "$count" -eq 1 ] && plural="" || plural="s"
+      if [ "$kind" = "upstream" ]; then
+        printf '  %-58s (%d backup%s, latest %s, %s)\n' \
+          "$display" "$count" "$plural" "$latest" "$ftype"
+      else
+        printf '  %-58s (%d backup%s, latest %s)\n' \
+          "$display" "$count" "$plural" "$latest"
+      fi
+    done
+    echo
+  }
+
+  _rollback_list_kind pre-update '~' "$c_yellow" "saved before overwriting on update"
+  _rollback_list_kind pre-remove '-' "$c_red"    "saved before deletion on update"
+  _rollback_list_kind upstream   '≈' "$c_cyan"   "A2 preserve siblings (drift indicators)"
+
+  local total pu pr up plural
+  total=$(printf '%s\n' "$tsv" | wc -l | tr -d ' ')
+  pu=$(printf '%s\n' "$tsv" | awk -F'\t' '$1=="pre-update"' | wc -l | tr -d ' ')
+  pr=$(printf '%s\n' "$tsv" | awk -F'\t' '$1=="pre-remove"' | wc -l | tr -d ' ')
+  up=$(printf '%s\n' "$tsv" | awk -F'\t' '$1=="upstream"' | wc -l | tr -d ' ')
+  [ "$total" -eq 1 ] && plural="" || plural="s"
+  printf '%sTotal:%s %d backup artifact%s (%d pre-update, %d pre-remove, %d upstream)\n\n' \
+    "$c_dim" "$c_off" "$total" "$plural" "$pu" "$pr" "$up"
+
+  cat <<'EOF'
+Verbs:
+  Restore one:     forge-context.sh rollback-install restore <target>
+  Accept update:   forge-context.sh rollback-install accept-upstream <target>
+  Prune old ones:  forge-context.sh rollback-install clean [--keep-last N] [--older-than DAYS]
+EOF
+}
+
+_rollback_restore() {
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    echo "rollback-install restore: missing <target> argument." >&2
+    echo "Usage: forge-context.sh rollback-install restore <target>" >&2
+    echo "(run 'rollback-install list' to see available targets)" >&2
+    return 1
+  fi
+
+  # Normalize the target path. Accept either an absolute path or one with a
+  # leading ~ that the shell didn't expand. Strip a trailing backup suffix in
+  # case the user pasted a backup path by mistake — they almost certainly meant
+  # the underlying target.
+  case "$target" in
+    '~'/*) target="$HOME_DIR/${target#'~'/}" ;;
+  esac
+  case "$target" in
+    *.pre-update.[0-9]*-[0-9]*|*.pre-remove.[0-9]*-[0-9]*|*.upstream.[0-9]*-[0-9]*)
+      local suffix="${target##*.}"
+      local kind_part="${target%.*}"; kind_part="${kind_part##*.}"
+      target="${target%.${kind_part}.${suffix}}"
+      echo "(interpreting as target: $target)"
+      ;;
+  esac
+
+  # Find latest .pre-update / .pre-remove backup for this target. (We
+  # deliberately exclude .upstream — that's accept-upstream's domain.)
+  local row backup kind ts
+  row=$(_rollback_discover | awk -F'\t' -v t="$target" '
+    ($1=="pre-update" || $1=="pre-remove") && $2==t' | sort -t $'\t' -k4 | tail -1)
+  if [ -z "$row" ]; then
+    echo "No .pre-update or .pre-remove backups found for: $target" >&2
+    echo "(run 'rollback-install list' to see what's available; .upstream backups need accept-upstream)" >&2
+    return 1
+  fi
+  kind=$(printf '%s\n' "$row" | awk -F'\t' '{print $1}')
+  backup=$(printf '%s\n' "$row" | awk -F'\t' '{print $3}')
+  ts=$(printf '%s\n' "$row" | awk -F'\t' '{print $4}')
+
+  echo "Restoring from: $backup"
+  echo "        target: $target"
+  echo "        kind:   $kind (saved $ts)"
+  echo
+
+  # Show the diff between backup and current target. Three sub-cases:
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    echo "Diff (backup → current target, up to 60 lines):"
+    diff -u "$backup" "$target" 2>/dev/null | head -60 || true
+    echo
+  else
+    echo "(target currently absent on disk — restore will re-create it)"
+    echo
+  fi
+
+  # Conservative default: N. Destructive op.
+  local answer
+  if [ -t 0 ]; then
+    printf "Apply restore? [y/N] " >/dev/tty
+    read -r answer </dev/tty
+  else
+    echo "(non-tty: refusing to apply restore without explicit --yes — aborting)" >&2
+    return 1
+  fi
+  case "${answer:-N}" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted (no changes)."; return 0 ;;
+  esac
+
+  # Save current state before overwriting, so the rollback is itself reversible.
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    local pre_rollback_ts
+    pre_rollback_ts=$(date +%Y%m%d-%H%M%S)
+    local pre_rollback="${target}.pre-rollback.${pre_rollback_ts}"
+    cp -p "$target" "$pre_rollback" 2>/dev/null || cp "$target" "$pre_rollback"
+    echo "Saved current state to: $pre_rollback"
+  fi
+
+  # Atomic-ish replace: write to .tmp sibling, then mv into place.
+  local tmp="${target}.restore.tmp.$$"
+  mkdir -p "$(dirname "$target")"
+  cp -p "$backup" "$tmp" 2>/dev/null || cp "$backup" "$tmp"
+  mv -f "$tmp" "$target"
+  echo "Restored: $target"
+}
+
+_rollback_accept_upstream() {
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    echo "rollback-install accept-upstream: missing <target> argument." >&2
+    echo "Usage: forge-context.sh rollback-install accept-upstream <target>" >&2
+    echo "(run 'rollback-install list' to see available targets with ≈ markers)" >&2
+    return 1
+  fi
+
+  case "$target" in
+    '~'/*) target="$HOME_DIR/${target#'~'/}" ;;
+  esac
+  case "$target" in
+    *.upstream.[0-9]*-[0-9]*)
+      local suffix="${target##*.}"
+      local kind_part="${target%.*}"; kind_part="${kind_part##*.}"
+      target="${target%.${kind_part}.${suffix}}"
+      echo "(interpreting as target: $target)"
+      ;;
+  esac
+
+  local row backup ts ftype
+  row=$(_rollback_discover | awk -F'\t' -v t="$target" '$1=="upstream" && $2==t' | sort -t $'\t' -k4 | tail -1)
+  if [ -z "$row" ]; then
+    echo "No .upstream sibling found for: $target" >&2
+    echo "(only A2 preserve-policy files get .upstream siblings — see 'rollback-install list')" >&2
+    return 1
+  fi
+  backup=$(printf '%s\n' "$row" | awk -F'\t' '{print $3}')
+  ts=$(printf '%s\n' "$row" | awk -F'\t' '{print $4}')
+  ftype=$(printf '%s\n' "$row" | awk -F'\t' '{print $5}')
+
+  echo "Accept upstream from: $backup"
+  echo "              target: $target"
+  echo "              saved:  $ts (sibling is a $ftype)"
+  echo
+
+  # Detect drift first so we don't bother the user when there's nothing to do.
+  local in_sync=0
+  if [ -L "$backup" ] && [ -L "$target" ]; then
+    [ "$(readlink "$backup")" = "$(readlink "$target")" ] && in_sync=1
+  elif [ ! -L "$backup" ] && [ -f "$backup" ] && [ ! -L "$target" ] && [ -f "$target" ]; then
+    cmp -s "$backup" "$target" && in_sync=1
+  fi
+  if [ "$in_sync" = "1" ]; then
+    echo "Target is already in sync with upstream. Nothing to do."
+    return 0
+  fi
+
+  # Show what would change, varying by file/symlink combinations.
+  if [ -L "$backup" ]; then
+    echo "Upstream sibling is a symlink → $(readlink "$backup")"
+    if [ -L "$target" ]; then
+      echo "Current target is a symlink → $(readlink "$target")"
+      echo "(accept-upstream will re-point the target symlink to the upstream destination.)"
+    elif [ -e "$target" ]; then
+      echo "Current target is a regular file ($(wc -c <"$target" | tr -d ' ') bytes)."
+      echo "(accept-upstream will replace the file with a symlink to the upstream destination.)"
+    else
+      echo "Current target does not exist."
+      echo "(accept-upstream will create a symlink to the upstream destination.)"
+    fi
+  else
+    if [ -L "$target" ]; then
+      echo "Current target is a symlink → $(readlink "$target")"
+      echo "(accept-upstream will replace the symlink with the upstream file content.)"
+    elif [ -e "$target" ]; then
+      echo "Diff (current target → upstream, up to 60 lines):"
+      diff -u "$target" "$backup" 2>/dev/null | head -60 || true
+    else
+      echo "Current target does not exist. (accept-upstream will create it from upstream.)"
+    fi
+  fi
+  echo
+
+  local answer
+  if [ -t 0 ]; then
+    printf "Apply accept-upstream? [y/N] " >/dev/tty
+    read -r answer </dev/tty
+  else
+    echo "(non-tty: refusing to apply accept-upstream without explicit --yes — aborting)" >&2
+    return 1
+  fi
+  case "${answer:-N}" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted (no changes)."; return 0 ;;
+  esac
+
+  # Save current state (file or symlink) before overwriting.
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    local pre_rollback_ts pre_rollback
+    pre_rollback_ts=$(date +%Y%m%d-%H%M%S)
+    pre_rollback="${target}.pre-rollback.${pre_rollback_ts}"
+    if [ -L "$target" ]; then
+      cp -P "$target" "$pre_rollback"
+    else
+      cp -p "$target" "$pre_rollback" 2>/dev/null || cp "$target" "$pre_rollback"
+    fi
+    echo "Saved current state to: $pre_rollback"
+  fi
+
+  mkdir -p "$(dirname "$target")"
+  if [ -L "$backup" ]; then
+    local link_dst
+    link_dst=$(readlink "$backup")
+    rm -f "$target"
+    ln -s "$link_dst" "$target"
+  else
+    local tmp="${target}.accept.tmp.$$"
+    cp -p "$backup" "$tmp" 2>/dev/null || cp "$backup" "$tmp"
+    [ -L "$target" ] && rm -f "$target"
+    mv -f "$tmp" "$target"
+  fi
+  echo "Accepted upstream: $target"
+}
+
+_rollback_clean() {
+  local keep_last=3 older_than="" dry_run=0 assume_yes=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --keep-last)
+        shift; keep_last="${1:-}"
+        if ! [[ "$keep_last" =~ ^[0-9]+$ ]]; then
+          echo "clean: --keep-last requires a non-negative integer (got: ${keep_last:-<missing>})" >&2
+          return 1
+        fi
+        if [ "$keep_last" -eq 0 ]; then
+          echo "clean: refusing --keep-last 0 (would delete ALL backups including the most recent)." >&2
+          echo "If that's really what you want, delete them manually with find(1)." >&2
+          return 1
+        fi
+        ;;
+      --older-than)
+        shift; older_than="${1:-}"
+        if ! [[ "$older_than" =~ ^[0-9]+$ ]] || [ "$older_than" -lt 1 ]; then
+          echo "clean: --older-than requires a positive integer (days) (got: ${older_than:-<missing>})" >&2
+          return 1
+        fi
+        ;;
+      --dry-run) dry_run=1 ;;
+      --yes|-y) assume_yes=1 ;;
+      -h|--help|help)
+        cat <<'EOF'
+Usage: forge-context.sh rollback-install clean [options]
+
+Options:
+  --keep-last N      Keep the N newest backups per (kind, target). Default: 3.
+                     N=0 is refused (would wipe everything).
+  --older-than DAYS  Only delete backups older than DAYS days (combine with --keep-last
+                     to keep recent ones regardless of age).
+  --dry-run          Show what would be deleted, but make no changes.
+  --yes, -y          Skip the interactive prompt (required for non-tty use).
+
+By default, ALL backup kinds (.pre-update, .pre-remove, .upstream) are eligible
+for pruning. The keep-last default of 3 is conservative enough to preserve at
+least one .upstream sibling per A2 target in normal use.
+EOF
+        return 0
+        ;;
+      *)
+        echo "clean: unknown argument '$1'" >&2
+        echo "(run 'rollback-install clean --help' for usage)" >&2
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  local tsv
+  tsv=$(_rollback_discover)
+  if [ -z "$tsv" ]; then
+    echo "No rollback artifacts to clean."
+    return 0
+  fi
+
+  local cutoff=""
+  if [ -n "$older_than" ]; then
+    cutoff=$(date -v-"${older_than}"d +%Y%m%d-%H%M%S 2>/dev/null \
+             || date -d "${older_than} days ago" +%Y%m%d-%H%M%S 2>/dev/null \
+             || echo "")
+    if [ -z "$cutoff" ]; then
+      echo "clean: could not compute cutoff date (date(1) compatibility)" >&2
+      return 1
+    fi
+  fi
+
+  local delete_list
+  delete_list=$(printf '%s\n' "$tsv" | sort -t $'\t' -k1,1 -k2,2 -k4,4r | awk -F'\t' -v keep="$keep_last" -v cutoff="$cutoff" '
+    {
+      key = $1 "\t" $2
+      seen[key]++
+      if (seen[key] <= keep) next
+      if (cutoff != "" && $4 >= cutoff) next
+      print $0
+    }')
+
+  if [ -z "$delete_list" ]; then
+    echo "Nothing to clean — all backups within keep-last=$keep_last${older_than:+ and newer than $older_than days}."
+    return 0
+  fi
+
+  local count
+  count=$(printf '%s\n' "$delete_list" | wc -l | tr -d ' ')
+
+  if [ "$dry_run" = "1" ]; then
+    echo "Dry-run — would delete $count backup file(s):"
+  else
+    echo "Will delete $count backup file(s):"
+  fi
+  printf '%s\n' "$delete_list" | awk -F'\t' -v home="$HOME_DIR" '
+    { d=$3; sub("^" home, "~", d); printf "  %s (%s)\n", d, $1 }'
+  echo
+
+  if [ "$dry_run" = "1" ]; then
+    echo "(dry-run — no changes made; rerun without --dry-run to apply)"
+    return 0
+  fi
+
+  if [ "$assume_yes" = "1" ]; then
+    :  # skip prompt
+  elif [ -t 0 ]; then
+    local answer
+    printf "Delete these %d file(s)? [y/N] " "$count" >/dev/tty
+    read -r answer </dev/tty
+    case "${answer:-N}" in
+      y|Y|yes|YES) ;;
+      *) echo "Aborted (no changes)."; return 0 ;;
+    esac
+  else
+    echo "(non-tty: refusing to delete without explicit --yes — aborting)" >&2
+    return 1
+  fi
+
+  local deleted=0 failed=0
+  while IFS=$'\t' read -r kind target backup ts ftype; do
+    if rm -f "$backup" 2>/dev/null; then
+      deleted=$((deleted + 1))
+    else
+      failed=$((failed + 1))
+      echo "  [!] failed to delete: $backup" >&2
+    fi
+  done <<EOF
+$delete_list
+EOF
+  echo "Deleted: $deleted / $count"
+  [ "$failed" -gt 0 ] && return 1
+  return 0
 }
 
 # ── Subcommand: wrap-up-state ─────────────────────────────────────────
@@ -2894,6 +3382,7 @@ case "$SUBCMD" in
   weekly-wrap-due)     do_weekly_wrap_due ;;
   mark-weekly-wrap-done) do_mark_weekly_wrap_done ;;
   check-install)       do_check_install ;;
+  rollback-install)    do_rollback_install "${@:2}" ;;
   set-marker)          do_set_marker "${@:2}" ;;
   append-braindump)    do_append_braindump "${@:2}" ;;
   append-friction)     do_append_friction "${@:2}" ;;
@@ -2911,7 +3400,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
     exit 1
     ;;
 esac
