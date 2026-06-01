@@ -250,9 +250,9 @@ session_owns_forge() {
 # Used to gate maintainer-only surfaces (open-task audit, BACKLOG staleness
 # audit) from session-entry output so end-user mode stays focused on project
 # work. Persona-level gates (Petra's proactive suggestions about
-# decisions/INDEX/OVERVIEW/etc.) live in the forge SKILL.md "Maintainer mode"
-# section — this script-level gate complements them by suppressing the raw
-# audit data that would otherwise feed those suggestions.
+# decisions/INDEX/BACKLOG/vault-hygiene/etc.) live in the forge SKILL.md
+# "Maintainer mode" section — this script-level gate complements them by
+# suppressing the raw audit data that would otherwise feed those suggestions.
 is_maintainer_mode() {
   [ -f "$FORGE_CONF" ] || return 1
   grep -q '^MAINTAINER_MODE=true$' "$FORGE_CONF"
@@ -2255,7 +2255,7 @@ do_vault_sync() {
     # Suggested commit message — based on top-level dir + first-file path shape.
     local suggested_msg first_file project_path
     case "$toplevel" in
-      _shared)    suggested_msg="shared: update cross-project vault state" ;;
+      _shared)    suggested_msg="shared: update shared/cross-cutting vault state" ;;
       _templates) suggested_msg="templates: update vault templates" ;;
       _meta)      suggested_msg="meta: update vault metadata" ;;
       "(root)")   suggested_msg="vault: root-level updates" ;;
