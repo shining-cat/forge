@@ -453,6 +453,63 @@ build_manifest() {
   build_pairs | cut -f2
 }
 
+# validate_preserved_a2_files — warn if any A2-preserve file is syntactically broken.
+#
+# A2-preserve (Slice 3, PR #42) intentionally keeps locally-modified versions of
+# power-user-tunable files (statusline.sh, forge-tmux.conf, reference symlinks)
+# across install runs. The policy correctly preserves files but has no way to
+# know if the local modifications are *valid* — bash syntax errors, invalid
+# JSON, etc., all get preserved equally.
+#
+# 2026-05-28 ~> 2026-06-01: `~/.claude/statusline.sh` had `fi#` (missing space
+# between `fi` and a trailing comment) from unflushed Slice 3 smoke-test
+# mutations. A2-preserve faithfully preserved the broken file on every install;
+# Claude Code's statusline-script failure is silent → 4 days of statusline
+# blackout that no one noticed until the user reported it by eye.
+#
+# This pass catches the recurrence pattern: walk A2-preserve files, run a cheap
+# syntax check based on extension (.sh → bash -n, .json → jq empty), warn on
+# failures. Warnings only — does NOT fail the install (local state belongs to
+# the user; install just surfaces problems so they can fix them).
+#
+# Extensions without a cheap syntax check (.md, .conf, symlinks, etc.) are
+# skipped silently. Adding new checks: extend the case below.
+validate_preserved_a2_files() {
+  local pairs_output broken=()
+  pairs_output="$(build_pairs 2>/dev/null)" || return 0
+
+  while IFS=$'\t' read -r src dst type policy; do
+    [ "$policy" = "preserve" ] || continue
+    [ "$type" = "file" ] || continue
+    [ -f "$dst" ] || continue
+
+    case "$dst" in
+      *.sh)
+        bash -n "$dst" 2>/dev/null || broken+=("$dst|bash syntax error (try: bash -n $dst)")
+        ;;
+      *.json)
+        if command -v jq >/dev/null 2>&1; then
+          jq empty "$dst" >/dev/null 2>&1 || broken+=("$dst|invalid JSON (try: jq empty $dst)")
+        fi
+        ;;
+      # .md, .conf, others — no cheap syntax check, skip silently.
+    esac
+  done <<< "$pairs_output"
+
+  if [ "${#broken[@]}" -gt 0 ]; then
+    echo ""
+    warn "A2-preserve file(s) appear broken — install kept them as-is per policy."
+    hint "These are files where install preserves your local edits (statusline.sh, etc.)."
+    hint "Diff against the .upstream.<timestamp> sibling and restore the parts you need."
+    local entry path reason
+    for entry in "${broken[@]}"; do
+      path="${entry%%|*}"
+      reason="${entry#*|}"
+      printf "    %s  ${YELLOW}(%s)${NC}\n" "$path" "$reason"
+    done
+  fi
+}
+
 # files_equal — return 0 if dst matches what install.sh would write for src+type.
 # Returns 1 on missing dst or content/target mismatch.
 #
@@ -1576,6 +1633,14 @@ if [ "$DRY_RUN" = false ]; then
   build_manifest > "${manifest}.tmp" && mv "${manifest}.tmp" "$manifest"
   manifest_count=$(wc -l < "$manifest" | tr -d ' ')
   ok "Manifest written ($manifest_count paths tracked at .forge-manifest)"
+fi
+
+# ─── A2-preserve file validation ─────────────────────────────────────────────
+# Warn (don't fail) if any A2-preserve file has a detectable syntax error.
+# Catches smoke-test residue, half-saved edits, etc. — see function KDoc.
+# Skipped on dry-run (we never wrote anything, nothing to validate).
+if [ "$DRY_RUN" = false ]; then
+  validate_preserved_a2_files
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
