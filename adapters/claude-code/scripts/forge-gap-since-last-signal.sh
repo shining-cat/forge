@@ -11,11 +11,15 @@
 #     stale (no, if the user was Forge-idle for 14h)
 #
 # Signal sources (max() across all that exist):
-#   - $VAULT_PATH/_shared/current-checkpoint.md           mtime
 #   - $VAULT_PATH/_shared/forge-active                    mtime (only when JSON, not __pending__/empty)
 #   - $VAULT_PATH/*/*/current-checkpoint.md               mtime (every project, every env)
 #   - $VAULT_PATH/*/*/braindump.md                        mtime (every project, every env)
 #   - vault git: `git log -1 --format=%ct`                most recent commit timestamp
+#
+# (Historical: $VAULT_PATH/_shared/current-checkpoint.md was a signal source
+# until 2026-06-01. Removed per decision `petra-single-project-scope` which
+# deleted the cross-project checkpoint artifact. Per-project checkpoints
+# remain as signals.)
 #
 # Wake/boot (kern.waketime, kern.boottime on macOS) are NOT counted as signals —
 # the user being awake is not Forge activity. They are surfaced in --verbose
@@ -75,10 +79,7 @@ add_source() {
   fi
 }
 
-# 1. Shared cross-project checkpoint
-add_source "_shared/current-checkpoint.md" "$(mtime "$VAULT_PATH/_shared/current-checkpoint.md")"
-
-# 2. forge-active marker — only count when it holds a real JSON marker.
+# 1. forge-active marker — only count when it holds a real JSON marker.
 #    Empty / __pending__ / unreadable contribute nothing.
 MARKER_FILE="$VAULT_PATH/_shared/forge-active"
 if [ -f "$MARKER_FILE" ]; then
@@ -96,7 +97,7 @@ if [ -f "$MARKER_FILE" ]; then
   esac
 fi
 
-# 3. + 4. Every per-project checkpoint and braindump under VAULT_PATH/*/*/
+# 2. + 3. Every per-project checkpoint and braindump under VAULT_PATH/*/*/
 #    Glob is project-agnostic by design — a write in PROJ-A is a Forge signal
 #    even when we're now in PROJ-B.
 shopt -s nullglob

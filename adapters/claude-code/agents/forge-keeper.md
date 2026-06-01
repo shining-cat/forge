@@ -26,7 +26,7 @@ Vault root is the `VAULT_PATH` value in `~/.claude/forge.conf`. Active project c
 - Project index: `${VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md`
 - Project backlog: `${VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md`
 - Open task files: `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/` (recurse — umbrella tasks live in subfolders named after the umbrella's slug)
-- Cross-project state: `${VAULT_PATH}/_shared/current-checkpoint.md`, `${VAULT_PATH}/_shared/OVERVIEW.md`
+- Shared/cross-cutting tasks: `${VAULT_PATH}/_shared/tasks/open/` — the `_shared` folder behaves like another project for task purposes (decision `2026-06-01-petra-single-project-scope` removed cross-project synthesis; `_shared` remains as a bucket for cross-cutting work)
 
 ## Behavior
 

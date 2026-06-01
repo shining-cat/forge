@@ -188,13 +188,12 @@ Forge tracks your work automatically at multiple levels:
 
 ```
 {vault}/
-├── _shared/                    # Cross-project
-│   ├── OVERVIEW.md             # All projects at a glance
-│   ├── current-checkpoint.md   # Forge-level work state
+├── _shared/                    # Shared / cross-cutting work
 │   ├── friction-log.md         # What went wrong and why
 │   ├── wind-down-phrases.json  # Personal end-of-day vocabulary (learned)
-│   ├── decisions/              # Cross-project decisions
-│   └── tasks/                  # Open and resolved tasks
+│   ├── decisions/              # Decisions that span projects
+│   └── tasks/                  # Cross-cutting tasks (the `_shared` folder
+│                               #   behaves like another project for tasks)
 ├── _templates/                 # Note templates
 ├── _meta/                      # Blueprint, changelog
 └── {project}/                  # Per-project (or {env}/{project}/)
@@ -233,7 +232,7 @@ The list is vault-resident — it travels with your vault across machines.
 
 Two postures, picked during onboarding (and flippable anytime via `MAINTAINER_MODE` in `~/.claude/forge.conf`):
 
-- **End-user mode (default, `MAINTAINER_MODE=false`)** — Petra stays focused on your project work. Forge's own machinery (decisions/INDEX/OVERVIEW maintenance, friction-log curation, BACKLOG triage, vault hygiene threads) doesn't get surfaced as ambient suggestions. Session-entry recovery skips the open-task and BACKLOG-staleness audits to keep the summary tight.
+- **End-user mode (default, `MAINTAINER_MODE=false`)** — Petra stays focused on your project work. Forge's own machinery (decisions/INDEX maintenance, friction-log curation, BACKLOG triage, vault hygiene threads) doesn't get surfaced as ambient suggestions. Session-entry recovery skips the open-task and BACKLOG-staleness audits to keep the summary tight.
 - **Maintainer mode (`MAINTAINER_MODE=true`)** — for people extending Forge itself (adding skills, tuning hooks, reshaping the vault layout). Audit surfaces fire at every session entry, Petra proactively suggests vault-hygiene threads (friction-log promotions, decision archival, stale-task triage), and `decisions/` / `INDEX.md` get treated as actionable surfaces rather than noise.
 
 What stays identical in both modes:
@@ -246,7 +245,7 @@ What changes in user mode (suppressed by default):
 |---|---|
 | Open-task audit (`Possibly-shipped tasks (>Nd, not in checkpoint)`) at session entry | `forge-context.sh` (script-level) |
 | BACKLOG staleness audit at session entry | `forge-context.sh` (script-level) |
-| Petra proactively raising friction-log / decisions / INDEX / OVERVIEW / BACKLOG / vault-hygiene threads in checkpoint Next-Steps | `forge/SKILL.md` (persona-level) |
+| Petra proactively raising friction-log / decisions / INDEX / BACKLOG / vault-hygiene threads in checkpoint Next-Steps | `forge/SKILL.md` (persona-level) |
 | Keeper writing meta-work items into Next-Steps / Open-follow-up sections | `keeper/SKILL.md` (persona-level) |
 
 End-user mode doesn't disable these capabilities — you can still ask for any of them explicitly, or run the audits one-off:

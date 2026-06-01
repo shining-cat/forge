@@ -61,7 +61,7 @@ At natural checkpoints (task done, topic shift, before long ops, user request), 
 - Always OVERWRITE, never append
 - **After context compression**: immediately read `current-checkpoint.md` to reorient
 - Archive old checkpoints to `checkpoints/` with date prefix if needed
-- **Respect `MAINTAINER_MODE`** (read from `~/.claude/forge.conf`): when `MAINTAINER_MODE=false` (default), do NOT write meta-work into the **Next steps** / **Open follow-up** sections — friction-log curation, decisions/ archival, INDEX.md grooming, OVERVIEW.md updates, BACKLOG triage, vault hygiene, forge-internal audits all stay out unless the user explicitly asked for them in the current session. Project work is what belongs in Next steps. (See the **Maintainer mode** rule in the `forge` skill for the full meta-work definition.)
+- **Respect `MAINTAINER_MODE`** (read from `~/.claude/forge.conf`): when `MAINTAINER_MODE=false` (default), do NOT write meta-work into the **Next steps** / **Open follow-up** sections — friction-log curation, decisions/ archival, INDEX.md grooming, BACKLOG triage, vault hygiene, forge-internal audits all stay out unless the user explicitly asked for them in the current session. Project work is what belongs in Next steps. (See the **Maintainer mode** rule in the `forge` skill for the full meta-work definition.)
 
 ## 3. PR Scope Monitoring
 

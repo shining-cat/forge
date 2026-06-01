@@ -146,12 +146,12 @@ Run the recovery script to get a structured summary of the project state:
 
 This replaces manually reading checkpoint, braindump, and breadcrumbs. The script outputs: checkpoint age, git branch/status, commits since checkpoint, brain dump contents, breadcrumb summary, and open PRs. It also truncates breadcrumbs for a fresh session.
 
-Still read separately (cross-project context not covered by recovery). Read `VAULT_PATH` from `~/.claude/forge.conf` for the vault root:
+Still read separately. Read `VAULT_PATH` from `~/.claude/forge.conf` for the vault root:
 
-1. `{VAULT_PATH}/_shared/OVERVIEW.md` — cross-project awareness (all projects, forge work, punctual tasks)
-2. `{VAULT_PATH}/_shared/current-checkpoint.md` — last known state of cross-project work (only if project != Forge — when project = Forge/forge, the project's own checkpoint at `{VAULT_PATH}/PERSO/forge/current-checkpoint.md` is used instead, picked up automatically by the recovery script via the routing in step 1)
-3. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
-4. **Run** `~/.claude/scripts/forge-context.sh friction-tail` for recent friction headlines (default: last 5 entries, one line each as `<date>  <title>`). This is the priming view — just enough to know what surfaced recently. If a headline looks relevant to the current work, re-run with `--full` (optionally with `N`, e.g. `friction-tail 3 --full`) to read the body of those entries. Pinned entries are hidden by default — use `--include-pinned` to surface them. Do NOT Read `friction-log.md` directly — the file grows unbounded and a naive Read charges the whole thing into context every session entry, driving compaction frequency. The log is a write-buffer maintained by the harvest flow (`harvest-friction`, `promote-friction`, `archive-friction-entries`, `bootstrap-harvest`); for the full subcommand surface, pinned-marker convention, promotion heuristic, and the orchestrated weekly-wrap harvest flow Petra runs, see `references/friction-harvest.md`.
+1. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
+2. **Run** `~/.claude/scripts/forge-context.sh friction-tail` for recent friction headlines (default: last 5 entries, one line each as `<date>  <title>`). This is the priming view — just enough to know what surfaced recently. If a headline looks relevant to the current work, re-run with `--full` (optionally with `N`, e.g. `friction-tail 3 --full`) to read the body of those entries. Pinned entries are hidden by default — use `--include-pinned` to surface them. Do NOT Read `friction-log.md` directly — the file grows unbounded and a naive Read charges the whole thing into context every session entry, driving compaction frequency. The log is a write-buffer maintained by the harvest flow (`harvest-friction`, `promote-friction`, `archive-friction-entries`, `bootstrap-harvest`); for the full subcommand surface, pinned-marker convention, promotion heuristic, and the orchestrated weekly-wrap harvest flow Petra runs, see `references/friction-harvest.md`.
+
+**Note:** cross-project synthesis (OVERVIEW.md, `_shared/current-checkpoint.md`) was explicitly removed from Petra's responsibility per decision `2026-06-01-petra-single-project-scope`. Petra's day-to-day attention is bounded to the active project; cross-project work happens at the weekly wrap, on-demand at user request, or via the vault folder structure browsed by the user directly.
 
 ### 2b. Load Knowledge Bases (optional)
 
@@ -317,7 +317,6 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 **End-user mode** (default): Petra is a working partner, not a forge-machinery curator. Suppress meta-work invitations from entry summaries, checkpoint Next-Steps, and proactive suggestions. Meta-work means:
 - Friction-log writes (unless the friction is about user-facing Forge behavior — see Refiner rule above)
 - `decisions/` curation, archival, INDEX.md maintenance
-- `_shared/OVERVIEW.md` updates
 - BACKLOG.md grooming / task triage
 - Vault hygiene tasks (template tuning, hook tweaks, skill polish)
 - Forge-internal audits ("should we revisit X?")
