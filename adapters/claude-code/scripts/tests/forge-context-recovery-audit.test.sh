@@ -15,6 +15,10 @@ setup() {
   TMP_CONF="$TMP/forge.conf"
   echo "VAULT_PATH=$TMP" > "$TMP_CONF"
   echo "REPO_ROOTS=$TMP/repos" >> "$TMP_CONF"
+  # Audit sections (open-task / BACKLOG-staleness) are gated on maintainer mode
+  # inside do_recover; end-user mode silently skips them. Tests target the
+  # audit-section behavior directly, so force maintainer mode here.
+  echo "MAINTAINER_MODE=true" >> "$TMP_CONF"
   mkdir -p "$TMP/_shared" "$TMP/repos/demo"
   # Real git repo on the mock project so recover's `git -C $PROJECT_DIR ...`
   # calls don't exit non-zero under set -euo pipefail (which would abort
@@ -141,9 +145,68 @@ echo "$out2" | grep -q "BACKLOG Staleness" \
   || { echo "  ✓ BACKLOG Staleness suppressed when gap <1d"; PASS=$((PASS+1)); }
 teardown
 
-# ── Check 5 — no audit output when nothing is stale ─────────────────────
+# ── Check 5 — stale task listed in BACKLOG active table is suppressed ───
 echo ""
-echo "Check 5 — clean vault produces no audit sections"
+echo "Check 5 — stale task present in BACKLOG active table is suppressed"
+setup
+plant_task "$TMP/PERSO/demo/tasks/open/2026-04-01-in-backlog.md" 14
+plant_task "$TMP/PERSO/demo/tasks/open/2026-04-01-not-in-backlog.md" 14
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+# BACKLOG with one task in the active table; the other absent entirely.
+cat > "$TMP/PERSO/demo/BACKLOG.md" <<'EOF'
+# demo BACKLOG
+
+| Task | Effort |
+|---|---|
+| [[2026-04-01-in-backlog]] | S |
+EOF
+# Touch backlog to "now" to avoid the separate BACKLOG-staleness signal
+# coupling into this test.
+touch "$TMP/PERSO/demo/BACKLOG.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "2026-04-01-in-backlog.md" \
+  && { echo "  ✗ task listed in BACKLOG active table was flagged"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ task in BACKLOG active table suppressed"; PASS=$((PASS+1)); }
+echo "$out" | grep -q "2026-04-01-not-in-backlog.md" \
+  && { echo "  ✓ task absent from BACKLOG still flagged"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ task absent from BACKLOG was wrongly suppressed"; FAIL=$((FAIL+1)); }
+teardown
+
+# ── Check 6 — task only mentioned in <details> block is NOT suppressed ──
+echo ""
+echo "Check 6 — task only in <details> history block is NOT suppressed"
+setup
+plant_task "$TMP/PERSO/demo/tasks/open/2026-04-01-history-only.md" 14
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+# BACKLOG where the slug only appears inside the collapsed history block.
+# The audit must IGNORE that mention — history-block presence means the work
+# previously shipped or got touched, not that the Keeper considers it open.
+cat > "$TMP/PERSO/demo/BACKLOG.md" <<'EOF'
+# demo BACKLOG
+
+| Task | Effort |
+|---|---|
+| (no active rows) | — |
+
+<details>
+<summary>Recently shipped</summary>
+
+- PR #1 — touched [[2026-04-01-history-only]] as a related artifact.
+
+</details>
+EOF
+touch "$TMP/PERSO/demo/BACKLOG.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "2026-04-01-history-only.md" \
+  && { echo "  ✓ task only in <details> history block still flagged"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ task only in <details> history block was wrongly suppressed"; FAIL=$((FAIL+1)); }
+teardown
+
+# ── Check 7 — no audit output when nothing is stale ─────────────────────
+echo ""
+echo "Check 7 — clean vault produces no audit sections"
 setup
 plant_task "$TMP/PERSO/demo/tasks/open/2026-05-20-fresh.md" 1
 : > "$TMP/PERSO/demo/current-checkpoint.md"

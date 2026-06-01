@@ -915,9 +915,15 @@ do_resolve_task() {
 # The drift pattern (shipped tasks left at `status: open`) is invisible to it. This
 # audit surfaces candidates: top-level *.md files in tasks/open/ where
 #   - mtime older than STALE_DAYS, AND
-#   - filename slug NOT mentioned anywhere in current-checkpoint.md
-# Both conditions together filter out actively-paused work. Visibility-only —
-# never auto-flips frontmatter; user/Claude verifies + flips per task.
+#   - filename slug NOT mentioned anywhere in current-checkpoint.md, AND
+#   - filename slug NOT present in the project's BACKLOG.md active tables
+#     (rows outside the collapsed `<details>` "Recently shipped" history block)
+# All three conditions together filter out actively-paused work. The BACKLOG
+# crosscheck closes a common false-positive: long-tail open tasks that the
+# Keeper has explicitly listed in BACKLOG.md but that aren't enumerated in a
+# `session: closed` EOD-summary checkpoint (so the checkpoint-only filter
+# misses them after a weekend gap). Visibility-only — never auto-flips
+# frontmatter; user/Claude verifies + flips per task.
 #
 # Also flags `tasks/done/` folders as one-time-migration prompts. `resolved/` is
 # the canonical bucket; `done/` is a legacy alias caught in FINN on 2026-05-21.
@@ -926,13 +932,27 @@ audit_open_tasks_one() {
   local proj_dir="$1"
   local open_dir="$proj_dir/tasks/open"
   local checkpoint="$proj_dir/current-checkpoint.md"
+  local backlog="$proj_dir/BACKLOG.md"
   [ -d "$open_dir" ] || return 0
 
-  local now stale_threshold_secs cp_text
+  local now stale_threshold_secs cp_text backlog_active
   now="$(date +%s)"
   stale_threshold_secs=$(( STALE_TASK_DAYS * 86400 ))
   cp_text=""
   [ -f "$checkpoint" ] && cp_text="$(cat "$checkpoint" 2>/dev/null)"
+
+  # Extract BACKLOG content OUTSIDE any `<details>...</details>` block. The
+  # convention: active prioritized rows live in plain markdown tables; closed
+  # work is collapsed into a `<details>` "Recently shipped" history block at
+  # the bottom. We only treat the active region as "Keeper says this is open".
+  backlog_active=""
+  if [ -f "$backlog" ]; then
+    backlog_active="$(awk '
+      /<details/    { in_details=1; next }
+      /<\/details>/ { in_details=0; next }
+      !in_details   { print }
+    ' "$backlog" 2>/dev/null)"
+  fi
 
   local f base slug short_slug mtime age_secs age_days
   while IFS= read -r -d '' f; do
@@ -948,6 +968,11 @@ audit_open_tasks_one() {
     if [ -n "$cp_text" ]; then
       printf '%s' "$cp_text" | grep -qF "$slug" 2>/dev/null && continue
       printf '%s' "$cp_text" | grep -qF "$short_slug" 2>/dev/null && continue
+    fi
+
+    if [ -n "$backlog_active" ]; then
+      printf '%s' "$backlog_active" | grep -qF "$slug" 2>/dev/null && continue
+      printf '%s' "$backlog_active" | grep -qF "$short_slug" 2>/dev/null && continue
     fi
 
     age_days=$(( age_secs / 86400 ))
