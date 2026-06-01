@@ -31,6 +31,83 @@ VAULT_DRIFT_COMMITS_AHEAD=5
 VAULT_DRIFT_DIRTY_FILES=10
 VAULT_DRIFT_DAYS_SINCE=7
 
+# ── Per-repo vault audit helpers (used by do_recover's vault-state section) ──
+# Vault can host nested `.git` directories (e.g. Vault/PRO/.git → Schibsted GHEC
+# while outer Vault/.git → personal GitHub). Outer's .gitignore excludes the
+# nested subtree, so nested drift is invisible to a naive outer-only audit.
+# These helpers audit one repo at a time so the driver in do_recover can iterate.
+
+# Build a short, user-readable label for a vault repo: "<rel-path> → <remote-host>".
+# Outer repo (path == VAULT_PATH) shows as "vault root". Nested repos show their
+# relative subpath. "(no remote)" if no origin is configured.
+vault_repo_label() {
+  local repo_path="$1"
+  local rel host
+  if [ "$repo_path" = "$VAULT_PATH" ]; then
+    rel="vault root"
+  else
+    rel="${repo_path#$VAULT_PATH/}/"
+  fi
+  # Extract the host (or SSH alias) from the origin URL: works for
+  #   https://host/owner/repo(.git)?           → host
+  #   git@host:owner/repo(.git)?               → host
+  #   ssh://git@host[:port]/owner/repo(.git)?  → host
+  # If origin is missing, host stays empty (label drops the arrow segment).
+  host="$(git -C "$repo_path" remote get-url origin 2>/dev/null \
+    | sed -E 's#^https?://([^/]+)/.*#\1#; s#^ssh://[^@]+@([^/:]+).*#\1#; s#^[^@]+@([^:]+):.*#\1#' \
+    || true)"
+  if [ -n "$host" ]; then
+    echo "$rel → $host"
+  else
+    echo "$rel (no remote)"
+  fi
+}
+
+# Audit one vault repo. Prints one status line prefixed with [label] (clean or
+# detailed counts), and returns 0 if any drift threshold trips, 1 otherwise.
+# The caller decides what to do with the aggregated drift signal.
+audit_one_vault_repo() {
+  local repo_path="$1" label="$2" has_upstream="$3"
+  local dirty ahead behind untracked_dirs status_text
+  dirty="$(git -C "$repo_path" status --short 2>/dev/null | wc -l | tr -d ' ')"
+  ahead="$(git -C "$repo_path" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+  behind="$(git -C "$repo_path" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
+  untracked_dirs="$(git -C "$repo_path" status --short 2>/dev/null \
+    | awk '/^\?\?/ {print $2}' | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ')"
+
+  if [ "$dirty" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$behind" -eq 0 ]; then
+    if [ "$has_upstream" -eq 1 ]; then
+      status_text="Clean, in sync with origin."
+    else
+      status_text="Clean. (No remote — stays on your laptop.)"
+    fi
+    echo "[$label] $status_text"
+  else
+    local parts=()
+    [ "$dirty" -gt 0 ]          && parts+=("Dirty: $dirty")
+    [ "$untracked_dirs" -gt 0 ] && parts+=("Untracked dirs: $untracked_dirs")
+    [ "$ahead" -gt 0 ]          && parts+=("Unpushed: $ahead")
+    [ "$behind" -gt 0 ]         && parts+=("Behind: $behind")
+    # Join with " · " separator (IFS-based join only takes the first char).
+    local joined
+    printf -v joined '%s · ' "${parts[@]}"
+    joined="${joined% · }"
+    echo "[$label] $joined"
+  fi
+
+  # Drift threshold check — return 0 (drift) if any threshold trips, else 1.
+  local last_ts age_days=0
+  last_ts="$(git -C "$repo_path" log -1 --format=%ct 2>/dev/null || echo 0)"
+  [ "$last_ts" -gt 0 ] && age_days=$(( ( $(date +%s) - last_ts ) / 86400 ))
+
+  if [ "$dirty" -ge "$VAULT_DRIFT_DIRTY_FILES" ] \
+    || [ "$ahead" -ge "$VAULT_DRIFT_COMMITS_AHEAD" ] \
+    || [ "$age_days" -ge "$VAULT_DRIFT_DAYS_SINCE" ]; then
+    return 0
+  fi
+  return 1
+}
+
 # Brain-dump nag interval (minutes since last entry) — override via forge.conf
 # by setting `BRAINDUMP_INTERVAL_MIN=<int>`. Default 10. Tester item #7.
 BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
@@ -1259,47 +1336,47 @@ for pr in json.load(sys.stdin):
   # Loss of laptop = loss of all decisions/checkpoints/plans if the vault never gets pushed.
   # Header + warning wording is self-orienting (signals "your vault, not the Forge source repo")
   # so first-time users don't pattern-match "uncommitted" to "I should push to shining-cat/forge".
+  #
+  # Multi-repo aware: the vault can host nested `.git` directories (e.g. Vault/PRO/.git
+  # mounted to a Schibsted GHEC remote, while the outer Vault/.git syncs to a personal
+  # GitHub). The outer's .gitignore excludes nested-repo subtrees, so PRO drift would
+  # be invisible to a naive outer-only audit. We scan one level deep under VAULT_PATH
+  # for additional `.git` dirs and audit each independently; thresholds apply per-repo;
+  # the drift nudge fires when ANY repo trips. Discovered 2026-05-29 — task
+  # 2026-05-29-vault-audit-nested-pro-repo.
   if [ -d "$VAULT_PATH/.git" ]; then
     echo ""
     echo "--- Your vault (local history) ---"
-    local vault_dirty vault_ahead vault_behind vault_untracked_dirs vault_has_upstream
-    vault_dirty="$(git -C "$VAULT_PATH" status --short 2>/dev/null | wc -l | tr -d ' ')"
-    vault_ahead="$(git -C "$VAULT_PATH" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
-    vault_behind="$(git -C "$VAULT_PATH" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)"
-    vault_untracked_dirs="$(git -C "$VAULT_PATH" status --short 2>/dev/null | awk '/^\?\?/ {print $2}' | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ')"
-    vault_has_upstream=0
-    if git -C "$VAULT_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-      vault_has_upstream=1
-    fi
 
-    if [ "$vault_dirty" -eq 0 ] && [ "$vault_ahead" -eq 0 ] && [ "$vault_behind" -eq 0 ]; then
-      if [ "$vault_has_upstream" -eq 1 ]; then
-        echo "Clean, in sync with origin."
-      else
-        echo "Clean. (No remote — stays on your laptop.)"
+    # Discover repos: outer + any nested .git directories one level deep.
+    local vault_repos=("$VAULT_PATH")
+    local nested
+    for nested in "$VAULT_PATH"/*/.git; do
+      [ -d "$nested" ] || continue
+      vault_repos+=("$(dirname "$nested")")
+    done
+
+    local any_drift=0
+    local any_no_upstream=0
+    local repo
+    for repo in "${vault_repos[@]}"; do
+      local label has_upstream
+      label="$(vault_repo_label "$repo")"
+      has_upstream=0
+      git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 && has_upstream=1
+      [ "$has_upstream" -eq 0 ] && any_no_upstream=1
+
+      # audit_one_vault_repo prints the status line and returns 0 on drift, 1 on clean.
+      if audit_one_vault_repo "$repo" "$label" "$has_upstream"; then
+        any_drift=1
       fi
-    else
-      [ "$vault_dirty" -gt 0 ] && echo "Dirty files: $vault_dirty"
-      [ "$vault_untracked_dirs" -gt 0 ] && echo "Untracked top-level dirs: $vault_untracked_dirs"
-      [ "$vault_ahead" -gt 0 ] && echo "Unpushed commits: $vault_ahead"
-      [ "$vault_behind" -gt 0 ] && echo "Behind origin: $vault_behind"
-    fi
+    done
 
-    # Drift warning: nudge when any threshold is exceeded.
-    local vault_last_commit_age_days=0
-    local last_commit_ts
-    last_commit_ts=$(git -C "$VAULT_PATH" log -1 --format=%ct 2>/dev/null || echo 0)
-    if [ "$last_commit_ts" -gt 0 ]; then
-      vault_last_commit_age_days=$(( ( $(date +%s) - last_commit_ts ) / 86400 ))
-    fi
-
-    if [ "$vault_dirty" -ge "$VAULT_DRIFT_DIRTY_FILES" ] \
-      || [ "$vault_ahead" -ge "$VAULT_DRIFT_COMMITS_AHEAD" ] \
-      || [ "$vault_last_commit_age_days" -ge "$VAULT_DRIFT_DAYS_SINCE" ]; then
-      if [ "$vault_has_upstream" -eq 1 ]; then
-        echo "[!] Your vault has drift — commit + push when you reach a natural pause."
+    if [ "$any_drift" -eq 1 ]; then
+      if [ "$any_no_upstream" -eq 1 ]; then
+        echo "[!] Your vault has drift — commit + push when you reach a natural pause. (Some repos have no remote — those stay on your laptop until pushed.)"
       else
-        echo "[!] Your vault has drift — commit when you reach a natural pause. (No remote — stays on your laptop.)"
+        echo "[!] Your vault has drift — commit + push when you reach a natural pause."
       fi
     fi
   elif ! grep -q '^VAULT_GIT_DECLINED=true' "$HOME/.claude/forge.conf" 2>/dev/null; then
