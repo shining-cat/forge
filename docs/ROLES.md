@@ -28,8 +28,9 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 **Relationship with wellness coach.** Separate authority, one-way dependency. Petra reads wellness state for work planning. Wellness coach knows nothing about Forge.
 
 **Vault interaction**
-- **Reads:** everything (OVERVIEW, checkpoints, INDEX files, friction log)
-- **Writes:** checkpoints, OVERVIEW updates, vault structure maintenance
+- **Scope:** day-to-day attention is bounded to the active project (the one named in `forge-active`). Cross-project work happens at the weekly wrap, on-demand at user request, or via the user browsing the vault folder structure directly. See decision `2026-06-01-petra-single-project-scope`.
+- **Reads:** active project's `INDEX.md`, `current-checkpoint.md`, `BACKLOG.md`, task files, decisions; friction log (via `friction-tail`); `_shared/` tasks/decisions when relevant to current work.
+- **Writes:** active project's `current-checkpoint.md`, `INDEX.md`, decision files, task files, `BACKLOG.md`; friction log (via `append-friction` only — never direct edit); vault structure as work demands.
 
 ---
 

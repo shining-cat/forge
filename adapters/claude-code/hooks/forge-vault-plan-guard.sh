@@ -51,7 +51,7 @@ fi
 REASON="[forge] Plan/design files must go in the vault, not ${FILE_PATH}.
 Active project: $PROJECT
 Use: $PROJECT_DIR for project work
-Or:  $VAULT_PATH/_shared/tasks/open/ for cross-project work"
+Or:  $VAULT_PATH/_shared/tasks/open/ for shared/cross-cutting work"
 
 jq -n --arg reason "$REASON" '{
   hookSpecificOutput: {
