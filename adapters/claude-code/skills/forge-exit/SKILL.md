@@ -83,6 +83,30 @@ Carry forward:
 
 If calendar is disabled or empty: say so explicitly (*"Calendar disabled."* or *"Tomorrow's calendar empty as of right now."*). Don't omit the section.
 
+### 2c. EOW weekly-wrap check (Friday only) — HARD STOP
+
+Before proceeding to Step 3 (Deactivate), check both gates:
+
+```bash
+~/.claude/scripts/forge-context.sh weekly-wrap-due    # must return "due"
+date +%u                                              # must match EOW_DAY in ~/.claude/forge.conf (default 5 = Friday)
+```
+
+If both gates pass, you **MUST** ask the user before continuing:
+
+> *"It's {weekday} and the weekly wrap is due — want to run `/forge-weekly` before exiting? (yes / skip and exit)"*
+
+**This is a hard stop. Do NOT proceed to Step 3 until the user has answered the wrap question.** Common failure mode to actively avoid: the user signaled "let's wrap up" / "done for today" — it's tempting to interpret that as authorization to skip the question and exit cleanly, then mention the wrap as a post-deactivation footnote. **Don't.** The user said "wrap" — they may not know the weekly-wrap ceremony is due. Asking is the ceremony's only chance to fire; once Step 3 tears down the marker, re-opening for ceremony is friction the user is unlikely to accept.
+
+Answer handling:
+- **yes / run / let's do it** → invoke `/forge-weekly` first, let it complete, then return to Step 3.
+- **skip / no / just exit / nah** → proceed to Step 3 cleanly. No post-deactivation footnote needed.
+- **anything else** (user changes subject, reaffirms "let's wrap" without explicitly answering) → treat as skip, proceed to Step 3.
+
+Other weekdays, or when `weekly-wrap-due` returns `not-due`: skip this step silently, no need to announce.
+
+Distinct from Step 0's wellness reset (always runs regardless of day). The rule here is "ASK is mandatory; RUN is optional" — invite-don't-auto-run still holds, but the ASK is not the auto-run.
+
 ### 3. Deactivate
 
 - Clear the forge-active marker: use the **Edit** tool to replace the project name in `${VAULT_PATH}/_shared/forge-active` with a single newline (the file already exists from the `/forge` entry, so Edit is the right tool — Write would require a prior Read in this session). Do NOT use `rm` — it's denied by the global `Bash(rm:*)` rule. The empty-marker convention is recognized by `forge-context.sh` and `forge-compaction.sh` as "Forge deactivated" (same effect as deletion, no permission friction). Resolve `VAULT_PATH` from `~/.claude/forge.conf`.
@@ -94,4 +118,4 @@ If calendar is disabled or empty: say so explicitly (*"Calendar disabled."* or *
 
 - If the user just closes the terminal without `/forge-exit`, the proactive Keeper should have already written mid-session checkpoints. The exit is a clean wrap-up, not the only checkpoint.
 - If no work was done (e.g., user entered Forge then immediately exits), skip the summary and just confirm exit.
-- **Friday weekly-wrap nudge.** Before Step 3 (Deactivate), call `~/.claude/scripts/forge-context.sh weekly-wrap-due`. If it returns `due` AND today is the configured `EOW_DAY` (default Friday, check `date +%u` matches `EOW_DAY` from `~/.claude/forge.conf`), suggest `/forge-weekly` once: *"It's Friday and the weekly wrap is due — want to run `/forge-weekly` before exiting? (or skip and exit now)"*. Invite, don't auto-run — wrap is wellness practice, not gate. This is distinct from Step 0's wellness reset, which always runs regardless.
+- The EOW weekly-wrap check lives in Step 2c (numbered step, hard stop). Don't re-do it here as an advisory note.
