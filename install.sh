@@ -1063,9 +1063,9 @@ WELLNESS_ENABLED=false
 # MAINTAINER_MODE distinguishes Forge end-users from Forge maintainers (people
 # extending Forge itself). Default false = end-user mode: Petra suppresses
 # meta-work invitations (friction-log writes, decisions/ curation, INDEX.md
-# maintenance, OVERVIEW.md updates, vault hygiene, forge-internal audits) from
-# entry summaries and checkpoint Next-Steps. Set to true if you're working on
-# Forge itself and want those surfaces surfaced as actionable threads.
+# maintenance, vault hygiene, forge-internal audits) from entry summaries and
+# checkpoint Next-Steps. Set to true if you're working on Forge itself and
+# want those surfaces surfaced as actionable threads.
 MAINTAINER_MODE=false
 
 # Cold-start threshold (hours). When session entry detects no Forge signal for

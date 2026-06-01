@@ -100,17 +100,7 @@ The vault root was created by the install script. Now set up the project structu
    {VAULT_PATH}/{ENV}/{PROJECT}/decisions/
    {VAULT_PATH}/{ENV}/{PROJECT}/architecture/
    ```
-3. If `{VAULT_PATH}/_shared/OVERVIEW.md` doesn't exist, create a starter:
-   ```markdown
-   # Vault Overview
-
-   ## Projects
-   - **{PROJECT}** ({ENV}) — [describe your project here]
-
-   ## Active Forge Work
-   (none yet)
-   ```
-4. If `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` doesn't exist, create a starter:
+3. If `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` doesn't exist, create a starter:
    ```markdown
    # {PROJECT} — Index
 

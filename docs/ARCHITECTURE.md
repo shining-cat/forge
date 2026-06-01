@@ -63,12 +63,11 @@ Skills reference capabilities from these marketplaces:
 
 ```
 {vault}/
-├── _shared/                ← runtime work (personal, cross-project)
-│   ├── OVERVIEW.md         ← cross-project awareness (slow-changing)
-│   ├── current-checkpoint.md ← cross-project work in progress
+├── _shared/                ← shared / cross-cutting runtime work
 │   ├── friction-log.md
-│   ├── decisions/          ← cross-project decisions
-│   ├── tasks/{open,resolved}/
+│   ├── decisions/          ← decisions that span projects
+│   ├── tasks/{open,resolved}/  ← cross-cutting tasks (_shared behaves
+│   │                              like another project for tasks)
 │   └── learnings/
 ├── _templates/             ← Obsidian note templates
 └── {ENV}/{project}/        ← per-project (env optional for single-environment setups)
@@ -78,6 +77,8 @@ Skills reference capabilities from these marketplaces:
     ├── decisions/          ← created on demand
     └── architecture/       ← created on demand
 ```
+
+Cross-project synthesis (a former `_shared/OVERVIEW.md` + `_shared/current-checkpoint.md`) was explicitly removed per decision `2026-06-01-petra-single-project-scope`. Petra's day-to-day attention is bounded to one project; cross-project work happens at the weekly wrap, on-demand at user request, or via direct vault folder browsing.
 
 Forge install state lives in `~/.claude/` (forge.conf, settings backup). The `forge-active` runtime marker lives in the vault at `${VAULT_PATH}/_shared/forge-active` instead — `~/.claude/` is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5), and the marker needs silent writes on every Forge entry/exit. Wellness preferences (`${VAULT_PATH}/_shared/wellness-preferences.json`) follow the same relocation pattern, for the same reason.
 
