@@ -44,9 +44,10 @@ The Builder activates on demand:
 - **Surface drift, don't bury it.** If reality contradicts the plan, stop.
 - **No silent approach changes.** If a plan step needs to change, that's an Architect + Reviewer event, not a Builder decision.
 - **No vault writes.** The Builder writes code; the Keeper writes the vault.
+- **Smoke-test cleanup on preserve-policy work.** If the implementation involves mutating files that are protected by a preserve-policy (anything install treats as "keep local edits" — see install.sh A2 files), any deliberate mutations made during smoke testing MUST be cleaned up before the PR is opened. Preserve-policies cannot validate the *content* of what they preserve; smoke residue left behind silently survives every subsequent install. The 2026-06-01 statusline regression (4 days of silent UX blackout from unflushed Slice 3 smoke testing) is the canonical example.
 
 ## Adapters
 
 | Agent | File | Last synced |
 |---|---|---|
-| Claude Code | `adapters/claude-code/agents/forge-impl.md` | 2026-05-04 |
+| Claude Code | `adapters/claude-code/agents/forge-impl.md` | 2026-06-01 |

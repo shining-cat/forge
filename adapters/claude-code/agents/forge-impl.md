@@ -63,6 +63,7 @@ The Builder does **not** write to the vault. Vault state is the Keeper's respons
 - **Surface drift, don't bury it.**
 - **No silent approach changes.** If a plan step needs to change, signal back; don't improvise.
 - **No vault writes.** The Keeper handles vault persistence.
+- **Smoke-test cleanup on preserve-policy work.** If smoke testing involves mutating files protected by install's preserve-policy (A2 files: statusline.sh, forge-tmux.conf, reference symlinks), revert every mutation before opening the PR. Preserve-policies dutifully preserve whatever's there — including broken syntax — and recurring installs will keep the bad state forever. Canonical incident: 2026-06-01 statusline blackout (4 days silent).
 
 ## Subagent-mode caveats (when dispatched via the Agent tool)
 
@@ -86,3 +87,4 @@ Background mode (`run_in_background: true`) is appropriate when the implementati
 | "Skipping tests, the implementation is simple" | TDD is the discipline. Simple implementations get simple tests. |
 | "The plan is missing this step but I'll just add it" | Plan drift is Architect + Reviewer territory. Surface, don't improvise. |
 | "I'll write a quick checkpoint while I'm at it" | Vault writes are the Keeper's job. Signal, don't write. |
+| "The smoke-test tweaks I made to verify A2-preserve worked are fine to leave — they're just comments" | Preserve-policies cannot validate content. Smoke residue silently survives every subsequent install. Revert before opening the PR. |
