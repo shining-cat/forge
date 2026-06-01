@@ -262,9 +262,16 @@ install_symlink() {
 }
 
 # prompt_or_default — read input from tty or fall back to a safe default.
-# Usage: var=$(prompt_or_default "<prompt text>" "<default if non-tty or empty>")
-# - tty: prints prompt to /dev/tty, reads input from /dev/tty, returns input or default if empty
-# - non-tty (CI / cron / piped stdin): silently returns default
+# Usage: var=$(prompt_or_default "<prompt text>" "<tty-empty default>" ["<non-tty default>"])
+# - tty + user input: returns input
+# - tty + empty input (Enter): returns 2nd arg ("tty-empty default")
+# - non-tty (CI / cron / piped stdin): returns 3rd arg if given, otherwise 2nd arg
+#
+# The split matters when the display says `[Y/n]:` (Enter accepts Y by convention)
+# but the safe non-interactive behavior is different — e.g. "init the vault now?"
+# wants tty-empty=Y to match the display, but non-tty=n to avoid auto-initializing
+# a vault under a CI job that pressed Enter implicitly. Single-default callers
+# (2 args) keep the legacy behavior unchanged.
 #
 # /dev/tty is mandatory for both directions: the function is only ever called via
 # command substitution `var=$(prompt_or_default ...)` which captures stdout —
@@ -273,13 +280,13 @@ install_symlink() {
 # is defensive symmetry; stdin happens to be the tty in the current call sites,
 # but a future caller might pipe stdin without realizing it.
 prompt_or_default() {
-  local prompt="$1" default="$2" answer
+  local prompt="$1" default="$2" non_tty_default="${3:-$2}" answer
   if [ -t 0 ]; then
     printf "%s" "$prompt" >/dev/tty
     read -r answer </dev/tty
     echo "${answer:-$default}"
   else
-    echo "$default"
+    echo "$non_tty_default"
   fi
 }
 
@@ -1067,11 +1074,11 @@ if ! git -C "$VAULT_PATH" rev-parse --git-dir &>/dev/null; then
     printf "          - Survives laptop loss / disk failure\n"
     printf "          - Enables cross-machine work\n"
     printf "          - Powers vault-state line at session start (drift detection)\n"
-    # Non-tty default: 'n' (skip init — too consequential to auto-init silently).
-    # Tty empty input: case fallthrough below preserves the historical 'Y' default.
+    # Tty empty: 'Y' to match the [Y/n] display convention.
+    # Non-tty: 'n' (skip init — too consequential to auto-init silently in CI).
     git_init_answer=$(prompt_or_default \
       "$(printf "        Initialize git in the vault now? [Y/n]: ")" \
-      "n")
+      "Y" "n")
     case "${git_init_answer:-Y}" in
       [Yy]*|"")
         info "Initializing vault as git repo…"
@@ -1119,9 +1126,11 @@ if git -C "$FORGE_ROOT" rev-parse --git-dir &>/dev/null; then
     printf "        After \`git pull\` updates installed files, it prints a\n"
     printf "        one-liner reminding you to re-run \`./install.sh\`.\n"
     printf "        Opt-in by setting \`core.hooksPath\` to \`.githooks\` in this repo.\n"
+    # Tty empty: 'Y' to match the [Y/n] display convention.
+    # Non-tty: 'n' (don't silently flip core.hooksPath under a CI job).
     hooks_answer=$(prompt_or_default \
       "$(printf "        Enable now? [Y/n]: ")" \
-      "n")
+      "Y" "n")
     case "${hooks_answer:-Y}" in
       [Yy]*|"")
         run git -C "$FORGE_ROOT" config core.hooksPath .githooks
