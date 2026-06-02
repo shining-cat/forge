@@ -1125,8 +1125,22 @@ run mkdir -p "$VAULT_PATH/_shared/tasks/open" \
              "$VAULT_PATH/_templates" \
              "$VAULT_PATH/_meta"
 
-for tpl in "$FORGE_ROOT/core/vault-templates/"*; do safe_cp "$tpl" "$VAULT_PATH/_templates/"; done
+# Vault templates are A2-preserve: starting points users may customize.
+# safe_cp with `preserve` policy: install if missing, no-op if matches src,
+# write upstream as `.upstream.<ts>` sibling if user diverged.
+for tpl in "$FORGE_ROOT/core/vault-templates/"*; do safe_cp "$tpl" "$VAULT_PATH/_templates/" preserve; done
 ok "Vault structure at $VAULT_PATH"
+
+# ─── Obsidian draft-capture hint (Slice A of user-draft-task-capture) ────────
+# If the vault has an Obsidian config dir, the user is using Obsidian — point
+# them at the docs page that walks through the optional Templater + Folder
+# Templates setup for 5-second draft capture. Silent when Obsidian isn't
+# detected (CLI-only users get no noise).
+if [ -d "$VAULT_PATH/.obsidian" ]; then
+  hint "For optional 5-second manual draft capture from Obsidian, see"
+  hint "    $FORGE_ROOT/docs/obsidian-draft-capture.md"
+  hint "    (Templater + Folder Templates wire-up; the draft template is already at $VAULT_PATH/_templates/draft.md)"
+fi
 
 # ─── Encourage vault git-init ────────────────────────────────────────────────
 # Check 1: vault is already a git repo? Skip silently.
