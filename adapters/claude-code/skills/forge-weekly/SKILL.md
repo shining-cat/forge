@@ -47,7 +47,44 @@ Then **batch fast-path:** *"Apply all proposals as-is? (Y/n, or enter numbers to
 
 When the harvest is empty (no unpinned entries in the window), say so plainly and skip to Step 2 — *"No friction this week. Quiet forge."*
 
-### 2. BACKLOG re-rank glance
+### 2. Draft triage
+
+> **[Quartermaster]** Draft folder.
+
+Run `~/.claude/scripts/forge-context.sh draft-list` to enumerate captured drafts. Output is TSV with columns `path  project  title` (project is `—` when unset and unpinable from the path).
+
+When empty: *"No drafts this week. Capture folder's clean."* → skip to Step 3.
+
+When non-empty, for each draft, ask the user:
+
+> Draft: *"{title}"*
+>   Path: `{path}`
+>   Project: `{project}` *(or unset)*
+>   **Keep / Discard / Defer?** (k/d/f)
+
+Behaviour per choice:
+
+- **Keep** —
+  1. If `project` is `—`, ask: *"Which project? (e.g. `PERSO/forge`, `PRO/FINN`)"*
+  2. `mkdir -p ${VAULT_PATH}/{project}/tasks/draft` if not already present
+  3. Move the file there with `mv` (preserve filename so the timestamp prefix carries over)
+  4. If the moved file's frontmatter `project:` was blank, set it via Edit
+  5. Open the project's `BACKLOG.md`. Add a "Drafts pending refinement" cluster (lazy-create after the **Hot** cluster, before **Measurement / audit** — task body suggestion locked) and append a row:
+     ```
+     | [[{filename-without-ext}]] | XS | ? | refine | {title} — captured {created date from frontmatter} |
+     ```
+     Columns: Task wikilink · Effort · Impact · Status · Notes.
+
+- **Discard** —
+  1. `mkdir -p {draft_dir}/_discarded`
+  2. `mv {path} {draft_dir}/_discarded/$(date +%Y%m%d-%H%M%S)-{basename}`. The grace period is 1 week before auto-purge (cleanup is a separate, not-yet-wired-in subcommand — for now, manual cleanup if `_discarded/` gets large).
+  3. Don't touch BACKLOG.
+
+- **Defer** — no-op. File stays in place; surfaces again next week.
+
+When done, print a 1-line tally: *"Drafts triaged: {N} kept, {N} discarded, {N} deferred."*
+
+### 3. BACKLOG re-rank glance
 
 > **[Quartermaster]** Top of the backlog.
 
@@ -59,7 +96,7 @@ Read the active project's `BACKLOG.md` (path: `${VAULT_PATH}/${ENV}/${PROJECT}/B
 
 Apply edits the user confirms. **This is not a full re-grooming** — keep the pass light, 2-3 min max. If the user wants deep BACKLOG work, suggest a separate session.
 
-### 3. Aging-decisions audit
+### 4. Aging-decisions audit
 
 > **[Quartermaster]** Decisions older than 8 weeks.
 
@@ -72,11 +109,11 @@ Extract dates via regex `^\s*-\s*\*\*(\d{4}-\d{2}-\d{2})`, filter to dates older
 
 - **Still active** → no change.
 - **Archive** → move the bullet to a `## Archived decisions` section in the same INDEX.md (create the section lazily on first archive — append at end of file with a divider).
-- **Revise** → mark for follow-up (note in this ceremony's weekly-checkpoint, Step 4) but don't rewrite in-flight.
+- **Revise** → mark for follow-up (note in this ceremony's weekly-checkpoint, Step 5) but don't rewrite in-flight.
 
 When zero decisions are old enough, say so and skip — *"All decisions fresh. No audit needed."*
 
-### 4. Week-summary checkpoint
+### 5. Week-summary checkpoint
 
 > **[Quartermaster]** Closing the ledger.
 
@@ -98,6 +135,11 @@ project: {project}
 - Promoted to feedback memory: {count}
 - Archived: {count}
 
+## Drafts triaged
+- Kept: {count}
+- Discarded: {count}
+- Deferred: {count}
+
 ## BACKLOG changes
 - {bullet per shift, or "no changes"}
 
@@ -110,11 +152,11 @@ project: {project}
 
 Compute `{YYYY-WNN}` as ISO 8601 week (e.g. `2026-W22`). Compute `{date range}` as Monday–Friday of that ISO week.
 
-### 5. Mark the wrap done
+### 6. Mark the wrap done
 
 Run `~/.claude/scripts/forge-context.sh mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses.
 
-### 6. Hand-off
+### 7. Hand-off
 
 Output verbatim:
 
