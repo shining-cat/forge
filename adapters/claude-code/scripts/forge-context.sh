@@ -3544,6 +3544,61 @@ do_next_meeting() {
   "$calendar_sh" next-meeting "$MEETING_WINDOW_MIN" 2>/dev/null || true
 }
 
+# ── Subcommand: draft-list ────────────────────────────────────────────
+# Enumerate captured draft tasks across all draft folders for the weekly-wrap
+# triage step. Output is TSV with columns: path \t project \t title.
+#
+# - path:    full path to the draft .md file
+# - project: from frontmatter `project:` if set; else inferred from the path
+#            (e.g. /vault/PERSO/forge/tasks/draft/ → "PERSO/forge"); else "—"
+# - title:   first `# ` heading or the filename (no .md) if heading absent
+#
+# Skips files under `_discarded/` subdirs (those are awaiting auto-purge).
+# Silent when no drafts exist anywhere — `forge-weekly` Step 2 short-circuits.
+#
+# Slice B of [[2026-05-05-user-draft-task-capture]]. Slice A shipped the
+# capture template + docs; this subcommand powers the triage step Petra
+# walks the user through during the weekly ceremony.
+do_draft_list() {
+  [ -z "${VAULT_PATH:-}" ] && return 0
+  [ -d "$VAULT_PATH" ] || return 0
+  # find every `tasks/draft` dir under VAULT_PATH; iterate the .md files in
+  # each, skipping the `_discarded/` grace-period subdir.
+  find "$VAULT_PATH" -type d -name draft -path "*/tasks/draft" -print0 2>/dev/null |
+  while IFS= read -r -d '' draft_dir; do
+    for f in "$draft_dir"/*.md; do
+      [ -f "$f" ] || continue
+      case "$f" in *"/_discarded/"*) continue ;; esac
+
+      # Extract `project:` from frontmatter (between the first two `---` lines)
+      local project title rel
+      project=$(awk '
+        /^---[[:space:]]*$/ { c++; if (c==2) exit; next }
+        c==1 && /^project:/ {
+          sub(/^project:[[:space:]]*/, "")
+          sub(/[[:space:]]+$/, "")
+          print; exit
+        }
+      ' "$f")
+
+      # First H1 heading; fall back to filename (no .md)
+      title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# //')
+      [ -z "$title" ] && title=$(basename "$f" .md)
+
+      # Infer project from path when frontmatter is blank
+      if [ -z "$project" ]; then
+        rel="${f#$VAULT_PATH/}"
+        # Match {ENV}/{PROJECT}/tasks/draft/...  (NOT _shared/tasks/draft/...)
+        if [[ "$rel" =~ ^([^/_][^/]*)/([^/]+)/tasks/draft/ ]]; then
+          project="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        fi
+      fi
+
+      printf "%s\t%s\t%s\n" "$f" "${project:-—}" "$title"
+    done
+  done
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -3578,8 +3633,9 @@ case "$SUBCMD" in
   learn-wind-down)     do_learn_wind_down "${@:2}" ;;
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
+  draft-list)          do_draft_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|draft-list}" >&2
     exit 1
     ;;
 esac
