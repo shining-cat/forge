@@ -1050,6 +1050,13 @@ elif [ -f "$CLAUDE_DIR/forge.conf" ]; then
   if ! grep -q "^MEETING_WINDOW_MIN=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
     echo "MEETING_WINDOW_MIN=30" >> "$CLAUDE_DIR/forge.conf"
   fi
+  # WELLNESS_DAY_START_HOURS (hours) was introduced after some installs existed.
+  # Tiers the cold-start message: gaps >= this read as a fresh start (overnight,
+  # weekend) rather than "break credited". Default 6h. If the user has already
+  # set it, leave their value untouched.
+  if ! grep -q "^WELLNESS_DAY_START_HOURS=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    echo "WELLNESS_DAY_START_HOURS=6" >> "$CLAUDE_DIR/forge.conf"
+  fi
   ok "forge.conf updated (preserved existing user-set values)"
 else
   # First install — write full template with defaults.
@@ -1073,6 +1080,14 @@ MAINTAINER_MODE=false
 # summary. Default 4h covers lunch + a meeting block; tune up if you typically
 # return to deep work after shorter pauses, down if you want stricter resets.
 WELLNESS_COLD_START_HOURS=4
+
+# Day-start threshold (hours). Gaps at or above this are treated as a fresh start
+# (overnight, weekend, multi-day) and the cold-start message switches from
+# "break clock zeroed" to "fresh start" framing. Independent from
+# WELLNESS_COLD_START_HOURS — that gates whether the message fires at all; this
+# one tiers the message wording. Default 6h: within-workday gaps read as breaks
+# credited, longer gaps read as a new session.
+WELLNESS_DAY_START_HOURS=6
 
 # EOW_DAY = ISO day-of-week treated as end-of-week (Mon=1..Sun=7). Default 5
 # (Friday). On EOW_DAY, the eod_window/past_eod states emitted by

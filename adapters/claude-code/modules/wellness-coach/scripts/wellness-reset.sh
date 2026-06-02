@@ -48,6 +48,12 @@ if [ "$IF_COLD_START" = "true" ]; then
   [ "$WELLNESS_ENABLED" = "true" ] || exit 0
   WELLNESS_COLD_START_HOURS=$(grep '^WELLNESS_COLD_START_HOURS=' "$FORGE_CONF" | cut -d= -f2- | tr -d '[:space:]')
   [ -z "$WELLNESS_COLD_START_HOURS" ] && WELLNESS_COLD_START_HOURS=4
+  # Tier-2 threshold: above this, the gap reads as a fresh start (overnight, weekend,
+  # multi-day) rather than a break credited mid-workday. Independent from
+  # COLD_START_HOURS — that one gates whether the message fires at all; this one
+  # tiers the message wording.
+  WELLNESS_DAY_START_HOURS=$(grep '^WELLNESS_DAY_START_HOURS=' "$FORGE_CONF" | cut -d= -f2- | tr -d '[:space:]')
+  [ -z "$WELLNESS_DAY_START_HOURS" ] && WELLNESS_DAY_START_HOURS=6
   GAP_SCRIPT="$HOME/.claude/scripts/forge-gap-since-last-signal.sh"
   [ -x "$GAP_SCRIPT" ] || exit 0
   GAP_SECONDS=$("$GAP_SCRIPT" 2>/dev/null)
@@ -60,6 +66,11 @@ if [ "$IF_COLD_START" = "true" ]; then
   FULL_RESET="true"
   COLD_START_HOURS=$(( GAP_SECONDS / 3600 ))
   COLD_START_MINUTES=$(( (GAP_SECONDS % 3600) / 60 ))
+  # Day-start tier: gap large enough that "break credited" framing reads wrong.
+  DAY_START_THRESHOLD=$(( WELLNESS_DAY_START_HOURS * 3600 ))
+  if [ "$GAP_SECONDS" -ge "$DAY_START_THRESHOLD" ] 2>/dev/null; then
+    export DAY_START_VARIANT=true
+  fi
   export COLD_START_HOURS COLD_START_MINUTES
 fi
 export FULL_RESET
@@ -123,9 +134,16 @@ read_modify_write(reset)
 
 if if_cold_start:
     # Single line, designed to surface verbatim in Forge entry summary.
+    # Two tiers: short cold start (4h ≤ gap < WELLNESS_DAY_START_HOURS) reads as a
+    # break credited; longer gaps (overnight, weekend, multi-day) read as a fresh
+    # start where 'credited a break' would imply work the user didn't do.
     h = os.environ.get('COLD_START_HOURS', '?')
     m = os.environ.get('COLD_START_MINUTES', '?')
-    print(f'Wellness reset — Forge idle for {h}h{m}m, break clock zeroed.')
+    day_start = os.environ.get('DAY_START_VARIANT') == 'true'
+    if day_start:
+        print(f'Welcome back — fresh start after {h}h{m}m away.')
+    else:
+        print(f'Wellness reset — Forge idle for {h}h{m}m, break clock zeroed.')
 else:
     mode = 'Full reset' if full_reset else 'Strike reset'
     if state['was_striking']:
