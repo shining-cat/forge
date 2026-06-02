@@ -72,7 +72,7 @@ Total time: ~3-5 seconds. Zero conversation with Claude.
 
 - **Drafts live** in `_shared/tasks/draft/` (or wherever you dropped them) until the weekly wrap.
 - **Friday `/forge-weekly`** scans all draft folders and walks you through each one: keep / discard / defer. For "keep", you assign a project and Petra files the draft as a `[draft] refine: {title}` row in that project's BACKLOG.
-- **Refinement** happens on-demand when you pick up the `refine:` row from the BACKLOG like any other task. Petra walks the standard refinement questions (what, why, priority, blockers, next steps) and produces a proper task file in `tasks/open/`. The raw draft is then deleted (it was just a seed).
+- **Refinement** happens on-demand when you pick up the `refine:` row from the BACKLOG like any other task. Petra walks the standard refinement questions and produces a proper task file in `tasks/open/`; the raw draft is then deleted. Full protocol: [draft-refinement-protocol.md](draft-refinement-protocol.md).
 
 ## Petra-side awareness
 
