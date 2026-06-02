@@ -1332,6 +1332,10 @@ for pr in json.load(sys.stdin):
   # Install drift — surface if Forge runtime is behind the source repo.
   do_check_install_drift
 
+  # Statusline health — surface if statusline.sh errors at runtime, since
+  # Claude Code renders nothing on non-zero exit (silent UX failure).
+  do_check_statusline_health
+
   # Vault state — surfaces drift in the vault repo itself (not the project repo).
   # Loss of laptop = loss of all decisions/checkpoints/plans if the vault never gets pushed.
   # Header + warning wording is self-orienting (signals "your vault, not the Forge source repo")
@@ -1406,6 +1410,59 @@ for pr in json.load(sys.stdin):
   # Truncate breadcrumbs (fresh session)
   if [ -f "$BREADCRUMBS_FILE" ]; then
     > "$BREADCRUMBS_FILE"
+  fi
+}
+
+# ── Statusline health check ───────────────────────────────────────────
+# Surface "statusline script errors" at session entry so silent renders don't
+# go unnoticed. Claude Code renders NOTHING when ~/.claude/statusline.sh exits
+# non-zero — pure silent UX failure mode. The 2026-06-01 incident proved how
+# long that can last (4 days of blackout from PR #42 smoke-test residue, found
+# only when the user noticed). PR #50 closed the install-time corruption path
+# for A2-preserve files; this catches RUNTIME failures from ANY cause
+# (env breakage, dependency removal, downstream-script regression, etc.).
+#
+# Silent when OK. One block of output when the script errors. Gated on
+# .statusLine being configured in settings.json — no statusline = no failure.
+do_check_statusline_health() {
+  local sl="$HOME/.claude/statusline.sh"
+  [ -x "$sl" ] || return 0
+
+  # Skip the probe if Claude Code isn't configured to use a statusline.
+  # If .statusLine is absent, CC renders no chip and the script never runs;
+  # probing it would surface false-positive warnings for users who don't
+  # have a statusline.
+  local settings="$HOME/.claude/settings.json"
+  if [ -f "$settings" ]; then
+    if ! jq -e '.statusLine' "$settings" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  # Minimal mock JSON covering every field statusline.sh reads. Includes
+  # .version + .session_id even though defaults handle their absence — fewer
+  # branches mocked = fewer false-positive failure modes in the probe itself.
+  local mock='{"model":{"display_name":"X"},"workspace":{"current_dir":"/","project_dir":"/"},"cost":{"total_cost_usd":0,"total_duration_ms":0,"total_lines_added":0,"total_lines_removed":0},"version":"0","session_id":"probe"}'
+
+  # Capture-without-aborting: script header is `set -euo pipefail`, so a
+  # non-zero exit from $sl would terminate the parent recover unless we
+  # explicitly handle it. The `|| exit_code=$?` pattern matches the
+  # convention used in do_check_install_drift (see `behind=$(... || echo 0)`).
+  local out exit_code=0
+  out=$(echo "$mock" | "$sl" 2>&1) || exit_code=$?
+
+  if [ "$exit_code" -ne 0 ]; then
+    echo ""
+    echo "--- Statusline state ---"
+    echo "[!] Statusline script errored (exit $exit_code) — chip will not render in Claude Code."
+    echo "    Script: $sl"
+    # First few lines of stderr/stdout merge are typically the most informative
+    # (e.g. bash syntax error pointer, missing-command name, jq parse error).
+    if [ -n "$out" ]; then
+      echo "$out" | head -3 | sed 's/^/    /'
+    fi
+    echo "    Fix: check the script for syntax errors / missing deps;"
+    echo "         compare against source-of-truth in your Forge install dir."
   fi
 }
 
