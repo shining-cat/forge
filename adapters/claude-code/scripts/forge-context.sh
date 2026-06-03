@@ -2374,6 +2374,32 @@ do_vault_sync() {
   echo "================="
 }
 
+# ── Helper: flip `session: closed` → `session: open` in checkpoint frontmatter ──
+# Idempotent — no-op if file missing, `session:` line absent, or value already
+# anything other than "closed". Mutates only the first `session:` line inside
+# the first frontmatter block (--- ... ---), never the body.
+#
+# Why: `/forge-exit` writes `session: closed` so the statusline can render
+# `💾 dormant` for cleanly-closed projects. But on re-entry that flag persists
+# until the next checkpoint write, leaving statusline misleadingly "dormant"
+# during an actively-resumed session. Flipping at marker-activation time fixes
+# the visual mismatch immediately. (See 2026-06-03 forge checkpoint Progress
+# note — the bug surfaced when statusline showed dormant for hours of active
+# work after re-entering on `forge` project.)
+flip_session_to_open() {
+  local checkpoint_path="$1"
+  [ -f "$checkpoint_path" ] || return 0
+  awk '
+    BEGIN { c = 0; flipped = 0 }
+    /^---$/ { c++ }
+    c == 1 && flipped == 0 && /^session:[[:space:]]*closed[[:space:]]*$/ {
+      sub(/closed/, "open")
+      flipped = 1
+    }
+    { print }
+  ' "$checkpoint_path" > "${checkpoint_path}.tmp" && mv "${checkpoint_path}.tmp" "$checkpoint_path"
+}
+
 # ── Subcommand: set-marker (write the forge-active marker file) ─────────
 # Replaces direct Write-tool calls from Claude during session entry/exit.
 # Routing through this script avoids Claude Code's overwrite-confirmation
@@ -2388,6 +2414,9 @@ do_vault_sync() {
 #   set-marker active <project>  → writes a JSON marker with session_id,
 #                                  project, started_at, tmux_pane
 #                                  (step 1c, after project disambiguated)
+#                                  AND flips the project checkpoint's frontmatter
+#                                  `session: closed` → `session: open` if needed
+#                                  so statusline doesn't render dormant on resume.
 #   set-marker clear             → empties the marker (used by /forge-exit)
 do_set_marker() {
   local form="${1:-}"
@@ -2410,6 +2439,13 @@ do_set_marker() {
       fi
       printf '{"session_id":"%s","project":"%s","started_at":"%s","tmux_pane":%s}' \
         "$session" "$project" "$started" "$tmux_pane_json" > "$MARKER"
+      # Flip the project checkpoint's session flag so statusline reflects active
+      # state immediately (avoids stale `💾 dormant` indicator on session resume).
+      local project_vault_dir
+      project_vault_dir="$(get_vault_dir "$project" 2>/dev/null)"
+      if [ -n "$project_vault_dir" ]; then
+        flip_session_to_open "$project_vault_dir/current-checkpoint.md"
+      fi
       ;;
     clear)
       : > "$MARKER"
