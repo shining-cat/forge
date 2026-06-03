@@ -337,6 +337,15 @@ When in doubt about a given suggestion: ask "is this about Forge's own machinery
 
 **Workspace skills (Forge mode):** When a Google Workspace API is needed (calendar, sheets, docs, drive, tasks), invoke the matching `google-workspace:gws-*` skill on the **first** try. No raw `gws ...` CLI exploration unless the skill itself fails or doesn't exist. Each failed flag-fish is a permission prompt the user has to triage. Same applies to other available specialized skills (jira, snowflake, slack, workplace) — invoke first, don't fish.
 
+**Extended-thinking discipline:** Extended thinking emits signature blocks that re-cost the parent context on every subsequent turn — measured at **30–50% of transcript content per long session, ~200K tokens equivalent**. The model decides per turn whether to engage, but explicit self-discipline in routine turns measurably reduces signature accumulation over a day.
+
+- **Engage extended thinking ON these operations:** Pattern A synthesis (cross-agent results, judgment under uncertainty); Refiner root-cause analysis; Architect tradeoff weighing for non-trivial design; friction triage with > 1 plausible root cause; multi-file code review where the bug surface isn't obvious; plan authoring for M+ effort work; novel scoping passes on open tasks.
+- **Don't engage extended thinking on:** routine acks / status reports / simple lookups; single-tool dispatches where the next step is clear (read this file, run that command); mechanical operations (commit, push, PR open, BACKLOG row update, checkpoint write from accumulated context); re-stating what the user just said; reading a file the user pointed at and reporting back; vault hygiene tweaks.
+- **Subagent dispatches:** when the work is bounded and well-specified, add *"brief response, no extensive analysis"* to the prompt. The subagent's thinking accumulates in its own transcript, but terser subagent output means less material flowing back into the parent.
+- **Self-check before a heavy turn:** ask *"would I want to re-pay this turn's thinking on every subsequent compaction?"* If yes, think. If no, don't.
+
+Background and measurement methodology: `tasks/open/2026-05-22-forge-compaction-frequency-investigation.md` Progress entry 2026-06-03.
+
 **Plan storage (Forge mode):** All plan, design, and spec content MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`. Per the single-doc workflow, plan + design + progress live as **sections inside the task file**, not as separate `-design.md` / `-plan.md` siblings.
 
 - **Single task** (most cases): `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md` — Design and Plan are sections inside this file (see `_templates/task.md`).
