@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# pre-commit — forge repo's pre-commit hook (versioned, symlinked from .git/hooks).
+#
+# Runs lint checks before allowing a commit. Any non-zero exit from a chained
+# check blocks the commit (standard pre-commit semantics).
+#
+# Installation: handled by `./scripts/setup-dev.sh` — symlinks this file to
+# `.git/hooks/pre-commit`. Re-run safe.
+#
+# To bypass in an emergency (NEVER do this on master without explicit reason):
+#   git commit --no-verify
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -z "$REPO_ROOT" ] && { echo "[pre-commit] not in a git repo" >&2; exit 1; }
+cd "$REPO_ROOT" || exit 1
+
+# Chain of lint checks. Add more checks here as the project grows
+# (shellcheck, markdownlint, etc.) — each as its own line.
+LINT_CHECKS=(
+  "scripts/lint/no-hardcoded-paths.sh"
+)
+
+EXIT=0
+for check in "${LINT_CHECKS[@]}"; do
+  if [ ! -x "$check" ]; then
+    echo "[pre-commit] missing or non-executable lint check: $check" >&2
+    EXIT=1
+    continue
+  fi
+  if ! "$check"; then
+    EXIT=1
+  fi
+done
+
+if [ "$EXIT" -ne 0 ]; then
+  echo "" >&2
+  echo "[pre-commit] commit blocked by lint failure(s) above." >&2
+  echo "Fix the issues, or (rare) bypass with: git commit --no-verify" >&2
+fi
+
+exit "$EXIT"

@@ -32,7 +32,7 @@ done
 # Resolve JSONL path: ~/.claude/projects/<machine-slug>/<session_id>.jsonl
 # Machine slug = $HOME with every non-alphanumeric char (/, ., @, _, etc.)
 # replaced by `-`. Verified empirically against the directory CC creates.
-# Example: /Users/shiva.bernhard@m10s.io → -Users-shiva-bernhard-m10s-io
+# Example: /home/alice → -home-alice  (or /home/user.x@org.io → -home-user-x-org-io)
 PROJECT_SLUG="$(echo "$HOME" | sed 's|[^[:alnum:]]|-|g')"
 JSONL_PATH="$HOME/.claude/projects/${PROJECT_SLUG}/${SESSION_ID}.jsonl"
 
