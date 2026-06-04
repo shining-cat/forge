@@ -427,7 +427,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -3438,6 +3438,183 @@ do_skill_budgets() {
   fi
 }
 
+# ── Subcommand: framework-budget ───────────────────────────────────────
+# Reads $FORGE_REPO/core/framework-budget.conf (lines of "<category>|<label>|
+# <source-type>|<source-spec>"), measures bytes for each component (file = wc
+# -c on path; script-out = run command and wc -c the stdout), groups by
+# category, computes totals, identifies top 3 hot spots. Default human table
+# with subtotals; --json for machine output; --quiet for one-line summary.
+#
+# Token estimation heuristic: bytes / 4 (~0.25 tokens per byte). Not BPE-
+# precise; close enough for sorting and hot-spot identification.
+#
+# Missing-source handling: components whose source path doesn't exist or
+# whose script invocation fails report 0 bytes and continue (no crash).
+#
+# Why config-driven: the component list evolves as Forge changes; editing
+# the config is lighter than patching the script. Follows skill-budgets
+# precedent.
+do_framework_budget() {
+  local json_mode=false quiet_mode=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json)  json_mode=true; shift ;;
+      --quiet) quiet_mode=true; shift ;;
+      --help|-h)
+        cat <<'EOF'
+forge-context.sh framework-budget — measure framework entry tax
+
+Reports per-component byte/token cost of what every Forge session pays
+before any project work begins. Components are defined in
+$FORGE_REPO/core/framework-budget.conf.
+
+Usage:
+  forge-context.sh framework-budget          Human-readable table (default)
+  forge-context.sh framework-budget --json   Machine-readable JSON
+  forge-context.sh framework-budget --quiet  One-line summary
+  forge-context.sh framework-budget --help   This help
+EOF
+        return 0 ;;
+      *) shift ;;
+    esac
+  done
+
+  local forge_repo
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
+  if [ -z "$forge_repo" ]; then
+    echo "[framework-budget] FORGE_REPO not set in $FORGE_CONF" >&2
+    exit 2
+  fi
+
+  local conf="$forge_repo/core/framework-budget.conf"
+  if [ ! -f "$conf" ]; then
+    echo "[framework-budget] config not found: $conf" >&2
+    exit 2
+  fi
+
+  # Expand $HOME / $VAULT_PATH / $FORGE_REPO / $HOME_DIR in source specs.
+  # These are the only allowed expansion vars; everything else is literal.
+  local home_dir="${HOME_DIR:-$HOME}"
+  local vault_path
+  vault_path=$(grep '^VAULT_PATH=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
+
+  local rows="[]"
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Strip comments and trim whitespace.
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [ -z "$line" ] && continue
+    case "$line" in *\|*\|*\|*) ;; *) continue ;; esac
+
+    local category label source_type source_spec
+    category="${line%%|*}"; line="${line#*|}"
+    label="${line%%|*}"; line="${line#*|}"
+    source_type="${line%%|*}"; source_spec="${line#*|}"
+
+    # Expand allowed vars. Use plain sed substitution rather than eval to
+    # avoid arbitrary-code-execution risk from config contents.
+    local expanded="$source_spec"
+    expanded="${expanded//\$HOME/$HOME}"
+    expanded="${expanded//\$HOME_DIR/$home_dir}"
+    expanded="${expanded//\$VAULT_PATH/$vault_path}"
+    expanded="${expanded//\$FORGE_REPO/$forge_repo}"
+
+    local bytes=0
+    case "$source_type" in
+      file)
+        if [ -f "$expanded" ]; then
+          bytes=$(wc -c < "$expanded" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        fi
+        ;;
+      script-out)
+        # source_spec is "<command> <args...>". Run via bash -c, capture stdout
+        # bytes only (discard stderr to keep noise out of the count).
+        if command -v bash >/dev/null 2>&1; then
+          # shellcheck disable=SC2086
+          bytes=$(bash -c "$expanded" 2>/dev/null | wc -c | tr -d '[:space:]' || echo 0)
+        fi
+        ;;
+      *)
+        bytes=0
+        ;;
+    esac
+
+    [ -z "$bytes" ] && bytes=0
+
+    rows=$(printf '%s' "$rows" | jq \
+      --arg cat "$category" \
+      --arg lab "$label" \
+      --arg src "$source_type" \
+      --argjson b "$bytes" \
+      '. + [{category:$cat, label:$lab, source_type:$src, bytes:$b, kb:($b/1024|floor), est_tokens:($b/4|floor)}]')
+  done < "$conf"
+
+  # Aggregate by category.
+  local cats
+  cats=$(printf '%s' "$rows" | jq '[group_by(.category)[] | {category:.[0].category, bytes:(map(.bytes)|add), kb:((map(.bytes)|add)/1024|floor), est_tokens:((map(.bytes)|add)/4|floor), count:length}]')
+
+  # Total.
+  local total
+  total=$(printf '%s' "$rows" | jq '{bytes:(map(.bytes)|add), kb:((map(.bytes)|add)/1024|floor), est_tokens:((map(.bytes)|add)/4|floor)}')
+
+  # Top 3 hot spots (by bytes, descending).
+  local top
+  top=$(printf '%s' "$rows" | jq '[sort_by(-.bytes) | .[0:3] | .[] | {label, kb, bytes}]')
+
+  if [ "$json_mode" = "true" ]; then
+    jq -n --argjson c "$rows" --argjson ag "$cats" --argjson t "$total" --argjson hs "$top" \
+      '{components: $c, categories: $ag, total: $t, top_hot_spots: $hs}'
+    return 0
+  fi
+
+  if [ "$quiet_mode" = "true" ]; then
+    local total_kb total_tok total_count
+    total_kb=$(printf '%s' "$total" | jq -r '.kb')
+    total_tok=$(printf '%s' "$total" | jq -r '.est_tokens')
+    total_count=$(printf '%s' "$rows" | jq 'length')
+    local cat_count
+    cat_count=$(printf '%s' "$cats" | jq 'length')
+    echo "Framework entry tax: ${total_kb} KB, ~${total_tok} tokens (${total_count} components across ${cat_count} categories)"
+    return 0
+  fi
+
+  # Human mode: grouped table.
+  echo "Framework entry tax — token-footprint audit"
+  echo "============================================"
+  echo ""
+
+  local cat_list
+  cat_list=$(printf '%s' "$cats" | jq -r '.[].category')
+  for c in $cat_list; do
+    local cat_count cat_kb cat_tok
+    cat_count=$(printf '%s' "$cats" | jq -r --arg c "$c" '.[] | select(.category == $c) | .count')
+    cat_kb=$(printf '%s' "$cats" | jq -r --arg c "$c" '.[] | select(.category == $c) | .kb')
+    cat_tok=$(printf '%s' "$cats" | jq -r --arg c "$c" '.[] | select(.category == $c) | .est_tokens')
+    printf '%s (%s component%s):\n' "$c" "$cat_count" "$([ "$cat_count" -eq 1 ] && echo "" || echo "s")"
+    printf '%s' "$rows" | jq -r --arg c "$c" '.[] | select(.category == $c) | "  \(.label)|\(.kb)|\(.est_tokens)"' | \
+      while IFS='|' read -r lab kb tok; do
+        printf '  %-44s %6s KB  ~%6s tok\n' "$lab" "$kb" "$tok"
+      done
+    printf '  %-44s %6s KB  ~%6s tok\n' " " "──────" "─────────"
+    printf '  %-44s %6s KB  ~%6s tok\n' " " "$cat_kb" "$cat_tok"
+    echo ""
+  done
+
+  echo "═══════════════════════════════════════════════════════════════════════════"
+  local t_kb t_tok
+  t_kb=$(printf '%s' "$total" | jq -r '.kb')
+  t_tok=$(printf '%s' "$total" | jq -r '.est_tokens')
+  printf 'TOTAL: %s KB  ~%s tokens framework entry tax\n' "$t_kb" "$t_tok"
+  echo "═══════════════════════════════════════════════════════════════════════════"
+  echo ""
+  echo "Top 3 hot spots:"
+  printf '%s' "$top" | jq -r '.[] | "\(.label)|\(.kb)"' | nl -w2 -s'. ' | \
+    while IFS='|' read -r prefix_label kb; do
+      printf '  %s %6s KB\n' "$prefix_label" "$kb"
+    done
+}
+
 # ── Subcommand: bootstrap-classify ──────────────────────────────────────
 # One-shot. Reads existing friction-log.md, runs keyword-heuristic
 # classification, writes friction-classified.json. Used to retro-fit the
@@ -3679,6 +3856,7 @@ case "$SUBCMD" in
   bootstrap-harvest)   do_bootstrap_harvest "${@:2}" ;;
   audit-prose-rules)   do_audit_prose_rules "${@:2}" ;;
   skill-budgets)       do_skill_budgets "${@:2}" ;;
+  framework-budget)    do_framework_budget "${@:2}" ;;
   bootstrap-classify)  do_bootstrap_classify "${@:2}" ;;
   resolve-task)        do_resolve_task "${@:2}" ;;
   learn-wind-down)     do_learn_wind_down "${@:2}" ;;
@@ -3686,7 +3864,7 @@ case "$SUBCMD" in
   next-meeting)        do_next_meeting ;;
   draft-list)          do_draft_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|draft-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|draft-list}" >&2
     exit 1
     ;;
 esac
