@@ -1,6 +1,10 @@
 #!/bin/bash
 # forge-vault-plan-guard — PreToolUse hook
-# Rejects Write/Edit to **/.claude/plans/** or **/docs/plans/** when Forge is active.
+# Rejects Write/Edit to **/docs/plans/** when Forge is active.
+# (~/.claude/plans/ is allowed — Claude Code's plan mode pre-allocates there
+# natively. Petra's protocol, documented in forge/SKILL.md "Plan storage (Forge
+# mode)", ensures plan content lands as a section in a proper vault task file
+# regardless of where plan-mode pre-allocates the scratch draft.)
 # Allows everything else (no output = implicit allow).
 
 set -euo pipefail
@@ -36,7 +40,7 @@ PROJECT="$(extract_marker_project)"
 [ -z "$PROJECT" ] && exit 0
 
 case "$FILE_PATH" in
-  */.claude/plans/*|*/docs/plans/*) ;;
+  */docs/plans/*) ;;
   *) exit 0 ;;
 esac
 
