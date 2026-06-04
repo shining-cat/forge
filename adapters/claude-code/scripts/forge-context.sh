@@ -1003,7 +1003,7 @@ do_resolve_task() {
 # frontmatter; user/Claude verifies + flips per task.
 #
 # Also flags `tasks/done/` folders as one-time-migration prompts. `resolved/` is
-# the canonical bucket; `done/` is a legacy alias caught in FINN on 2026-05-21.
+# the canonical bucket; `done/` is a legacy alias from an older vault layout.
 STALE_TASK_DAYS=7
 audit_open_tasks_one() {
   local proj_dir="$1"

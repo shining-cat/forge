@@ -1,0 +1,53 @@
+# no-hardcoded-paths.allow — intentional <file>:<line> exceptions to the
+# no-hardcoded-paths linter (see scripts/lint/no-hardcoded-paths.sh).
+#
+# Format: one <path>:<line> per line, relative to repo root. Comments allowed
+# (lines starting with #), blank lines ignored. Matching is prefix-based on
+# the grep output's "<file>:<line>:" stem.
+#
+# Adding an entry here is a deliberate signal that the maintainer-path or
+# brand mention at that location is intentional prose (teaching example,
+# documentation reference, etc.) — not a regression. Allowlisting should
+# be the exception, not the default: prefer rewording the offending line
+# whenever the meaning can be preserved with a generic placeholder.
+#
+# When adding: include a short comment above the entry explaining WHY the
+# mention is intentional, so future-you (or another reviewer) can verify
+# the exception still makes sense if the file is later restructured.
+
+# ── Normalization patterns: forge-permission-lint.sh's job is to normalize
+#    arbitrary user paths down to a canonical form. The "/Users/<anyone>/X"
+#    pattern is mentioned in the comment and used in the actual sed regex.
+adapters/claude-code/scripts/forge-permission-lint.sh:145
+adapters/claude-code/scripts/forge-permission-lint.sh:148
+
+# ── TEMPORARY: backward-compat default for vault-root discovery.
+#    forge-context.sh falls back to $HOME_DIR/__DEV when REPO_ROOTS isn't
+#    set in forge.conf. The cleaner fix is to have install.sh populate
+#    REPO_ROOTS at setup time (interactively or with a sensible default),
+#    dropping the hardcoded "__DEV" string from forge-context.sh entirely.
+#    Tracked in: tasks/open/2026-06-04-forge-context-repo-roots-at-setup.md
+#    Remove these allowlist lines when that task ships.
+adapters/claude-code/scripts/forge-context.sh:328
+adapters/claude-code/scripts/forge-context.sh:341
+
+# ── Test fixtures: check1-good.json contains literal /Users/me/ paths as
+#    representative permission strings for forge-permission-lint's tests.
+#    "me" is a placeholder, not a real user.
+adapters/claude-code/scripts/tests/fixtures/check1-good.json:4
+adapters/claude-code/scripts/tests/fixtures/check1-good.json:5
+
+# ── permission-patterns.md is the canonical reference for how Claude Code
+#    permission patterns work. Every example uses /Users/.../ as a teaching
+#    aid to demonstrate which patterns match concrete real-world paths.
+core/references/permission-patterns.md:12
+core/references/permission-patterns.md:15
+core/references/permission-patterns.md:27
+core/references/permission-patterns.md:50
+core/references/permission-patterns.md:54
+core/references/permission-patterns.md:68
+
+# ── Onboarding prose example: shows the user where their home directory is,
+#    using "/Users/<your-username>" as a placeholder pattern. Generic
+#    example, not a maintainer path.
+core/references/onboarding.md:46

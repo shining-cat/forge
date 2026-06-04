@@ -101,7 +101,7 @@ When a finding has multiple sub-justifications (e.g. "this matters for testabili
 
 **Operationalization** — before finalizing each TL;DR bullet, ask: *"if the author addresses ONLY what this bullet says, does my finding survive?"* If no, the bullet names the wrong angle — rewrite.
 
-**Why it matters:** PR authors skim TL;DRs. If the headline names the weakest defensible angle, that's the angle they reply to — and the strongest angle never enters the conversation. Reviewer effort wasted. Worked failure mode: `${VAULT_PATH}/PRO/FINN/tasks/reviews/2026-05-21-pr-12460-review.md` item 3 — TL;DR headline was "framework testing" (weakest); the load-bearing justification was `withTimeout(SEND_MESSAGE_TIMEOUT_MS)` preservation (application contract). Author addressed framework testing only.
+**Why it matters:** PR authors skim TL;DRs. If the headline names the weakest defensible angle, that's the angle they reply to — and the strongest angle never enters the conversation. Reviewer effort wasted. Worked failure mode (real review, abstracted): a Pattern A review's item 3 had a TL;DR headline of "framework testing" (the weakest defensible angle); the load-bearing justification was a timeout-preservation argument tied to an application contract. Author addressed framework testing only — the stronger contract argument never entered the conversation.
 
 **When to vary:**
 - Zero concerns + zero nits → collapse to "Approved, no findings, here are the positive notes."
@@ -109,7 +109,7 @@ When a finding has multiple sub-justifications (e.g. "this matters for testabili
 
 **Output path:** `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/reviews/YYYY-MM-DD-pr-NNNN-review.md`. PR reviews aren't tasks in the lifecycle sense (no `status: open → resolved` flip), but they're task-adjacent artifacts produced *about* shipped work. Living under `tasks/reviews/` (sibling to `tasks/open/` and `tasks/resolved/`) keeps the project root clean as Pattern A gets used more.
 
-**Canonical example:** `${VAULT_PATH}/PRO/FINN/tasks/reviews/2026-05-21-pr-12460-review.md` (post-restructure shape, regenerated 2026-05-21 after user push-back on the duplicating-everything default).
+**Canonical shape:** `${VAULT_PATH}/<env>/<project>/tasks/reviews/YYYY-MM-DD-pr-NNNN-review.md` — post-restructure shape adopted after early Pattern A reviews duplicated content across sub-sections; the table-of-findings + per-finding-detail layout proved cleaner.
 
 **Limitations to remember:**
 - One team per session (Petra can't run a permanent role-team alongside an ad-hoc team).

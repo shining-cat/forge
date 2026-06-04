@@ -292,6 +292,16 @@ Forge auto-detects the structure by scanning vault subdirectories.
 
 Organization-specific tooling (private plugins, internal APIs, custom KB integrations) lives outside the Forge repo. Add them via your project's CLAUDE.md or a separate overlay repo.
 
+## Developing on Forge
+
+If you're contributing to the forge repo itself (vs just using forge), run the one-time dev setup after cloning:
+
+```bash
+./scripts/setup-dev.sh
+```
+
+This installs git hooks that lint each commit — currently a `no-hardcoded-paths` check that prevents maintainer paths (`__DEV`, `/Users/...`) and brand identifiers from leaking into shipped code. Idempotent; re-run safe.
+
 ## License
 
 [GPL-3.0](LICENSE)

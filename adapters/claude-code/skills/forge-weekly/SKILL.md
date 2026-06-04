@@ -65,7 +65,7 @@ When non-empty, for each draft, ask the user:
 Behaviour per choice:
 
 - **Keep** —
-  1. If `project` is `—`, ask: *"Which project? (e.g. `PERSO/forge`, `PRO/FINN`)"*
+  1. If `project` is `—`, ask: *"Which project? (e.g. `PERSO/forge`, or `<env>/<project>`)"*
   2. `mkdir -p ${VAULT_PATH}/{project}/tasks/draft` if not already present
   3. Move the file there with `mv` (preserve filename so the timestamp prefix carries over)
   4. If the moved file's frontmatter `project:` was blank, set it via Edit
