@@ -1059,6 +1059,18 @@ elif [ -f "$CLAUDE_DIR/forge.conf" ]; then
   if ! grep -q "^WELLNESS_DAY_START_HOURS=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
     echo "WELLNESS_DAY_START_HOURS=6" >> "$CLAUDE_DIR/forge.conf"
   fi
+  # REPO_ROOTS — colon-separated list of directories scanned for project repos
+  # by forge-context.sh's get_project_dir. Introduced after some installs
+  # existed (the original fallback was a hardcoded maintainer-specific path
+  # inside forge-context.sh — see hardcoded-paths-guard-test). If missing,
+  # infer from FORGE_REPO's grandparent so the existing layout is preserved
+  # without a manual edit. Users with non-env-nested layouts (flat ROOT/project/)
+  # may want to edit forge.conf and replace with the correct ROOT.
+  if ! grep -q "^REPO_ROOTS=" "$CLAUDE_DIR/forge.conf" 2>/dev/null; then
+    INFERRED_REPO_ROOTS="$(dirname "$(dirname "$FORGE_ROOT")")"
+    echo "REPO_ROOTS=$INFERRED_REPO_ROOTS" >> "$CLAUDE_DIR/forge.conf"
+    ok "REPO_ROOTS inferred and added: $INFERRED_REPO_ROOTS (edit forge.conf if your project layout differs)"
+  fi
   ok "forge.conf updated (preserved existing user-set values)"
 else
   # First install — write full template with defaults.
@@ -1102,6 +1114,14 @@ EOW_DAY=5
 # this window to detect imminent calendar interruptions; meetings further out
 # are filtered out as not actionable for the current wrap-up decision.
 MEETING_WINDOW_MIN=30
+
+# REPO_ROOTS = colon-separated list of directories that contain your project
+# repos. Scanned by forge-context.sh's get_project_dir at depth 1 (flat layout:
+# ROOT/project/) and depth 2 (env-nested: ROOT/env/project/), case-insensitively.
+# Inferred at first install as the grandparent of FORGE_REPO (preserves
+# existing layouts without a manual edit). Edit if your project layout differs
+# (e.g. multiple roots: REPO_ROOTS=~/work:~/personal:~/oss).
+REPO_ROOTS=$(dirname "$(dirname "$FORGE_ROOT")")
 
 # Model assignments per role — valid values: opus, sonnet, haiku
 # Empty value = inherit from session model

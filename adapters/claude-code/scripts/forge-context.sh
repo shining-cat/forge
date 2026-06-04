@@ -325,10 +325,13 @@ get_vault_dir() {
 
 # Resolve project repo directory by scanning configured REPO_ROOTS.
 # REPO_ROOTS in forge.conf is a colon-separated list of directories to scan.
-# Defaults to $HOME_DIR/__DEV for backward compatibility. Each root is scanned
-# at depth 1 (flat layout: ROOT/project/) and at depth 2 (env-nested layout:
-# ROOT/env/project/), case-insensitively. Underscore-prefixed and Vault*
-# directories at the env level are skipped.
+# If unset, falls back to the grandparent of FORGE_REPO (derived from the same
+# forge.conf) — preserves the maintainer's effective behavior for installs that
+# predate REPO_ROOTS becoming an explicit config key, without baking any layout
+# convention into forge code. Each root is scanned at depth 1 (flat layout:
+# ROOT/project/) and at depth 2 (env-nested layout: ROOT/env/project/),
+# case-insensitively. Underscore-prefixed and Vault* directories at the env
+# level are skipped.
 # Emits stderr warning + empty stdout if no match.
 get_project_dir() {
   local project="$1"
@@ -338,7 +341,19 @@ get_project_dir() {
   local repo_roots
   repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
   if [ -z "$repo_roots" ]; then
-    repo_roots="$HOME_DIR/__DEV"
+    # Derive from FORGE_REPO's grandparent. Warn once per session so the user
+    # knows REPO_ROOTS isn't explicit — re-running install.sh writes it.
+    local forge_repo
+    forge_repo="$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+    if [ -n "$forge_repo" ]; then
+      repo_roots="$(dirname "$(dirname "$forge_repo")")"
+      local sid="${CLAUDE_CODE_SESSION_ID:-$$}"
+      local infer_marker="/tmp/forge-context-repo-roots-inferred-${sid}"
+      if [ ! -f "$infer_marker" ]; then
+        echo "[forge-context] REPO_ROOTS not set in forge.conf — using inferred '$repo_roots' (FORGE_REPO grandparent). Re-run install.sh to make this explicit." >&2
+        touch "$infer_marker"
+      fi
+    fi
   fi
 
   local root sub_dir sub_name proj_dir proj_name
