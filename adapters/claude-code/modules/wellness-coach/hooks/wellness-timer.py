@@ -467,40 +467,51 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real"):
     last_micro = prefs.get("last_micro_break_timestamp")
 
     if tier == "real":
+        # Credit at NOW, not at auto_break: persisting the wake/boot/screen-on
+        # timestamp creates the appearance of off-session monitoring AND can
+        # immediately age past the strike threshold on long gaps. `auto_break`
+        # remains in scope for the welcome-back recency decision below — that
+        # read is in-memory only and never persisted.
+        now = now_iso()
         def credit(p):
-            p["last_break_timestamp"] = auto_break
-            p["last_micro_break_timestamp"] = auto_break
+            p["last_break_timestamp"] = now
+            p["last_micro_break_timestamp"] = now
             p["strike_active"] = False
             p["strike_cleared_at"] = None
             p["snooze_count"] = 0
             history = p.get("break_history", []) or []
-            history.append({"timestamp": auto_break, "type": "auto-real"})
+            history.append({"timestamp": now, "type": "auto-real"})
             p["break_history"] = history
             return p
         read_modify_write(credit)
-        prefs["last_break_timestamp"] = auto_break
-        prefs["last_micro_break_timestamp"] = auto_break
+        prefs["last_break_timestamp"] = now
+        prefs["last_micro_break_timestamp"] = now
         prefs["strike_active"] = False
         prefs["snooze_count"] = 0
 
-        changes = {"last_break_timestamp": f"{last_break} → {auto_break}"}
+        changes = {"last_break_timestamp": f"{last_break} → {now}"}
         if old_strike:
             changes["strike_active"] = "true → false"
         if old_snooze:
             changes["snooze_count"] = f"{old_snooze} → 0"
         log_event(prefs, "break-ack",
-            f"Auto-detected real break. Credited at {auto_break}.", changes)
+            f"Detected return from gap; break clock reset at {now}.", changes)
     else:  # micro
+        # Same rationale as the real-tier branch above: credit at NOW, not at
+        # the wake/screen-on auto_break, to avoid persisting off-session
+        # timestamps. The welcome-back recency check below still reads
+        # auto_break for its in-memory decision.
+        now = now_iso()
         def credit(p):
-            p["last_micro_break_timestamp"] = auto_break
+            p["last_micro_break_timestamp"] = now
             return p
         read_modify_write(credit)
-        prefs["last_micro_break_timestamp"] = auto_break
+        prefs["last_micro_break_timestamp"] = now
 
-        changes = {"last_micro_break_timestamp": f"{last_micro} → {auto_break}"}
+        changes = {"last_micro_break_timestamp": f"{last_micro} → {now}"}
         log_event(prefs, "micro-break-ack",
-            f"Auto-detected micro break (short lock). "
-            f"Credited at {auto_break}. Real-break timer untouched.", changes)
+            f"Detected return from short gap; micro-break clock reset at "
+            f"{now}. Real-break timer untouched.", changes)
 
     # Welcome-back message if user just returned (within 5 min)
     try:
