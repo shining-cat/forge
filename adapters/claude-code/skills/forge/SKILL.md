@@ -354,13 +354,15 @@ Background and measurement methodology: `tasks/open/2026-05-22-forge-compaction-
 - Trigger semantics: cache_read > 500K AND no ≥10% turn-to-turn drop in the last 20 assistant turns (a drop indicates compaction fired). First-pass thresholds; tune empirically over time.
 - CLI also invokable ad-hoc: `! ~/.claude/scripts/forge-cost-snapshot.sh` (human-readable) for the user or Petra at any moment, not just checkpoint time.
 
-**Plan storage (Forge mode):** All plan, design, and spec content MUST go in the vault — NEVER `~/.claude/plans/` or `docs/plans/`. Per the single-doc workflow, plan + design + progress live as **sections inside the task file**, not as separate `-design.md` / `-plan.md` siblings.
+**Plan storage (Forge mode):** All canonical plan, design, and spec content MUST live as **sections inside the relevant vault task file**, never as separate `-design.md` / `-plan.md` siblings. Single-doc workflow: plan + design + progress co-located in one task file.
 
 - **Single task** (most cases): `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md` — Design and Plan are sections inside this file (see `_templates/task.md`).
 - **Umbrella with ship-able sub-tasks**: `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<umbrella-slug>/umbrella.md` + sibling sub-task files (e.g. `A-<sub-task>.md`) inside the same subfolder (see `_templates/umbrella.md`). Discriminator: if a piece could ship on its own, it's a sub-task file; if not, it's a section in the parent.
 - **Cross-project / shared work**: `{VAULT_PATH}/_shared/tasks/open/YYYY-MM-DD-<topic>.md` (or umbrella subfolder if multi-ship).
 - Filenames carry the **creation** date and never change. Recency lives in the `updated:` frontmatter field — Keeper bumps it when adding a `## Progress` entry.
-- This overrides the default `docs/plans/...` instruction in the superpowers `brainstorming` and `writing-plans` skills. The Forge override is enforced by a PreToolUse hook (`forge-vault-plan-guard.sh`) — Claude cannot write to `docs/plans/` or `.claude/plans/` while Forge is active.
+- This overrides the default `docs/plans/...` instruction in the superpowers `brainstorming` and `writing-plans` skills. The Forge override is enforced by a PreToolUse hook (`forge-vault-plan-guard.sh`) — Claude cannot write to `docs/plans/` while Forge is active.
+
+**Claude Code plan mode under Forge.** Claude Code's plan mode (entered via `Shift+Tab` in the TUI, or via the `EnterPlanMode` tool) pre-allocates a scratch file at `~/.claude/plans/<random-slug>.md`. The Forge hook no longer blocks this path — the harness can pre-allocate freely. **Petra's responsibility:** plan content's canonical home is always the relevant task file's `## Plan` section, NOT the scratch file. For an in-flight task, write directly into the task file's `## Plan` section during plan-mode editing (skip the scratch entirely). For brand-new exploration with no existing task, the scratch file is acceptable as a working draft, but on `ExitPlanMode` create a proper task file under `tasks/open/` and migrate the plan content into its `## Plan` section before any implementation begins. The scratch file at `~/.claude/plans/` may be left in place — it's not the canonical home and won't be load-bearing.
 
 **Backlog (per-project view):** Each project maintains a single-page prioritized view at `{VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — Keeper-curated table of open tasks with Effort / Impact / Status / Notes columns, grouped by cluster. Replaces scrolling through `tasks/open/` for prioritization decisions.
 
