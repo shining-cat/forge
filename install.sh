@@ -583,6 +583,7 @@ expected_perms() {
   local perms=(
     "Bash($HOME/.claude/scripts/forge-context.sh:*)"
     "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-classify-friction.sh:*)"
     "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
     "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
     "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
@@ -590,6 +591,8 @@ expected_perms() {
     "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
     "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
     "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
+    "Bash($HOME/.claude/hooks/forge-session-end.sh:*)"
+    "Bash($HOME/.claude/hooks/inject-current-time.sh:*)"
     "Read($HOME/.claude/forge.conf)"
     "Edit($HOME/.claude/forge.conf)"
     "Read($VAULT_PATH/**)"
@@ -600,6 +603,29 @@ expected_perms() {
     perms+=(
       "Bash(python3:$HOME/.claude/skills/wellness-coach/hooks/*)"
       "Bash($HOME/.claude/skills/wellness-coach/scripts/*)"
+    )
+  fi
+  # Maintainer-only: when working on the forge repo source-of-truth, Petra
+  # routinely invokes scripts at $FORGE_ROOT/adapters/... rather than the
+  # deployed $HOME/.claude/ copies. Allowlist the source paths under
+  # MAINTAINER_MODE=true so dev work doesn't hit per-call prompts. End users
+  # don't have the forge repo at these paths; the patterns never match anything
+  # for them, but appear in their settings.json — gating on MAINTAINER_MODE
+  # keeps end-user settings.json clean. Reads MAINTAINER_MODE from forge.conf
+  # at preview time so the displayed list matches what will be applied.
+  local maint_mode="false"
+  if [ -f "$CLAUDE_DIR/forge.conf" ]; then
+    maint_mode="$(grep '^MAINTAINER_MODE=' "$CLAUDE_DIR/forge.conf" 2>/dev/null | head -1 | cut -d= -f2 || true)"
+    [ -z "$maint_mode" ] && maint_mode="false"
+  fi
+  if [ "$maint_mode" = "true" ]; then
+    perms+=(
+      "Bash($FORGE_ROOT/adapters/claude-code/scripts/*)"
+      "Bash($FORGE_ROOT/adapters/claude-code/hooks/*)"
+      "Bash($FORGE_ROOT/adapters/claude-code/modules/wellness-coach/scripts/*)"
+      "Bash(python3:$FORGE_ROOT/adapters/claude-code/modules/wellness-coach/hooks/*)"
+      "Bash($FORGE_ROOT/scripts/lint/no-hardcoded-paths.sh:*)"
+      "Bash($FORGE_ROOT/scripts/setup-dev.sh:*)"
     )
   fi
   if [ "$PERMISSIVE_BASH_WRAPPERS" = "true" ]; then
@@ -1417,6 +1443,7 @@ PERMS_TO_ADD=(
   # Forge scripts
   "Bash($HOME/.claude/scripts/forge-context.sh:*)"
   "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
+  "Bash($HOME/.claude/scripts/forge-classify-friction.sh:*)"
   "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
   "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
   "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
@@ -1425,6 +1452,8 @@ PERMS_TO_ADD=(
   "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
   "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
   "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
+  "Bash($HOME/.claude/hooks/forge-session-end.sh:*)"
+  "Bash($HOME/.claude/hooks/inject-current-time.sh:*)"
   # Forge config
   "Read($HOME/.claude/forge.conf)"
   "Edit($HOME/.claude/forge.conf)"
@@ -1439,6 +1468,27 @@ if [ "$WELLNESS_ENABLED" = "true" ]; then
   PERMS_TO_ADD+=(
     "Bash(python3:$HOME/.claude/skills/wellness-coach/hooks/*)"
     "Bash($HOME/.claude/skills/wellness-coach/scripts/*)"
+  )
+fi
+
+# Conditional: maintainer mode — allowlist dev-time invocations against the
+# source-of-truth repo paths so working ON forge doesn't hit per-call prompts.
+# End users (MAINTAINER_MODE=false, the default) don't have the forge repo at
+# these paths anyway; the patterns would never match for them. Gating keeps
+# end-user settings.json visually clean. Source: bash-allowlist-audit (PR #65).
+INSTALL_MAINTAINER_MODE="false"
+if [ -f "$CLAUDE_DIR/forge.conf" ]; then
+  INSTALL_MAINTAINER_MODE="$(grep '^MAINTAINER_MODE=' "$CLAUDE_DIR/forge.conf" 2>/dev/null | head -1 | cut -d= -f2 || true)"
+  [ -z "$INSTALL_MAINTAINER_MODE" ] && INSTALL_MAINTAINER_MODE="false"
+fi
+if [ "$INSTALL_MAINTAINER_MODE" = "true" ]; then
+  PERMS_TO_ADD+=(
+    "Bash($FORGE_ROOT/adapters/claude-code/scripts/*)"
+    "Bash($FORGE_ROOT/adapters/claude-code/hooks/*)"
+    "Bash($FORGE_ROOT/adapters/claude-code/modules/wellness-coach/scripts/*)"
+    "Bash(python3:$FORGE_ROOT/adapters/claude-code/modules/wellness-coach/hooks/*)"
+    "Bash($FORGE_ROOT/scripts/lint/no-hardcoded-paths.sh:*)"
+    "Bash($FORGE_ROOT/scripts/setup-dev.sh:*)"
   )
 fi
 
