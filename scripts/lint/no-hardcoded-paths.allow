@@ -21,16 +21,6 @@
 adapters/claude-code/scripts/forge-permission-lint.sh:145
 adapters/claude-code/scripts/forge-permission-lint.sh:148
 
-# ── TEMPORARY: backward-compat default for vault-root discovery.
-#    forge-context.sh falls back to $HOME_DIR/__DEV when REPO_ROOTS isn't
-#    set in forge.conf. The cleaner fix is to have install.sh populate
-#    REPO_ROOTS at setup time (interactively or with a sensible default),
-#    dropping the hardcoded "__DEV" string from forge-context.sh entirely.
-#    Tracked in: tasks/open/2026-06-04-forge-context-repo-roots-at-setup.md
-#    Remove these allowlist lines when that task ships.
-adapters/claude-code/scripts/forge-context.sh:328
-adapters/claude-code/scripts/forge-context.sh:341
-
 # ── Test fixtures: check1-good.json contains literal /Users/me/ paths as
 #    representative permission strings for forge-permission-lint's tests.
 #    "me" is a placeholder, not a real user.
