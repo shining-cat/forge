@@ -52,8 +52,8 @@ Settings → Templater → **Folder Templates** → toggle on.
 
 Under Folder Templates, add at minimum:
 
-| Folder | Template |
-|---|---|
+| Folder                | Template              |
+| --------------------- | --------------------- |
 | `_shared/tasks/draft` | `_templates/draft.md` |
 
 This makes new files in `_shared/tasks/draft/` get the draft template's frontmatter and structure automatically.
@@ -144,4 +144,3 @@ These are starter questions, not a script. Some drafts need 30 seconds (idea was
 - **Templater is third-party, not bundled.** Forge ships `draft.md` + this docs page. Plugin install + Folder Template wiring is yours.
 - **`_templates/draft.md` is A2-preserve in Forge's install policy.** If you customize the template, re-installing Forge won't clobber your changes — upstream lands as a `.upstream.<ts>` sibling for diff.
 - **Fully optional.** If you don't install Templater, the rest of Forge works exactly as before; you just don't get the 5-second capture path. The Petra-mediated *"log this for later"* flow stays available in-conversation either way.
-- **Petra mentions this page once.** The first time you ask Petra to "quick log" something in a session, she'll point at this docs page. Saying *"I know"* / *"I've set it up"* saves a memory so she stops mentioning it across sessions.

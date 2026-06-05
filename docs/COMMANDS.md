@@ -76,4 +76,18 @@ Companion scripts:
 ~/.claude/scripts/forge-calendar.sh in-meeting     # presence-only: are you in a meeting right now
 ```
 
-Full subcommand list: `~/.claude/scripts/forge-context.sh` with no args prints the full usage line. The rest are hook-wired and not typically invoked by hand.
+Full subcommand list (also printed by running `~/.claude/scripts/forge-context.sh` with no args):
+
+```
+post-tool | gate | stop | recover | reconcile-marker | status |
+vault-sync | wrap-up-state | weekly-wrap-due | mark-weekly-wrap-done |
+check-install | rollback-install | open-task-audit | backlog-audit |
+set-marker | append-braindump | append-friction | friction-tail |
+pin-friction | archive-friction-entries | harvest-friction |
+promote-friction | bootstrap-harvest | audit-prose-rules |
+skill-budgets | framework-budget | bootstrap-classify | resolve-task |
+learn-wind-down | wind-down-list | next-meeting | substrate-check |
+review-sync | draft-list
+```
+
+The hook-wired subcommands (`post-tool`, `gate`, `stop`, `recover`, `reconcile-marker`, `status`) fire automatically and aren't typically invoked by hand. The rest are user-callable for one-off checks or reports.
