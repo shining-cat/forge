@@ -283,14 +283,14 @@ reconcile_marker() {
   fi
 }
 
-# Returns 0 if Pip (wellness coach) is on strike (tool use blocked), 1 otherwise.
+# Returns 0 if the wellness coach is on strike (tool use blocked), 1 otherwise.
 # Used by do_stop and do_post_tool to suppress nags during a strike — without
 # this short-circuit, Keeper's Stop hook fires on every response and the user
-# cannot satisfy it (writing a checkpoint requires tool calls Pip blocks),
+# cannot satisfy it (writing a checkpoint requires tool calls the strike blocks),
 # producing a hook-deadlock loop. See friction log 2026-05-07 — "Hook
 # coordination deadlock loop". Fail-open: if wellness file is missing or
 # unreadable, treat as not-on-strike (wellness-disabled installs unaffected).
-is_pip_on_strike() {
+is_wellness_strike_active() {
   local prefs="${VAULT_PATH}/_shared/wellness-preferences.json"
   [ -f "$prefs" ] || return 1
   local strike
@@ -407,7 +407,7 @@ get_project_dir() {
 # When sourced (e.g., from forge-compaction.sh or forge-session-end.sh to
 # reuse the helpers above), VAULT_PATH/MARKER resolution + all helper
 # definitions (extract_marker_project,
-# session_owns_forge, reconcile_marker, is_pip_on_strike, get_vault_dir,
+# session_owns_forge, reconcile_marker, is_wellness_strike_active, get_vault_dir,
 # get_project_dir) stay in scope, but no stdin is consumed and no
 # subcommand dispatch runs.
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
@@ -584,13 +584,13 @@ print(summary)
   mkdir -p "$(dirname "$BREADCRUMBS_FILE")"
   echo "$timestamp | $tool_name | $input_summary" >> "$BREADCRUMBS_FILE"
 
-  # Pip on strike — breadcrumb still recorded above, but suppress all nags
+  # Wellness coach on strike — breadcrumb still recorded above, but suppress all nags
   # below (brain-dump, push/PR nudge). User can't act on them during a strike,
   # and Keeper's Stop hook would loop on the resulting empty responses.
   # NOTE: trailer parsing (further down) is mechanical and also gated by
   # strike — during a strike there are no git commits to parse anyway, so
   # this is moot in practice.
-  if is_pip_on_strike; then
+  if is_wellness_strike_active; then
     return 0
   fi
 
@@ -755,10 +755,10 @@ do_stop() {
   # windows that didn't run /forge themselves. See session_owns_forge().
   session_owns_forge || exit 0
 
-  # Pip on strike — suppress nag. User cannot write a checkpoint while tool
+  # Wellness coach on strike — suppress nag. User cannot write a checkpoint while tool
   # use is blocked, and every response triggers another Stop hook fire,
   # producing a deadlock loop. Resume nagging when strike lifts naturally.
-  if is_pip_on_strike; then
+  if is_wellness_strike_active; then
     exit 0
   fi
 

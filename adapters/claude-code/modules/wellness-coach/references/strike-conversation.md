@@ -29,7 +29,7 @@ All other tool calls remain blocked until the strike is cleared. If a path you n
 
 ## Integration with `/forge-exit`
 
-The forge-exit flow invokes `wellness-reset.sh --full-reset` as its Step 0, before any checkpoint write or marker deactivation. This relies on the scripts-dir exemption above — if Pip is on strike when the user invokes `/forge-exit`, the wellness reset runs anyway, clearing the strike so the rest of the exit can proceed.
+The forge-exit flow invokes `wellness-reset.sh --full-reset` as its Step 0, before any checkpoint write or marker deactivation. This relies on the scripts-dir exemption above — if the coach is on strike when the user invokes `/forge-exit`, the wellness reset runs anyway, clearing the strike so the rest of the exit can proceed.
 
 ## The flow
 

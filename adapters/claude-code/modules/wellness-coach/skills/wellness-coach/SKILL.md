@@ -201,7 +201,7 @@ The coach has personality. If the user just wants to chat:
 
 ## Strike Conversation
 
-**When the user addresses the coach by name (matching `coach_name` in preferences) AND `strike_active` is true, your FIRST tool call MUST be `Skill(wellness-coach)`.** Do not retry blocked tools first — they will return the strike denial without progressing recovery. The Skill invocation is the only path that clears the strike. This applies whether the user said "Pip, lift the strike", "hey coach", or any other address-by-name phrase: open the skill, then act.
+**When the user addresses the coach by name (matching `coach_name` in preferences) AND `strike_active` is true, your FIRST tool call MUST be `Skill(wellness-coach)`.** Do not retry blocked tools first — they will return the strike denial without progressing recovery. The Skill invocation is the only path that clears the strike. This applies whether the user said `"<coach_name>, lift the strike"`, "hey coach", or any other address-by-name phrase: open the skill, then act.
 
 Load `references/strike-conversation.md` for the full recovery flow — exempt surfaces during the strike, hook-vs-coach division of labor, the 5-step conversation script, Actions A (credit a real break) and Actions B (skip-but-clear), and the `/forge-exit` integration. Load it as soon as the skill is invoked during an active strike.
 

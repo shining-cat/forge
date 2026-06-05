@@ -22,7 +22,7 @@ WELLNESS_RESET="$HOME/.claude/skills/wellness-coach/scripts/wellness-reset.sh"
 
 This resets all timer state (`last_break_timestamp`, `last_micro_break_timestamp`, `last_reminder_timestamp`, `strike_cleared_at`) to now, clears any active strike, and appends a `real` break to history.
 
-**Why this MUST run first:** if Pip is already on strike when `/forge-exit` fires, the subsequent Edit/Write tool calls (final checkpoint, marker deactivation) would be blocked. The wellness-coach scripts directory is exempt from strike (see wellness-coach SKILL.md "Strike Conversation" — Bash invocations under `~/.claude/skills/wellness-coach/scripts/` are always reachable), so this call always succeeds — clearing the strike before any other step needs to fire.
+**Why this MUST run first:** if the wellness coach is already on strike when `/forge-exit` fires, the subsequent Edit/Write tool calls (final checkpoint, marker deactivation) would be blocked. The wellness-coach scripts directory is exempt from strike (see wellness-coach SKILL.md "Strike Conversation" — Bash invocations under `~/.claude/skills/wellness-coach/scripts/` are always reachable), so this call always succeeds — clearing the strike before any other step needs to fire.
 
 If wellness-coach isn't installed, the conditional skips silently — proceed to Step 1.
 
