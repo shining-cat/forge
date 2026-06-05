@@ -67,9 +67,14 @@ echo "Check 3 — is_stop_event({}) → False (defensive)"
 out=$(run_py "print(wt.is_stop_event({}))")
 assert_eq "empty input not flagged Stop" "False" "$out"
 
-# ── 4 — emit_stop_message output shape: hookEventName + systemMessage ───
+# ── 4 — emit_stop_message output shape: top-level systemMessage only ────
+# Schema-correct shape per Claude Code's hook output spec: Stop has no
+# `hookSpecificOutput.Stop` schema entry, so we emit just `{"systemMessage": ...}`.
+# Emitting an unknown hookSpecificOutput.hookEventName triggers Claude Code
+# to dump the expected-schema as an error on every Stop event (regression
+# from the original PR #76 ship; fixed in the hotfix PR).
 echo ""
-echo "Check 4 — emit_stop_message emits Stop-shaped JSON"
+echo "Check 4 — emit_stop_message emits top-level systemMessage"
 out=$(run_py "
 import sys, json, io
 buf = io.StringIO()
@@ -80,17 +85,17 @@ except SystemExit:
     pass
 sys.stdout = sys.__stdout__
 parsed = json.loads(buf.getvalue())
-print(parsed['hookSpecificOutput']['hookEventName'])
-print(parsed['systemMessage'])
+print(parsed.get('systemMessage', 'MISSING'))
+print('has_hookSpecificOutput:', 'hookSpecificOutput' in parsed)
 ")
-hook_name=$(echo "$out" | head -1)
-msg=$(echo "$out" | tail -1)
-assert_eq "hookEventName == Stop"        "Stop"             "$hook_name"
-assert_eq "systemMessage preserved"      "hello from stop"  "$msg"
+msg=$(echo "$out" | head -1)
+has_hso=$(echo "$out" | tail -1)
+assert_eq "systemMessage preserved"   "hello from stop"               "$msg"
+assert_eq "no hookSpecificOutput key" "has_hookSpecificOutput: False" "$has_hso"
 
-# ── 5 — emit_stop_message does NOT include permissionDecision ──────────
+# ── 5 — emit_stop_message output is minimal — no other unexpected keys ─
 echo ""
-echo "Check 5 — emit_stop_message output omits permissionDecision"
+echo "Check 5 — emit_stop_message output has only systemMessage"
 out=$(run_py "
 import sys, json, io
 buf = io.StringIO()
@@ -101,9 +106,10 @@ except SystemExit:
     pass
 sys.stdout = sys.__stdout__
 parsed = json.loads(buf.getvalue())
-print('decision_key_present:', 'permissionDecision' in parsed.get('hookSpecificOutput', {}))
+keys = sorted(parsed.keys())
+print('keys:', ','.join(keys))
 ")
-assert_eq "no permissionDecision in output" "decision_key_present: False" "$out"
+assert_eq "only systemMessage key present" "keys: systemMessage" "$out"
 
 echo ""
 echo "Pass: $PASS  Fail: $FAIL"
