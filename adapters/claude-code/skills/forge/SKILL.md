@@ -241,10 +241,13 @@ PR sync results (from step 3) are shown first, then the context summary, then th
 
 The first failure mode to refuse is the comforting one. "Nothing here" is a strong claim; if the verification step that produces it has been skipped, the honest output is the gap, never a default. This rule applies to ALL entry-summary lines (PRs, decisions, friction events, vault state, etc.) — defaults belong in code; verifications belong in the entry summary.
 
-**Team substrate check:** Inspect whether Pattern A agent teams can spawn in this session.
-- If `$TMUX` env var is set and non-empty → "Team substrate: ready" (claude is running inside tmux, teammates can spawn as panes).
-- If `$TMUX` is empty AND `command -v tmux` succeeds → "Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback". This typically means the `forge-shell-init.sh` wrapper was bypassed (FORGE_NO_TMUX_WRAP set, or claude launched outside the wrapped shell).
-- If `$TMUX` is empty AND tmux is NOT installed → "Team substrate: missing — install tmux (`brew install tmux`) and relaunch for Pattern A; inline subagent fallback works either way".
+**Team substrate check:** Run `~/.claude/scripts/forge-context.sh substrate-check` and surface the output line verbatim in the entry summary. The script emits one of:
+
+- `Team substrate: ready` — claude is inside tmux, Pattern A available
+- `Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback` — tmux installed but `$TMUX` unset (the `forge-shell-init.sh` wrapper was bypassed: FORGE_NO_TMUX_WRAP set, or claude launched outside the wrapped shell)
+- `Team substrate: missing — install tmux (`brew install tmux`) and relaunch for Pattern A; inline subagent fallback works either way` — tmux not installed
+
+Why a subcommand instead of inline detection at entry: the inline compound (`echo + command -v + && / ||` chain) doesn't match any flat allowlist entry, so it prompted on every session start. Routing through `forge-context.sh substrate-check` inherits the existing script-level allowlist and stays silent.
 
 This check makes Petra's substrate-awareness explicit at session entry, so she does not trigger Pattern A and *then* discover the team feature is unavailable. When substrate is missing, Pattern A falls back to inline subagent dispatches per the Pattern A protocol section below.
 
