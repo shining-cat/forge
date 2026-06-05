@@ -6,7 +6,7 @@ A 5-second capture path for half-formed ideas, with zero involvement from Petra 
 >
 > The asymmetry is the point: **capture should be cheap, refinement is what Petra is good at**.
 
-For the daily-workflow context this fits into, see the [README](../README.md). For the underlying vault folder layout (`tasks/draft/`, `tasks/open/`), see [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md).
+For the daily-workflow context this fits into, see the [README](../README.md). For the underlying vault folder layout (`tasks/drafts/`, `tasks/open/`), see [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md).
 
 ---
 
@@ -15,7 +15,7 @@ For the daily-workflow context this fits into, see the [README](../README.md). F
 ```
 Capture (Obsidian hotkey, ~5s)
         ↓
-   tasks/draft/                  ← drafts accumulate here
+   tasks/drafts/                  ← drafts accumulate here
         ↓
 Weekly triage (/forge-weekly, Friday)
         ↓
@@ -56,13 +56,13 @@ Under **Folder Templates** (now visible thanks to step 3), add a mapping for eac
 
 | Folder                           | Template              |
 | -------------------------------- | --------------------- |
-| `WORK/my-app/tasks/draft`        | `_templates/draft.md` |
-| `PERSO/side-project/tasks/draft` | `_templates/draft.md` |
+| `WORK/my-app/tasks/drafts`        | `_templates/draft.md` |
+| `PERSO/side-project/tasks/drafts` | `_templates/draft.md` |
 | (etc — one per project)          |                       |
 
 When a new note is created **inside one of these folders** (via Obsidian's "new note" button while navigated there), Templater auto-applies the draft template.
 
-**You don't need a mapping for `_shared/tasks/draft/`** — the draft template itself auto-moves new files to that folder by default (see step 5). The per-project mappings above only matter if you want drafts to skip the `_shared` default and land in a specific project folder.
+**You don't need a mapping for `_shared/tasks/drafts/`** — the draft template itself auto-moves new files to that folder by default (see step 5). The per-project mappings above only matter if you want drafts to skip the `_shared` default and land in a specific project folder.
 
 ### 5. Bind a global hotkey
 
@@ -70,7 +70,7 @@ Go to **Obsidian Settings → Hotkeys** (left sidebar — *not* Templater's own 
 
 Search for **"Templater: Create new note from template"** and bind a hotkey you'll remember (e.g. `Cmd-Shift-D` for "draft").
 
-When you hit it: Templater pops a template picker, you pick `draft.md`, a new file gets created. The template includes a `tp.file.move(...)` call that auto-relocates the new file to `_shared/tasks/draft/` (unless it was already created inside a `tasks/draft` folder via step 4's Folder Template mapping, in which case it stays put).
+When you hit it: Templater pops a template picker, you pick `draft.md`, a new file gets created. The template includes a `tp.file.move(...)` call that auto-relocates the new file to `_shared/tasks/drafts/` (unless it was already created inside a `tasks/drafts` folder via step 4's Folder Template mapping, in which case it stays put).
 
 ---
 
@@ -80,7 +80,7 @@ When you hit it: Templater pops a template picker, you pick `draft.md`, a new fi
 2. Press your bound hotkey (e.g. `Cmd-Shift-D`).
 3. The template picker pops up. Type "draft" → select `draft.md`.
 4. Templater prompts for the new file's name (defaults to "Untitled"). Type a one-line title.
-5. The file opens with frontmatter pre-filled. **It auto-moves to `_shared/tasks/draft/`** (via the template's `tp.file.move(...)` call) unless you created it inside a per-project draft folder you mapped in Stage 1 step 4.
+5. The file opens with frontmatter pre-filled. **It auto-moves to `_shared/tasks/drafts/`** (via the template's `tp.file.move(...)` call) unless you created it inside a per-project draft folder you mapped in Stage 1 step 4.
 6. Type your one-line idea below the heading. Save.
 
 Total time: ~3-5 seconds. Zero conversation with Claude.
@@ -109,7 +109,7 @@ You nominate the refine row from the BACKLOG when you have headspace — same wa
 | [[2026-06-02T15-50-some-draft]] | XS | ? | refine | Some draft title — captured 2026-06-02T15:50 |
 ```
 
-The wikilink resolves to the draft file in `tasks/draft/`.
+The wikilink resolves to the draft file in `tasks/drafts/`.
 
 Petra opens the draft and walks the standard refinement questions:
 
@@ -128,7 +128,7 @@ These are starter questions, not a script. Some drafts need 30 seconds (idea was
 
 **Cleanup** (all in the same action that files the refined task):
 
-1. Delete the draft file from `tasks/draft/`
+1. Delete the draft file from `tasks/drafts/`
 2. Remove the `[draft] refine:` row from the BACKLOG; add the proper task row in its appropriate cluster
 3. If *"Drafts pending refinement"* is now empty, drop the cluster header too (lazy delete — re-created on next weekly triage)
 

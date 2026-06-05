@@ -3986,12 +3986,12 @@ do_review_sync() {
 }
 
 # ── Subcommand: draft-list ────────────────────────────────────────────
-# Enumerate captured draft tasks across all draft folders for the weekly-wrap
+# Enumerate captured draft tasks across all drafts folders for the weekly-wrap
 # triage step. Output is TSV with columns: path \t project \t title.
 #
 # - path:    full path to the draft .md file
 # - project: from frontmatter `project:` if set; else inferred from the path
-#            (e.g. /vault/PERSO/forge/tasks/draft/ → "PERSO/forge"); else "—"
+#            (e.g. /vault/PERSO/forge/tasks/drafts/ → "PERSO/forge"); else "—"
 # - title:   first `# ` heading or the filename (no .md) if heading absent
 #
 # Skips files under `_discarded/` subdirs (those are awaiting auto-purge).
@@ -4003,9 +4003,9 @@ do_review_sync() {
 do_draft_list() {
   [ -z "${VAULT_PATH:-}" ] && return 0
   [ -d "$VAULT_PATH" ] || return 0
-  # find every `tasks/draft` dir under VAULT_PATH; iterate the .md files in
+  # find every `tasks/drafts` dir under VAULT_PATH; iterate the .md files in
   # each, skipping the `_discarded/` grace-period subdir.
-  find "$VAULT_PATH" -type d -name draft -path "*/tasks/draft" -print0 2>/dev/null |
+  find "$VAULT_PATH" -type d -name drafts -path "*/tasks/drafts" -print0 2>/dev/null |
   while IFS= read -r -d '' draft_dir; do
     for f in "$draft_dir"/*.md; do
       [ -f "$f" ] || continue
@@ -4029,8 +4029,8 @@ do_draft_list() {
       # Infer project from path when frontmatter is blank
       if [ -z "$project" ]; then
         rel="${f#$VAULT_PATH/}"
-        # Match {ENV}/{PROJECT}/tasks/draft/...  (NOT _shared/tasks/draft/...)
-        if [[ "$rel" =~ ^([^/_][^/]*)/([^/]+)/tasks/draft/ ]]; then
+        # Match {ENV}/{PROJECT}/tasks/drafts/...  (NOT _shared/tasks/drafts/...)
+        if [[ "$rel" =~ ^([^/_][^/]*)/([^/]+)/tasks/drafts/ ]]; then
           project="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
         fi
       fi

@@ -66,7 +66,7 @@ Behaviour per choice:
 
 - **Keep** —
   1. If `project` is `—`, ask: *"Which project? (e.g. `PERSO/forge`, or `<env>/<project>`)"*
-  2. `mkdir -p ${VAULT_PATH}/{project}/tasks/draft` if not already present
+  2. `mkdir -p ${VAULT_PATH}/{project}/tasks/drafts` if not already present
   3. Move the file there with `mv` (preserve filename so the timestamp prefix carries over)
   4. If the moved file's frontmatter `project:` was blank, set it via Edit
   5. Open the project's `BACKLOG.md`. Add a "Drafts pending refinement" cluster (lazy-create after the **Hot** cluster, before **Measurement / audit** — task body suggestion locked) and append a row:
