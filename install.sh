@@ -1257,7 +1257,7 @@ ok "Vault structure at $VAULT_PATH"
 # detected (CLI-only users get no noise).
 if [ -d "$VAULT_PATH/.obsidian" ]; then
   hint "For optional 5-second manual draft capture from Obsidian, see"
-  hint "    $FORGE_ROOT/docs/obsidian-draft-capture.md"
+  hint "    $FORGE_ROOT/docs/draft-tasks.md"
   hint "    (Templater + Folder Templates wire-up; the draft template is already at $VAULT_PATH/_templates/draft.md)"
 fi
 
