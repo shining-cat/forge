@@ -297,6 +297,86 @@ echo "$out" | grep -q "2026-04-01-control.md" \
   || { echo "  ✗ control task wrongly suppressed"; FAIL=$((FAIL+1)); }
 teardown
 
+# ── Check 11 — BACKLOG audit ignores wikilinks in <details>...</details> ──
+# Regression guard for the false-positive that an active row whose
+# description prose mentions "Recently shipped" would trip a naive
+# text-marker cutoff. The fix uses <details>/</details> as the cut.
+echo ""
+echo "Check 11 — BACKLOG audit ignores wikilinks in <details> history block"
+setup
+# 5 active wikilinks (matches 5 open task files → no row-count divergence).
+# 20 wikilinks inside <details> (history; must be ignored).
+# One active row whose description PROSE mentions "Recently shipped" —
+# would trip a naive `/Recently shipped/ { exit }` cutoff and lose the
+# active wikilinks below it.
+for i in 1 2 3 4 5; do
+  plant_task "$TMP/PERSO/demo/tasks/open/2026-04-0${i}-active${i}.md" 1
+done
+cat > "$TMP/PERSO/demo/BACKLOG.md" <<'EOF'
+# demo BACKLOG
+
+## Active
+
+| Task | Effort |
+|---|---|
+| [[2026-04-01-active1]] | S |
+| [[2026-04-02-active2]] | S |
+| [[2026-04-03-active3]] | S — mentions "Recently shipped" in this prose to trap naive cutoffs |
+| [[2026-04-04-active4]] | S |
+| [[2026-04-05-active5]] | S |
+
+<details>
+<summary><b>📜 Recently shipped — click to expand</b></summary>
+
+- [[2026-03-01-old1]] [[2026-03-02-old2]] [[2026-03-03-old3]] [[2026-03-04-old4]]
+- [[2026-03-05-old5]] [[2026-03-06-old6]] [[2026-03-07-old7]] [[2026-03-08-old8]]
+- [[2026-03-09-old9]] [[2026-03-10-old10]] [[2026-03-11-old11]] [[2026-03-12-old12]]
+- [[2026-03-13-old13]] [[2026-03-14-old14]] [[2026-03-15-old15]] [[2026-03-16-old16]]
+- [[2026-03-17-old17]] [[2026-03-18-old18]] [[2026-03-19-old19]] [[2026-03-20-old20]]
+</details>
+EOF
+# Touch BACKLOG to "now" so the mtime-gap signal doesn't coincidentally fire.
+touch "$TMP/PERSO/demo/BACKLOG.md"
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "row count diverges" \
+  && { echo "  ✗ active=5 vs open=5 + 20 historical wikilinks wrongly flagged as diverging"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ healthy BACKLOG with 20 historical wikilinks not flagged"; PASS=$((PASS+1)); }
+teardown
+
+# ── Check 12 — divergence still fires when active region is genuinely off ──
+# Regression guard for the OPPOSITE: don't over-correct and silence real
+# drift. Active region has 1 wikilink; tasks/open/ has 5 → diverges by 4
+# (exceeds the slack of 3) → MUST still flag.
+echo ""
+echo "Check 12 — divergence still fires when active region is genuinely off"
+setup
+for i in 1 2 3 4 5; do
+  plant_task "$TMP/PERSO/demo/tasks/open/2026-04-0${i}-task${i}.md" 1
+done
+cat > "$TMP/PERSO/demo/BACKLOG.md" <<'EOF'
+# demo BACKLOG
+
+| Task | Effort |
+|---|---|
+| [[2026-04-01-task1]] | S |
+
+<details>
+<summary>📜 Recently shipped</summary>
+
+- [[2026-03-01-old1]] [[2026-03-02-old2]] [[2026-03-03-old3]]
+</details>
+EOF
+touch "$TMP/PERSO/demo/BACKLOG.md"
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "row count diverges (1 wikilinks vs 5 open tasks)" \
+  && { echo "  ✓ real drift still flagged with correct counts (1 active vs 5 open)"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ real drift missed or counts wrong"; FAIL=$((FAIL+1)); }
+teardown
+
 echo ""
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
