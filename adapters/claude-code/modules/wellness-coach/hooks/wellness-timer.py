@@ -173,18 +173,18 @@ def emit_deny(short_reason, detail_message):
 def emit_stop_message(message):
     """Print Stop hook output with systemMessage and exit.
 
-    Stop has no permissionDecision (the assistant turn already ended;
-    there's nothing to allow/deny). The systemMessage gets surfaced to
-    the user the same way as PreToolUse's. Strike escalation through
-    Stop sets `strike_active=true` in state — the next PreToolUse picks
-    up the strike and emits the actual deny.
+    Stop's hook schema does NOT accept `hookSpecificOutput.hookEventName:
+    "Stop"` — only PreToolUse / UserPromptSubmit / PostToolUse / PostToolBatch
+    have hookSpecificOutput entries. Emitting an unknown shape there causes
+    Claude Code to dump the full expected-schema as an error on every Stop
+    event. We just emit the top-level `systemMessage` field, which IS in
+    the schema. No permissionDecision either (Stop can't deny; the turn
+    already ended).
+
+    Strike escalation through Stop sets `strike_active=true` in state —
+    the next PreToolUse picks up the strike and emits the actual deny.
     """
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-        },
-        "systemMessage": message,
-    }))
+    print(json.dumps({"systemMessage": message}))
     sys.exit(0)
 
 
