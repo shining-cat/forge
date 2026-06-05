@@ -80,7 +80,7 @@ Use the `repo-` prefix for all symlinked content to make it visually distinct fr
 | `decisions/` | Project-specific decisions with rationale | First decision that needs its own file |
 | `tasks/open/` | Open project-level tasks | First task logged |
 | `tasks/resolved/` | Completed project-level tasks | First task resolved |
-| `tasks/draft/` | 5-second Obsidian captures awaiting triage | First time you use the Obsidian capture hotkey (`/forge-weekly` triages them) |
+| `tasks/drafts/` | 5-second Obsidian captures awaiting triage | First time you use the Obsidian capture hotkey (`/forge-weekly` triages them) |
 | `tasks/reviews/` | PR review docs (Pattern A / multi-agent review outputs) | First review doc filed. Lifecycled by `forge-context.sh review-sync` at entry + `/promote-from-review` for cleanup |
 | `patterns/` | Codebase wisdom that isn't in the code itself — non-obvious gotchas, repeatable failure modes, discovered conventions | First pattern promoted from a review doc via `/promote-from-review`, OR hand-filed when you want to record a gotcha you just learned |
 
@@ -171,6 +171,6 @@ The vault includes templates for recurring file shapes. Source of truth lives in
 | `issue.md` | Reactive stabilisation log — multiple sub-issues accumulating around one component over time (per 2026-04-16 stabilisation-task-format decision). |
 | `umbrella.md` | Pre-planned breakdown into independently ship-able sub-tasks. Lives in `{project}/tasks/open/<umbrella-slug>/umbrella.md` with sibling sub-task files in the same folder. |
 | `pattern.md` | Logging a codebase-wisdom gotcha (4-section opinionated shape: Symptom / Mechanism / Fix / Where it bit us). Lives in `{project}/patterns/` — `<short-slug>.md` (no date prefix; patterns are per-codebase truths, not time-keyed). Usually scaffolded by `/promote-from-review` from a merged review doc; hand-filing also fine. |
-| `draft.md` | 5-second Obsidian capture for half-formed ideas. Lives in `{project}/tasks/draft/`. Triaged into proper tasks at `/forge-weekly`. |
+| `draft.md` | 5-second Obsidian capture for half-formed ideas. Lives in `{project}/tasks/drafts/`. Triaged into proper tasks at `/forge-weekly`. |
 | `friction-entry.md` | Snippet for appending a new entry to `_shared/friction-log.md` (no frontmatter — it's a section, not a file). Most users invoke `forge-context.sh append-friction` instead. |
 | `project-index.md` | Starter `INDEX.md` for a new project (about, decisions, tasks links, standing notes) |
