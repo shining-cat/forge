@@ -58,6 +58,23 @@ EOF
               || date -d "@$target_epoch" '+%Y%m%d%H%M.%S' 2>/dev/null)" "$path"
 }
 
+# Plant a task file with caller-supplied frontmatter (full FM block as $3,
+# without the surrounding `---` fences). Mtime backdated as in plant_task.
+plant_task_with_fm() {
+  local path="$1" age_days="$2" fm="$3"
+  {
+    echo "---"
+    echo "$fm"
+    echo "---"
+    echo ""
+    echo "# Old task"
+  } > "$path"
+  local target_epoch
+  target_epoch=$(( $(date +%s) - (age_days * 86400) ))
+  touch -t "$(date -r "$target_epoch" '+%Y%m%d%H%M.%S' 2>/dev/null \
+              || date -d "@$target_epoch" '+%Y%m%d%H%M.%S' 2>/dev/null)" "$path"
+}
+
 # ── Check 1 — stale tasks surface, fresh tasks don't ────────────────────
 echo "Check 1 — stale tasks surface, fresh tasks don't"
 setup
@@ -218,6 +235,66 @@ echo "$out" | grep -q "Open-Task Audit" \
 echo "$out" | grep -q "BACKLOG Staleness" \
   && { echo "  ✗ BACKLOG Staleness present on clean vault"; FAIL=$((FAIL+1)); } \
   || { echo "  ✓ BACKLOG Staleness absent on clean vault"; PASS=$((PASS+1)); }
+teardown
+
+# ── Check 8 — park: true suppresses staleness flag, control still flags ─
+echo ""
+echo "Check 8 — park: true suppresses staleness flag"
+setup
+plant_task_with_fm "$TMP/PERSO/demo/tasks/open/2026-04-01-parked.md" 14 \
+  "created: 2026-04-01
+status: open
+park: true
+park_reason: \"Read at event-time, not actionable now.\""
+plant_task "$TMP/PERSO/demo/tasks/open/2026-04-01-control.md" 14
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "2026-04-01-parked.md" \
+  && { echo "  ✗ park:true task wrongly flagged"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ park:true task suppressed"; PASS=$((PASS+1)); }
+echo "$out" | grep -q "2026-04-01-control.md" \
+  && { echo "  ✓ control task still flagged"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ control task wrongly suppressed"; FAIL=$((FAIL+1)); }
+teardown
+
+# ── Check 9 — status: blocked suppresses staleness flag ─────────────────
+echo ""
+echo "Check 9 — status: blocked suppresses staleness flag"
+setup
+plant_task_with_fm "$TMP/PERSO/demo/tasks/open/2026-04-01-blocked.md" 14 \
+  "created: 2026-04-01
+status: blocked"
+plant_task "$TMP/PERSO/demo/tasks/open/2026-04-01-control.md" 14
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "2026-04-01-blocked.md" \
+  && { echo "  ✗ status:blocked task wrongly flagged"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ status:blocked task suppressed"; PASS=$((PASS+1)); }
+echo "$out" | grep -q "2026-04-01-control.md" \
+  && { echo "  ✓ control task still flagged"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ control task wrongly suppressed"; FAIL=$((FAIL+1)); }
+teardown
+
+# ── Check 10 — status: needs-refinement suppresses staleness flag ───────
+echo ""
+echo "Check 10 — status: needs-refinement suppresses staleness flag"
+setup
+plant_task_with_fm "$TMP/PERSO/demo/tasks/open/2026-04-01-needs-refinement.md" 14 \
+  "created: 2026-04-01
+status: needs-refinement
+awaiting: design-headspace"
+plant_task "$TMP/PERSO/demo/tasks/open/2026-04-01-control.md" 14
+: > "$TMP/PERSO/demo/current-checkpoint.md"
+
+out=$("$FORGE_CONTEXT" recover 2>&1)
+echo "$out" | grep -q "2026-04-01-needs-refinement.md" \
+  && { echo "  ✗ status:needs-refinement task wrongly flagged"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ status:needs-refinement task suppressed"; PASS=$((PASS+1)); }
+echo "$out" | grep -q "2026-04-01-control.md" \
+  && { echo "  ✓ control task still flagged"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ control task wrongly suppressed"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""
