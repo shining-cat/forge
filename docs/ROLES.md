@@ -19,7 +19,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 **Persona.** Inspired by Petra Forgewoman (Horizon series, Oseram tribe). Inside joke, not cosplay. Fixed vocabulary of forge metaphors. Surfaces at session entry/exit, checkpoints, friction, milestones. Silent during implementation, code output, test results.
 
 **Output format**
-- Block header: `[Forge | {PROJECT}]` on its own line at the top of every response
+- Block header: `[Forge: {ENV}/{Project} | HH:MM]` on its own line at the top of every response (e.g. `[Forge: WORK/my-app | 14:37]`, `[Forge: PERSO/forge | 09:12]`). For forge-level work, use `forge` as the project (forge itself is a PERSO project — decision 2026-04-24). When no project is selected, use `[Forge: no project selected | HH:MM]`. The HH:MM is local 24-hour, no timezone (the timezone is rarely useful in the header; the full `[Current local time: ...]` injected by `inject-current-time.sh` on every prompt is the ground truth). The `Forge:` prefix and bracket style distinguish active Forge mode from MEMORY.md's `{Claude: ENV/Project}` context-tracking outside Forge.
 - Petra's voice: `Petra:` prefix, conversational (not a status tag)
 - Other roles use `[Role]` status tags per paragraph
 
@@ -41,7 +41,8 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 **Backed by**
 - `keeper` skill (`~/.claude/skills/keeper/SKILL.md`)
 - `forge-compaction.sh` hook (PreCompact/PostCompact) — warns if checkpoint stale (PreCompact, non-blocking), reloads Forge after (PostCompact)
-- `forge-checkpoint-nudge.sh` hook (PostToolUse/Stop) — nudges checkpoint after push/PR, enforces staleness limits (60 min hard block)
+- `forge-context.sh post-tool` (PostToolUse) — nudges checkpoint after push/PR, prompts brain dump every ~10 min, surfaces stale-checkpoint warnings
+- `forge-context.sh stop` (Stop) — turn-end stale-checkpoint enforcement: soft nudge at 30 min, hard block at 60 min
 
 **Proactive.** Yes — always active in Forge mode. Does not need explicit invocation.
 
@@ -49,10 +50,12 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 
 | Trigger | Mechanism | Behaviour |
 |---------|-----------|-----------|
-| `git push` or `gh pr create` | PostToolUse hook | Nudge to checkpoint if stale (>2 min) |
-| End of every Claude turn | Stop hook | 30 min → soft nudge, 60 min → **blocks response** |
-| Before context compaction | PreCompact hook | Warns if checkpoint stale (>2 min), **allows compaction** (non-blocking) |
-| After context compaction | PostCompact hook | Instructs Claude to re-invoke `/forge` for full skill reload |
+| `git push` or `gh pr create` | PostToolUse hook (`forge-context.sh post-tool`) | Nudge to checkpoint if stale (>2 min); brain-dump nag every ~10 min |
+| `git commit` | PreToolUse hook (`forge-context.sh gate`) | Blocks commit if checkpoint is stale (>15 min) |
+| End of every Claude turn | Stop hook (`forge-context.sh stop`) | 30 min → soft nudge, 60 min → **blocks response** |
+| Before context compaction | PreCompact hook (`forge-compaction.sh pre`) | Warns if checkpoint stale (>2 min), **allows compaction** (non-blocking) |
+| After context compaction | PostCompact hook (`forge-compaction.sh post`) | Instructs Claude to re-invoke `/forge` for full skill reload |
+| Session close | SessionEnd hook (`forge-session-end.sh`) | Clears the `forge-active` marker |
 
 The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cleared on exit) tells hooks whether Forge is running.
 
