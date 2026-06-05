@@ -1247,10 +1247,31 @@ do_backlog_audit() {
     if [ -d "$proj_dir/tasks/open" ]; then
       open_count="$(find "$proj_dir/tasks/open" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
     fi
-    # `|| echo 0` — grep no-match returns 1, which `pipefail` propagates and
+    # Count wikilinks only in the ACTIVE region — everything OUTSIDE any
+    # `<details>...</details>` block. The history block (per
+    # [[feedback_backlog_remove_completed_rows]]) is wrapped in `<details>`
+    # and accumulates wikilinks to closed tasks by design; counting those
+    # blurs the active-row signal this audit cares about and flags healthy
+    # BACKLOGs as "diverging".
+    #
+    # This mirrors the active-region extraction used by audit_open_tasks_one
+    # above. Naive text-marker matches (e.g. `/Recently shipped/`) trip on
+    # active rows whose description PROSE mentions "Recently shipped"
+    # (the task that filed this fix is exactly such a row — meta enough
+    # to bite itself).
+    #
+    # `|| true` — grep no-match returns 1, which `pipefail` propagates and
     # `set -e` would abort on. BACKLOGs with zero wikilinks are valid (e.g.
     # an empty starter file).
-    backlog_refs="$( { grep -oE '\[\[[0-9]{4}-[0-9]{2}-[0-9]{2}-[^]]+\]\]' "$backlog" 2>/dev/null || true; } | sort -u | wc -l | tr -d ' ')"
+    backlog_refs="$(
+      awk '
+        /<details/    { in_details=1; next }
+        /<\/details>/ { in_details=0; next }
+        !in_details   { print }
+      ' "$backlog" 2>/dev/null |
+        { grep -oE '\[\[[0-9]{4}-[0-9]{2}-[0-9]{2}-[^]]+\]\]' 2>/dev/null || true; } |
+        sort -u | wc -l | tr -d ' '
+    )"
 
     if [ "$open_count" -gt 0 ] && [ "$backlog_refs" -gt 0 ]; then
       local diff
