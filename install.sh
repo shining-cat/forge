@@ -110,6 +110,9 @@ safe_cp() {
       return 0
     fi
     if [ -f "$actual_dst" ] && cmp -s "$src" "$actual_dst" 2>/dev/null; then
+      # Local now matches upstream — any historical .upstream.<ts> siblings
+      # are stale comparisons, prune them all.
+      prune_old_upstream_siblings "$actual_dst" none
       return 0  # already matches, no-op
     fi
     write_upstream_sibling "$src" "$actual_dst" "file"
@@ -135,6 +138,59 @@ safe_cp() {
   cp "$src" "$dst"
 }
 
+# prune_old_upstream_siblings — bound clutter from accumulated installs.
+#
+# Each preserve cycle can leave a `<dst>.upstream.<ts>` sibling. Re-runs
+# of install.sh against the same diverged local file would stack up N
+# siblings over N installs — only the most recent comparison is useful;
+# older ones are noise the user has to ignore.
+#
+# Policy:
+#   keep=latest (default) — delete all but the most recent sibling. Used
+#                           when we just wrote a new sibling OR when an
+#                           existing sibling already matches src.
+#   keep=none             — delete all siblings. Used when local now
+#                           matches upstream (no preserve needed, all
+#                           historical comparisons stale).
+#
+# Args: $1=dst  $2=keep-policy ("latest"|"none", default "latest")
+#
+# Side effects: bumps PRUNED_SIBLING_COUNT for each removal. Honors
+# --dry-run (prints what would be removed without touching the FS).
+PRUNED_SIBLING_COUNT=0
+prune_old_upstream_siblings() {
+  local dst="$1" keep="${2:-latest}"
+  local dir base
+  dir="$(dirname "$dst")"
+  base="$(basename "$dst")"
+  [ -d "$dir" ] || return 0
+
+  local siblings=() f
+  # ls -1 + sort: filenames end in `.upstream.YYYYMMDD-HHMMSS`; lex-sort
+  # equals chronological. `|| true` defends against set -euo pipefail when
+  # the glob has no matches (ls exits 2, pipefail propagates).
+  while IFS= read -r f; do
+    [ -n "$f" ] && siblings+=("$f")
+  done < <(ls -1 "$dir/$base".upstream.* 2>/dev/null | sort || true)
+
+  local count="${#siblings[@]}"
+  [ "$count" -eq 0 ] && return 0
+
+  local last_idx=$(( count - 1 )) i
+  for i in "${!siblings[@]}"; do
+    # keep=latest: skip the last (newest) entry
+    if [ "$keep" = "latest" ] && [ "$i" -eq "$last_idx" ]; then
+      continue
+    fi
+    if [ "$DRY_RUN" = true ]; then
+      printf "${DIM}    would prune stale sibling: %s${NC}\n" "${siblings[$i]}"
+    else
+      rm -f "${siblings[$i]}"
+    fi
+    PRUNED_SIBLING_COUNT=$((PRUNED_SIBLING_COUNT + 1))
+  done
+}
+
 # write_upstream_sibling — write a `.upstream.<ts>` sibling beside `dst`
 # capturing what install.sh would have installed (src content for files,
 # link target for symlinks). The "preserve" branch of safe_cp /
@@ -146,10 +202,13 @@ safe_cp() {
 # Clutter control (Slice 3 plan Q1 (b)): if the most recent existing
 # sibling already matches `src`, skip — a user who hasn't touched their
 # statusline shouldn't accumulate N siblings from N install re-runs that
-# didn't change upstream.
+# didn't change upstream. Stale-sibling pruning (this PR): both the
+# skip-because-matched and the just-wrote-new paths prune older siblings,
+# leaving at most one per file. Safe_cp / install_symlink's "local now
+# matches upstream" no-op branches prune ALL siblings (none useful).
 #
-# Side effects: writes sibling, bumps BACKUP_COUNT, emits a warn line.
-# Honors --dry-run.
+# Side effects: writes sibling, bumps BACKUP_COUNT, emits a warn line,
+# prunes older siblings. Honors --dry-run.
 write_upstream_sibling() {
   local src="$1" dst="$2" type="$3"
   local dir base latest_sibling
@@ -192,6 +251,9 @@ write_upstream_sibling() {
   fi
 
   if [ "$should_skip" = true ]; then
+    # Latest sibling matches upstream — no new write needed, but prune any
+    # older stale siblings so we keep at most the one that's load-bearing.
+    prune_old_upstream_siblings "$dst" latest
     return 0
   fi
 
@@ -221,6 +283,9 @@ write_upstream_sibling() {
   esac
   warn "Preserved local $(basename "$dst") — upstream at $(basename "$sibling")"
   BACKUP_COUNT=$((BACKUP_COUNT + 1))
+  # New sibling written — drop any older `.upstream.*` cousins, they're
+  # superseded by this one.
+  prune_old_upstream_siblings "$dst" latest
 }
 
 # install_symlink — install or preserve a symlink with policy support.
@@ -246,6 +311,9 @@ install_symlink() {
       return 0
     fi
     if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+      # Symlink now points where upstream wants — historical .upstream.<ts>
+      # siblings are stale, prune them all.
+      prune_old_upstream_siblings "$dst" none
       return 0  # already correct
     fi
     write_upstream_sibling "$src" "$dst" "symlink"
@@ -1772,6 +1840,9 @@ echo "  Backup:        ~/.claude/settings.json.forge-backup"
 if [ "$BACKUP_COUNT" -gt 0 ]; then
   echo "  Pre-update:    $BACKUP_COUNT user-modified file(s) backed up as <file>.pre-update.<timestamp>"
   echo "                 (re-run-safe: customizations preserved, not lost)"
+fi
+if [ "$PRUNED_SIBLING_COUNT" -gt 0 ]; then
+  echo "  Pruned:        $PRUNED_SIBLING_COUNT stale .upstream.<ts> sibling(s) — kept the latest per file"
 fi
 echo ""
 echo "  Team substrate (Pattern A agent teams):"
