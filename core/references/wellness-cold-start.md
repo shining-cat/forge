@@ -17,7 +17,7 @@ The SKILL step says "surface stdout verbatim before the step-6 summary" — don'
 
 ## Why this is step 0a, not step 2.5
 
-If the user has returned after a long gap with an active strike (e.g. ☕ break overdue from the prior session), the strike fires on the FIRST tool call of the new session. Step 0's Read of `~/.claude/forge.conf` is that first call — without 0a, it gets blocked, and the user sees Pip on strike instead of Petra warming the anvil.
+If the user has returned after a long gap with an active strike (e.g. ☕ break overdue from the prior session), the strike fires on the FIRST tool call of the new session. Step 0's Read of `~/.claude/forge.conf` is that first call — without 0a, it gets blocked, and the user sees the wellness coach on strike instead of Petra warming the anvil.
 
 `wellness-reset.sh` is on the strike-exemption list (path matches `/.claude/skills/wellness-coach/scripts/`), so it runs cleanly even when a strike is active, and clears the strike in the process. After 0a runs, step 0's Read proceeds normally.
 

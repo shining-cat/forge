@@ -26,19 +26,11 @@ Focus doesn't mean tunnel vision either — Forge holds all your projects in one
 
 **Project switching** — your vault holds all your projects. `/forge` in a new project's directory switches the active marker; the previous project's state stays intact, ready when you come back. Cross-project synthesis happens at the weekly wrap, not by accident.
 
-**Wellness (optional)** — Pip the wellness coach tracks your work time independently. Three personas, **calendar-aware** (won't strike during a meeting), **Pattern A-aware** (fires on assistant turn-end too, not just tool calls), **gated on Forge-active state** (zero monitoring when Forge isn't running). When a strike does fire, addressing Pip by name lifts it: *"Pip, lift the strike, I'm on lunch."*
+**Wellness (optional)** — the wellness coach (you name them during onboarding) tracks your work time independently. Three personas, **calendar-aware** (won't strike during a meeting), **Pattern A-aware** (fires on assistant turn-end too, not just tool calls), **gated on Forge-active state** (zero monitoring when Forge isn't running). When a strike does fire, addressing the coach by name lifts it: e.g. *"&lt;your-coach&gt;, lift the strike, I'm on lunch."*
 
 **Exit (daily)** — `/forge-exit` writes the final checkpoint, deactivates the marker, resets wellness. Hooks stop firing into a dead session. Saying *"calling it"* / *"done for today"* triggers the same offer in prose.
 
 **Exit (weekly)** — `/forge-weekly` on Fridays. The Quartermaster persona harvests the week's friction into structured patterns, triages the captured drafts from the week into proper tasks, runs the cross-project retro, logs the week. Then `/forge-exit` as normal.
-
----
-
-## The full command surface
-
-Most you'll never type — Petra surfaces them when needed.
-
-`/forge` `/forge-checkpoint` `/forge-vault-sync` `/promote-from-review` `/forge-audit` `/forge-audit-permissions` `/forge-exit` `/forge-weekly`
 
 ---
 
@@ -57,6 +49,7 @@ Requires [Claude Code](https://claude.ai/code) + the [superpowers](https://githu
 ## Learn more
 
 - **[docs/SETUP.md](docs/SETUP.md)** — install, customization, upgrades, rollback, first session, maintainer mode, extending, contributing
+- **[docs/COMMANDS.md](docs/COMMANDS.md)** — slash-command reference + conversational triggers (most you'll never type by hand; Petra surfaces them)
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — components, where things live, vault structure, friction framework, wellness coach internals
 - **[docs/ROLES.md](docs/ROLES.md)** — per-role specifications (Petra, Keeper, Refiner, Reviewer, Architect, Builder, Debugger, Release Manager, Toolsmith)
 - **[docs/PROJECT-STRUCTURE.md](docs/PROJECT-STRUCTURE.md)** — vault project layout (INDEX vs checkpoint, on-demand folders, template inventory, single-doc task workflow)

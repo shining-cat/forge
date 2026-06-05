@@ -417,7 +417,7 @@ def main():
     # real-break nags + strikes — they can't act on them mid-meeting, and a
     # strike fired during a call is pure friction. Micro nags still fire
     # (they're gentle, one-line, and don't escalate). Petra already does
-    # this externally for task pacing; Pip now does it natively for nags.
+    # this externally for task pacing; the coach now does it natively for nags.
     if level in ("break", "insist", "strike"):
         defer, reason = should_defer_for_meeting()
         if defer:

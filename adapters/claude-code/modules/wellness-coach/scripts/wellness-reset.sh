@@ -12,7 +12,7 @@
 #       Full reset: above PLUS sets last_micro_break_timestamp,
 #       last_reminder_timestamp, and strike_cleared_at to now. Use after a
 #       manual silence (e.g. pushed timestamps to a future time) to restore
-#       Pip to a fully normal cadence starting from now.
+#       the wellness coach to a fully normal cadence starting from now.
 #
 #   ! ~/.claude/skills/wellness-coach/scripts/wellness-reset.sh --if-cold-start
 #       Cold-start guard: if WELLNESS_ENABLED=true in forge.conf AND the
