@@ -427,7 +427,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -437,6 +437,9 @@ case "$SUBCMD_PEEK" in
     # skill-budgets reads $FORGE_REPO/core/skill-budgets.conf directly and
     # doesn't need marker context — also future-proofs against pre-commit /
     # `gh pr comment` invocations that won't have a tty.
+    # substrate-check inspects $TMUX env + `command -v tmux` — fully project-
+    # independent; routed through the script so the substrate detection
+    # inherits the existing allowlist instead of prompting on every entry.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -3772,6 +3775,32 @@ do_next_meeting() {
   "$calendar_sh" next-meeting "$MEETING_WINDOW_MIN" 2>/dev/null || true
 }
 
+# ── Subcommand: substrate-check ───────────────────────────────────────
+# Detect whether agent-team substrate (tmux + $TMUX env) is available for
+# Pattern A dispatch. Emits a single ready-to-surface line.
+#
+# Output: one of
+#   "Team substrate: ready"
+#   "Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback"
+#   "Team substrate: missing — install tmux (\`brew install tmux\`) and relaunch for Pattern A; inline subagent fallback works either way"
+#
+# Why a subcommand instead of inline Bash at entry: the inline compound
+# (echo + command -v + && / || chain) is not matched by any flat allowlist
+# entry, so it prompts the user on every session start. Routing through
+# forge-context.sh inherits the existing script-level allowlist and stays
+# silent. Petra surfaces the output verbatim in the entry-summary block.
+do_substrate_check() {
+  if [ -n "${TMUX:-}" ]; then
+    echo "Team substrate: ready"
+    return 0
+  fi
+  if command -v tmux >/dev/null 2>&1; then
+    echo "Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback"
+  else
+    echo "Team substrate: missing — install tmux (\`brew install tmux\`) and relaunch for Pattern A; inline subagent fallback works either way"
+  fi
+}
+
 # ── Subcommand: draft-list ────────────────────────────────────────────
 # Enumerate captured draft tasks across all draft folders for the weekly-wrap
 # triage step. Output is TSV with columns: path \t project \t title.
@@ -3862,9 +3891,10 @@ case "$SUBCMD" in
   learn-wind-down)     do_learn_wind_down "${@:2}" ;;
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
+  substrate-check)     do_substrate_check ;;
   draft-list)          do_draft_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|draft-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|draft-list}" >&2
     exit 1
     ;;
 esac

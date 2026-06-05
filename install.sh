@@ -586,6 +586,8 @@ expected_perms() {
     "Bash($HOME/.claude/scripts/forge-classify-friction.sh:*)"
     "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
     "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-calendar.sh *)"
+    "Bash(~/.claude/scripts/forge-calendar.sh *)"
     "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
     "Bash($HOME/.claude/statusline.sh:*)"
     "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
@@ -1446,6 +1448,8 @@ PERMS_TO_ADD=(
   "Bash($HOME/.claude/scripts/forge-classify-friction.sh:*)"
   "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
   "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
+  "Bash($HOME/.claude/scripts/forge-calendar.sh *)"
+  "Bash(~/.claude/scripts/forge-calendar.sh *)"
   "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
   "Bash($HOME/.claude/statusline.sh:*)"
   # Forge hooks
