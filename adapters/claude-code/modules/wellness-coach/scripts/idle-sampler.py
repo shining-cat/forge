@@ -5,6 +5,12 @@ Runs via launchd every 60 seconds. Checks screen state and writes to idle log.
 
 The log is a JSON array of samples, pruned to the last 2 hours.
 Each sample: {"t": <unix_timestamp>, "display": "on"|"off", "locked": true|false}
+
+Marker-gated since 2026-06-05: the script reads the forge-active marker on
+every tick and no-ops when no Forge session is active. Aligns with the user
+principle "Forge should not behave as if it monitors when not running" —
+the launchd timer still wakes the script, but no samples land in the log
+between sessions. See tasks/resolved/2026-06-04-idle-sampler-daemon-gating.md
 """
 import json
 import subprocess
@@ -14,7 +20,64 @@ from pathlib import Path
 
 LOG_PATH = Path.home() / ".claude" / "wellness-idle-log.json"
 BINARY_PATH = Path.home() / ".claude" / "bin" / "screen_state"
+FORGE_CONF_PATH = Path.home() / ".claude" / "forge.conf"
 MAX_AGE_SECONDS = 7200  # 2 hours
+
+
+def get_vault_path():
+    """Read VAULT_PATH from ~/.claude/forge.conf. Returns None when absent
+    or unreadable — caller treats that as 'Forge not configured, don't sample'.
+    """
+    if not FORGE_CONF_PATH.is_file():
+        return None
+    try:
+        for line in FORGE_CONF_PATH.read_text().splitlines():
+            if line.startswith("VAULT_PATH="):
+                value = line.split("=", 1)[1].strip()
+                return Path(value) if value else None
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def is_forge_active():
+    """True iff $VAULT_PATH/_shared/forge-active indicates an active session.
+
+    Mirrors the marker-state convention from forge/SKILL.md step 1c:
+      missing/empty/whitespace    -> not active
+      literal '__pending__'        -> not active (launching, no project chosen)
+      valid JSON with session_id   -> ACTIVE
+      legacy plain-string project  -> ACTIVE (backward-compat)
+      malformed JSON / unreadable  -> not active (defensive — don't sample on
+                                     uncertainty; better to lose a tick than
+                                     silently re-enable sampling against the
+                                     user's intent)
+    """
+    vault = get_vault_path()
+    if vault is None:
+        return False
+    marker = vault / "_shared" / "forge-active"
+    if not marker.is_file():
+        return False
+    try:
+        content = marker.read_text().strip()
+    except OSError:
+        return False
+    if not content or content == "__pending__":
+        return False
+    # Try JSON first (canonical post-2026-04 format). If it looks like JSON
+    # (starts with `{`) but doesn't parse, treat as malformed -> no-op, NOT
+    # as legacy plain-string. Otherwise a half-written marker would silently
+    # re-enable sampling.
+    if content.lstrip().startswith("{"):
+        try:
+            data = json.loads(content)
+            return isinstance(data, dict) and "session_id" in data
+        except json.JSONDecodeError:
+            return False
+    # Legacy plain-string marker (pre-JSON migration): any non-empty,
+    # non-pending content is active.
+    return True
 
 
 def get_screen_state():
@@ -44,6 +107,11 @@ def get_screen_state():
 
 
 def main():
+    # Marker gate (2026-06-05): no-op when no Forge session is active.
+    # Saves the screen_state subprocess call too — gate runs first.
+    if not is_forge_active():
+        return
+
     state = get_screen_state()
     if state is None:
         return
