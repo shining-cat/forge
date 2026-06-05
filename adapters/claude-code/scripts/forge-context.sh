@@ -1022,6 +1022,31 @@ do_resolve_task() {
 #
 # Also flags `tasks/done/` folders as one-time-migration prompts. `resolved/` is
 # the canonical bucket; `done/` is a legacy alias from an older vault layout.
+# ── Helper: read a single frontmatter field value ──────────────────────
+# Returns the trimmed value (with surrounding quotes stripped), or empty
+# string if the field is absent or the file has no frontmatter. Reads
+# only between the first two `---` fences so body content with a colon
+# (e.g. `## status: blocked` in prose) doesn't leak in.
+#
+# Usage: value=$(fm_field "$task_file" status)
+fm_field() {
+  local file="$1" key="$2"
+  [ -f "$file" ] || return 0
+  awk -v key="$key" '
+    /^---[[:space:]]*$/ { c++; if (c==2) exit; next }
+    c==1 {
+      pat = "^" key ":"
+      if (match($0, pat)) {
+        sub(pat "[[:space:]]*", "")
+        gsub(/^["'"'"']|["'"'"']$/, "")
+        gsub(/[[:space:]]+$/, "")
+        print
+        exit
+      }
+    }
+  ' "$file" 2>/dev/null
+}
+
 STALE_TASK_DAYS=7
 audit_open_tasks_one() {
   local proj_dir="$1"
@@ -1052,6 +1077,24 @@ audit_open_tasks_one() {
   local f base slug short_slug mtime age_secs age_days
   while IFS= read -r -d '' f; do
     [ "$(dirname "$f")" = "$open_dir" ] || continue
+
+    # Skip tasks whose frontmatter declares they're not actively in scope.
+    # Three exclusions, each motivated by a recurring false positive in the
+    # 2026-06-05 audit-sweep:
+    #   park: true              → intentional plan-prep reference, read at event-time
+    #                             (next-migration-playbook-corrections)
+    #   status: blocked         → waiting on external dependency
+    #                             (PF-1799 — blocked on PF-1718 outcome)
+    #   status: needs-refinement → real intent, awaiting design/refinement headspace
+    #                             (finn-kb-deeper-integration — awaiting forge cruise velocity)
+    # The companion `awaiting:` frontmatter field is informational only —
+    # captures *what* needs to happen before the task can move. Audit doesn't
+    # read it; the human reading the task does.
+    case "$(fm_field "$f" status)" in
+      blocked|needs-refinement) continue ;;
+    esac
+    [ "$(fm_field "$f" park)" = "true" ] && continue
+
     base="$(basename "$f")"
     slug="${base%.md}"
     short_slug="${slug#????-??-??-}"
