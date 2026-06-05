@@ -16,12 +16,13 @@ This isn't about being faster than parallel agents. It's about being quieter. If
 
 ## What it does
 
-- **Vault** — persistent knowledge store: decisions, checkpoints, friction log, brain dumps. Plain markdown files, browsable in Obsidian or any editor.
+- **Vault** — persistent knowledge store: decisions, checkpoints, friction log, brain dumps, **patterns** (durable codebase wisdom). Plain markdown files, browsable in Obsidian or any editor.
 - **Roles** — Keeper (tracks state, logs decisions), Refiner (catches mistakes, proposes fixes), Reviewer (validates plans).
 - **Checkpoint system** — automatic breadcrumbs, prompted brain dumps, checkpoint gates on git commit, recovery on session start.
 - **Persona** — Petra, the Forge Master. Terse, direct, forge-flavored. A wink, not a performance.
 - **Friction framework** — converts recurrent friction (permission prompts, prose-discipline failures, role drift) into script-enforced mitigations. Pattern catalog + classifier + gated friction-log writes + audit. See [docs/ARCHITECTURE.md#friction-framework](docs/ARCHITECTURE.md#friction-framework).
-- **Wellness coach** — optional module. Tracks work time, nudges breaks, escalates if ignored. Three persona styles, calendar/weather awareness.
+- **PR review lifecycle** — at session entry, reviewed-PR sync flags merged review docs; the `/promote-from-review` skill walks you through extracting durable patterns into `patterns/` before deleting the review doc. Reviews stop accumulating; the wisdom they surface gets a home.
+- **Wellness coach** — optional module. Tracks work time, nudges breaks, escalates if ignored. Three persona styles. Calendar-aware (defers nags during meetings), Pattern A-aware (fires on assistant turn-end via Stop hook, not just tool calls), gated on Forge-active state (no monitoring when Forge isn't running).
 
 ## Architecture
 
@@ -81,7 +82,7 @@ The installer will:
 
 1. **Check prerequisites** — Claude Code, jq, git, python3, superpowers
 2. **Ask for vault location** — where to store your knowledge vault (default: `~/Vault`)
-3. **Copy skills** — 7 core skills + wellness coach files into `~/.claude/skills/`
+3. **Copy skills** — 11 core skills (`forge`, `forge-checkpoint`, `forge-exit`, `forge-weekly`, `forge-audit`, `forge-audit-permissions`, `forge-vault-sync`, `keeper`, `refiner`, `plan-reviewer`, `promote-from-review`) + wellness coach module into `~/.claude/skills/`
 4. **Install agent definitions** — 8 `forge-*` adapter files into `~/.claude/agents/` (architect, debugger, impl, keeper, refiner, release, reviewer, toolsmith)
 5. **Install hooks and scripts** — checkpoint tracking, compaction handling, statusline
 6. **Configure settings.json** — add hooks and permissions (creates backup first)
@@ -164,12 +165,14 @@ After install, start Claude Code and type `/forge`. On first run, Forge will:
 ### Session flow
 
 ```
-/forge                  → Enter Forge mode, load vault, reconcile PRs
-  work...               → Keeper tracks decisions, writes checkpoints
-  /forge-checkpoint     → Manual checkpoint (also happens automatically)
-  correction...         → Refiner identifies root cause, proposes fix
-  /forge-weekly         → Friday wrap: harvest friction, audit decisions, log week (Quartermaster persona)
-/forge-exit             → Final checkpoint, session summary
+/forge                          → Enter Forge mode, load vault, reconcile PRs (own + reviewed)
+  work...                       → Keeper tracks decisions, writes checkpoints
+  /forge-checkpoint             → Manual checkpoint (also happens automatically)
+  correction...                 → Refiner identifies root cause, proposes fix
+  /promote-from-review <pr>     → Extract patterns from a merged PR's review doc, then clean up
+  /forge-vault-sync             → Surface dirty vault files grouped + suggested commit per group
+  /forge-weekly                 → Friday wrap: harvest friction, audit decisions, log week (Quartermaster persona)
+/forge-exit                     → Final checkpoint, session summary
 ```
 
 ### Checkpoint tiers
@@ -178,10 +181,12 @@ Forge tracks your work automatically at multiple levels:
 
 | Tier | Trigger | What |
 |------|---------|------|
-| Breadcrumbs | Every tool call | File touched, command run — automatic |
-| Brain dump | Every ~10 minutes | Hook prompts you to jot 2-3 lines |
+| Breadcrumbs | Every tool call (PostToolUse hook) | File touched, command run — automatic |
+| Brain dump | Every ~10 minutes (PostToolUse hook) | Prompted to jot 2-3 lines |
 | Checkpoint | Natural pause points | Full state snapshot — goal, progress, next steps |
-| Commit gate | `git commit` | Blocks if checkpoint is >15 minutes stale |
+| Commit gate | `git commit` (PreToolUse hook) | Blocks if checkpoint is >15 minutes stale |
+| Stale-checkpoint nudge | End of every Claude turn (Stop hook) | Soft nudge at 30 min, blocks response at 60 min |
+| Cost-snapshot nudge | On every checkpoint write | Appends `/compact` hint to checkpoint when `cache_read` climbs past 500K with no recent drop |
 | Recovery | Session start | Reconstructs context from all sources |
 
 ### Vault structure
@@ -190,23 +195,39 @@ Forge tracks your work automatically at multiple levels:
 {vault}/
 ├── _shared/                    # Shared / cross-cutting work
 │   ├── friction-log.md         # What went wrong and why
+│   ├── friction-classified.json   # Machine-readable friction (pattern + recurrence)
 │   ├── wind-down-phrases.json  # Personal end-of-day vocabulary (learned)
+│   ├── forge-active            # Session marker (JSON when active, empty when off)
 │   ├── decisions/              # Decisions that span projects
+│   ├── patterns/               # Cross-project codebase wisdom (rare)
 │   └── tasks/                  # Cross-cutting tasks (the `_shared` folder
 │                               #   behaves like another project for tasks)
-├── _templates/                 # Note templates
+├── _templates/                 # Note templates (task, umbrella, decision, pattern, ...)
 ├── _meta/                      # Blueprint, changelog
 └── {project}/                  # Per-project (or {env}/{project}/)
     ├── INDEX.md                # Active decisions, architecture pointers
     ├── current-checkpoint.md   # Project work state
     ├── braindump.md            # Quick notes between checkpoints
+    ├── BACKLOG.md              # Single-page prioritized view (Keeper-curated)
     ├── decisions/              # Project decisions
-    └── architecture/           # Architecture notes
+    ├── architecture/           # Architecture notes
+    ├── patterns/               # Project-specific gotchas (lifted from PR reviews via /promote-from-review)
+    └── tasks/
+        ├── open/               # Active tasks (single-doc workflow: What/Design/Plan/Progress)
+        ├── resolved/           # Completed tasks (auto-archived by Keeper)
+        ├── draft/              # 5-second captures from Obsidian (triaged at weekly wrap)
+        └── reviews/            # PR review docs (lifecycled by reviewed-PR sync + /promote-from-review)
 ```
 
 ### Wellness coach (optional)
 
 Tracks work time and nudges you to take breaks. Three persona styles (professional, playful, character), configurable escalation (suggest → escalate → strike), calendar and weather awareness for context-appropriate suggestions.
+
+Recent additions:
+
+- **Schedule-aware nag** — defers real-break nags + strikes when you're in a meeting or one starts within 5 minutes. No more strike during a call.
+- **Pattern A coverage** — fires on both `PreToolUse` and `Stop` events. The Stop tick catches assistant-turn-ends, so long agent runs (you reading output, few tool calls) don't bypass the timer silently.
+- **Marker-gated daemon** — the screen-state sampler no-ops when Forge isn't active. The launchd timer still wakes the script, but no samples land in the log between sessions; you only get monitored while Forge is running.
 
 Offered during first `/forge` session. Can be enabled/disabled anytime.
 

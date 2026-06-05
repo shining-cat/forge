@@ -16,29 +16,47 @@ The forge is assembled from Claude Code building blocks:
 
 | Component | Type | What it does |
 |-----------|------|-------------|
-| `forge` | Skill | Entry point — loads vault, syncs PRs, activates Petra and session rules |
+| `forge` | Skill | Entry point — loads vault, syncs own + reviewed PRs, activates Petra and session rules |
 | `forge-checkpoint` | Skill | Mid-session state save |
 | `forge-exit` | Skill | End-of-session wrap-up |
-| `keeper` | Skill | Decision logging, checkpoints, scope monitoring, INDEX maintenance |
-| `refiner` | Skill | Friction detection, root cause analysis, rule proposals |
+| `forge-weekly` | Skill | Friday wrap ceremony — friction harvest, BACKLOG triage, draft promotion (Quartermaster persona) |
+| `forge-audit` | Skill | User-invocable scan for MUST/Never/always-style prose in skills/scripts (recurrence-aware) |
+| `forge-audit-permissions` | Skill | Surfaces anti-patterns in `settings.json` permission rules |
+| `forge-vault-sync` | Skill | Commit + push the vault when drift accumulates (categorized commits) |
+| `keeper` | Skill | Decision logging, checkpoints, scope monitoring, INDEX maintenance, auto-archive |
+| `refiner` | Skill | Friction detection, root cause analysis, classification, friction-log writes |
 | `plan-reviewer` | Skill | Checklist-based plan validation |
+| `promote-from-review` | Skill | Walks the user through extracting durable patterns from merged review docs into `patterns/`, then deletes the review doc |
 | `wellness-coach` | Forge module (skill + hooks + scripts) | Break reminders, escalation, strike enforcement (optional, opt-in) |
-| `wellness-timer.py` | Hook (PreToolUse) | Runtime break timer — injects reminders, blocks tools on strike |
+| `wellness-timer.py` | Hook (PreToolUse + Stop) | Runtime break timer — injects reminders, blocks tools on strike. Stop tick covers Pattern A workflows where PreToolUse fires too rarely. Schedule-aware defer for in-progress / imminent meetings. |
+| `wellness-precompact.py` | Hook (PreCompact) | Break suggestion during compaction |
+| `idle-sampler.py` | Daemon (launchd, 60s) | Samples screen state when activity monitor is enabled. Marker-gated: no-ops when Forge isn't active. |
 | `approval-notifier.sh` | Hook (PreToolUse) | Notification on tool approval prompts |
 | `forge-compaction.sh` | Hook (PreCompact + PostCompact) | Warns if checkpoint stale (PreCompact), reminds to reload Forge after (PostCompact) |
-| `forge-checkpoint-nudge.sh` | Hook (PostToolUse + Stop) | Nudges checkpoint after push/PR, blocks after 60 min staleness |
+| `forge-vault-plan-guard.sh` | Hook (PreToolUse on Write/Edit) | Blocks plan content writes outside the vault (e.g. `docs/plans/`) — enforces the single-doc workflow |
+| `forge-session-end.sh` | Hook (SessionEnd) | Clears the `forge-active` marker on session close |
+| `inject-current-time.sh` | Hook (UserPromptSubmit) | Injects authoritative `[Current local time: ...]` + the expected block-header prefix into every prompt |
+| `forge-context.sh` | Script (multi-subcommand) | The runtime workhorse — `recover`, `gate`, `post-tool`, `stop`, `vault-sync`, `review-sync`, `substrate-check`, `framework-budget`, `next-meeting`, `wrap-up-state`, `append-friction`, `resolve-task`, `rollback-install`, etc. ~30 subcommands |
+| `forge-calendar.sh` | Script | gws-calendar wrapper — `entry-fetch`, `delta-check`, `next-meeting`, `in-meeting`. Underpins Petra meeting-awareness + wellness schedule-aware defer |
+| `forge-classify-friction.sh` | Script | Keyword router: friction shape → pattern slug + action-ref. Powers the Refiner's `append-friction` handoff |
+| `forge-cost-snapshot.sh` | Script | Reads transcript metrics, emits `suggest_compact: true/false` for proactive `/compact` discipline |
+| `forge-gap-since-last-signal.sh` | Script | Unified gap detection across checkpoints / marker / braindumps / vault git. Underpins cold-start logic |
+| `forge-permission-lint.sh` | Script | Fails install when `settings.json` permissions match known anti-patterns; also surfaced via `/forge-audit-permissions` |
+| `forge-shell-init.sh` | Shell wrapper | Auto-wraps interactive `claude` in tmux for Pattern A team substrate |
+| `statusline.sh` | Script (statusline) | Status bar showing session state, drift, next break, next meeting |
 | `settings.json` | Config | Hook wiring, permissions, plugin enablement |
-| `statusline.sh` | Config | Status bar showing session state |
+| `forge-tmux.conf` | Config | tmux config consumed by `forge-shell-init.sh` (mouse-on for scroll-buffer correctness) |
 
 ### Where components live
 
 | Location | Content |
 |----------|---------|
-| `~/.claude/skills/{name}/SKILL.md` | Skill definitions (forge, forge-checkpoint, forge-exit, forge-audit-permissions, keeper, plan-reviewer, refiner, wellness-coach) |
-| `~/.claude/skills/forge/references/` | Forge skill references (vocabulary.md, lifecycle.md, wellness-awareness.md) — loaded on-demand from main SKILL.md |
+| `~/.claude/skills/{name}/SKILL.md` | 11 skill definitions: `forge`, `forge-checkpoint`, `forge-exit`, `forge-weekly`, `forge-audit`, `forge-audit-permissions`, `forge-vault-sync`, `keeper`, `refiner`, `plan-reviewer`, `promote-from-review` (+ wellness-coach when opted in) |
+| `~/.claude/skills/forge/references/` | Forge skill references — 17 files, loaded on-demand from main `SKILL.md` stubs. Lifecycle / vocabulary / wellness-awareness / wellness-cold-start / agent-teams-mode / maintainer-mode / extended-thinking-discipline / proactive-compact / plan-storage / subagent-models / marker-takeover / pr-sync / wrap-up-state / prose-wind-down / script-replacement-patterns / friction-classifier / forge-permissions. Source-of-truth list: `core/references/` in the repo |
+| `~/.claude/skills/wellness-coach/references/` | Wellness references — 6 files: `onboarding`, `conflict-resolution`, `window-isolation`, `personas`, `auto-detected-tiers`, `strike-conversation`. Loaded on-demand from wellness `SKILL.md` stubs |
 | `~/.claude/agents/` | Subagent adapter definitions (forge-architect, forge-debugger, forge-impl, forge-keeper, forge-refiner, forge-release, forge-reviewer, forge-toolsmith) — dispatched via the Agent tool with `subagent_type: "forge-{role}"` |
-| `~/.claude/hooks/` | Hook scripts (approval-notifier.sh, forge-compaction.sh, forge-vault-plan-guard.sh) |
-| `~/.claude/scripts/` | Maintenance scripts (forge-context.sh, forge-permission-lint.sh) — `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
+| `~/.claude/hooks/` | Hook scripts (`approval-notifier.sh`, `forge-compaction.sh`, `forge-vault-plan-guard.sh`, `forge-session-end.sh`, `inject-current-time.sh`) |
+| `~/.claude/scripts/` | Maintenance + runtime scripts (`forge-context.sh`, `forge-calendar.sh`, `forge-classify-friction.sh`, `forge-cost-snapshot.sh`, `forge-gap-since-last-signal.sh`, `forge-permission-lint.sh`). `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
 | `~/.claude/statusline.sh` | Claude Code statusline component — deploys to `~/.claude/` root (not `scripts/`) to match `settings.json` `statusLine.command` path |
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
@@ -65,17 +83,30 @@ Skills reference capabilities from these marketplaces:
 {vault}/
 ├── _shared/                ← shared / cross-cutting runtime work
 │   ├── friction-log.md
-│   ├── decisions/          ← decisions that span projects
-│   ├── tasks/{open,resolved}/  ← cross-cutting tasks (_shared behaves
-│   │                              like another project for tasks)
-│   └── learnings/
-├── _templates/             ← Obsidian note templates
+│   ├── friction-classified.json   ← machine-readable friction (pattern + recurrence)
+│   ├── forge-active                ← session marker (JSON when active, empty when off)
+│   ├── wind-down-phrases.json      ← learned personal end-of-day vocabulary
+│   ├── wellness-preferences.json   ← wellness coach config (when enabled)
+│   ├── wellness-runtime.json       ← wellness runtime state (gitignored)
+│   ├── calendar-sync-state.json    ← updatedMin token for cheap calendar delta-checks
+│   ├── decisions/                  ← decisions that span projects
+│   ├── patterns/                   ← cross-project codebase wisdom (rare)
+│   └── tasks/{open,resolved}/      ← cross-cutting tasks (_shared behaves
+│                                       like another project for tasks)
+├── _templates/             ← Obsidian note templates (task, umbrella, decision, pattern, ...)
 └── {ENV}/{project}/        ← per-project (env optional for single-environment setups)
     ├── INDEX.md
     ├── current-checkpoint.md
     ├── braindump.md
+    ├── BACKLOG.md          ← single-page prioritized view (Keeper-curated)
     ├── decisions/          ← created on demand
-    └── architecture/       ← created on demand
+    ├── architecture/       ← created on demand
+    ├── patterns/           ← project-specific gotchas (lifted from PR reviews via /promote-from-review)
+    └── tasks/
+        ├── open/           ← active tasks (single-doc workflow)
+        ├── resolved/       ← completed tasks (auto-archived by Keeper)
+        ├── draft/          ← 5-second Obsidian captures (triaged at weekly wrap)
+        └── reviews/        ← PR review docs (lifecycled by reviewed-PR sync + /promote-from-review)
 ```
 
 Cross-project synthesis (a former `_shared/OVERVIEW.md` + `_shared/current-checkpoint.md`) was explicitly removed per decision `2026-06-01-petra-single-project-scope`. Petra's day-to-day attention is bounded to one project; cross-project work happens at the weekly wrap, on-demand at user request, or via direct vault folder browsing.
@@ -143,9 +174,12 @@ Defined in `~/.claude/skills/forge/SKILL.md`. Persona inspired by Petra Forgewom
 Optional Forge module — bundled with Forge but disabled unless the user opts in during onboarding. Separate authority from Petra: one-way dependency (Petra reads wellness state, wellness knows nothing about Forge).
 
 - **Skill:** `wellness-coach` — onboarding, break handling, persona, conversational queries
-- **Hooks:** `wellness-timer.py` (PreToolUse — break timer, escalation, strike), `wellness-precompact.py` (PreCompact — break suggestion during compaction)
-- **Scripts:** weather lookup, activity monitor install/uninstall, idle sampler
-- **Runtime state:** `${VAULT_PATH}/_shared/wellness-preferences.json` (legacy fallback: `~/.claude/wellness-preferences.json`)
+- **Hooks:**
+  - `wellness-timer.py` (PreToolUse **+ Stop**) — break timer, escalation, strike. Stop tick covers Pattern A workflows where PreToolUse fires too rarely (user reading long agent output). Strike under Stop sets state; next PreToolUse enforces the actual block. Schedule-aware defer: real-break nags + strikes skip when the user is in or imminently entering a meeting (gated on `forge-calendar.sh in-meeting` + `next-meeting 5`).
+  - `wellness-precompact.py` (PreCompact) — break suggestion during compaction
+- **Daemon:** `idle-sampler.py` (launchd, 60s interval) — samples screen state when activity monitor is enabled. Marker-gated: reads `${VAULT_PATH}/_shared/forge-active` each tick and exits early when no Forge session is active. Aligns with the principle "Forge should not behave as if it monitors when not running."
+- **Scripts:** `weather.sh`, `wellness-reset.sh`, `wellness-status.sh`, `wellness-stale-clear-guard.sh`, `install-monitor.sh` + `uninstall-monitor.sh`, `notify.sh`
+- **Runtime state:** `${VAULT_PATH}/_shared/wellness-preferences.json` (user config, tracked) + `${VAULT_PATH}/_shared/wellness-runtime.json` (auto-modified, gitignored — `last_break_timestamp`, `strike_active`, etc.)
 
 Petra uses wellness state for break-aware work planning (steer away from deep work near interruptions) and end-of-day wrap-up (quiet time via timestamp reset).
 
