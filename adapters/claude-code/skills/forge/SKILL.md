@@ -72,31 +72,9 @@ Read `~/.claude/forge.conf` to get `VAULT_PATH`. The marker file lives at `${VAU
 
 #### 1a. Check existing marker for cross-session conflict (BEFORE overwriting)
 
-Read the existing `${VAULT_PATH}/_shared/forge-active`. Behavior depends on what's there:
+Read the existing `${VAULT_PATH}/_shared/forge-active`. If missing / empty / `__pending__` / legacy plain-string / JSON with matching `$CLAUDE_CODE_SESSION_ID` → no conflict, proceed to step 1b. If JSON with a DIFFERENT `session_id` → potential cross-session conflict.
 
-- **Missing / empty / `__pending__` / legacy plain-string** → no conflict, proceed to step 1b.
-- **JSON marker with `session_id` matching `$CLAUDE_CODE_SESSION_ID`** → re-entry in same session, proceed to step 1b (will overwrite with fresh marker).
-- **JSON marker with a DIFFERENT `session_id`** → potential cross-session conflict — run the staleness check below.
-
-**Staleness check (only when session_id differs):**
-
-1. Read the `tmux_pane` field from the existing marker (may be `null` or absent).
-2. **Primary signal — tmux pane existence.** If `tmux_pane` is non-null AND tmux is installed:
-   - Run: `tmux list-panes -F '#{pane_id}' -a 2>/dev/null | grep -q "^<pane_id>$"`
-   - Exit 0 (pane found) → "appears alive"
-   - Non-zero (pane gone) → "appears dead"
-3. **Fallback signal — marker mtime.** If `tmux_pane` is null/absent, or tmux not installed:
-   - Marker mtime within last 12 hours → "appears alive"
-   - Older than 12 hours → "appears dead"
-
-**If "appears alive":** Ask the user (use AskUserQuestion):
-
-> Question: "Another Forge session ({short_session_id}, project={existing_project}, started {started_at}) appears to still own the marker. Take over?"
-> Options: "Take over" (proceed to step 1b) / "Cancel" (stop session entry — do NOT overwrite the marker, do NOT continue the checklist)
-
-**If "appears dead":** Silent takeover — emit a one-line note (no prompt), then continue to step 1b:
-
-> "(Took over Forge from stale session, last active {age_hours}h ago.)"
+Load `references/marker-takeover.md` for the staleness check (tmux-pane primary signal, marker-mtime fallback) and the alive/dead branches (prompt-the-user vs silent-takeover-with-note) — load it when a conflicting `session_id` is detected.
 
 #### 1b. Mark Forge as launching (BEFORE disambiguation)
 
@@ -173,39 +151,9 @@ This step is project-specific and fully optional — projects without a KB secti
 
 ### 3. Reconcile GitHub PRs
 
-Sync the vault against GitHub to catch merges, approvals, and new PRs since the last session.
+Sync the vault against GitHub to catch merges, approvals, and new PRs since the last session. Resolve the remote explicitly via `git -C {project_path} remote get-url origin` → compose `gh pr list --author @me --repo {owner/repo}` with `GH_HOST={host}` for enterprise. Never let `gh` guess from cwd — it silently defaults to github.com and picks the wrong repo on enterprise or multi-project workspaces.
 
-**Data gathering:**
-1. Parse `current-checkpoint.md` for PR numbers (`#(\d+)`) — these are the "known" PRs
-2. **Resolve the remote explicitly.** Run `git -C {project_path} remote get-url origin` and parse it into `{host}` and `{owner/repo}`:
-   - SSH (`git@github.com:owner/repo.git`) → host = part after `git@` before `:`, repo = part after `:` minus `.git`
-   - HTTPS (`https://github.com/owner/repo.git`) → host = part after `://` before `/`, repo = the path minus `.git`
-3. **Compose the `gh` call with explicit values** — never let `gh` guess from cwd or git config alone (it silently defaults to `github.com` and may pick the wrong repo on multi-project sessions or enterprise hosts):
-   - GitHub.com: `gh pr list --author @me --repo {owner/repo} --state all --limit 20 --json number,title,state,reviewDecision,mergedAt,createdAt`
-   - Enterprise (e.g. `github.acme.com`): prepend `GH_HOST={host}` to the same command
-4. Filter results: keep PRs that are either **(a)** known in vault, or **(b)** open AND created less than 5 days ago
-
-**Why explicit:** without the resolve+pass-through, the call can return empty silently — `gh` defaults to `github.com` and guesses the repo from cwd, which fails on non-github.com hosts and on workspaces with sibling repos of similar names. Documented failure: enterprise repo `finn/frontpage-layout-v2` on `github.schibsted.io` came back empty because `gh` defaulted to github.com and guessed `schibsted-nmp/frontpage-layout-v2`. The same hazard hits **any subagent** dispatched to do PR sync — subagents inherit cwd but not context about which remote matters, so explicit values are mandatory in dispatch prompts too.
-
-**Update rules:**
-- **Known PR now merged/closed** → move to "Completed" in checkpoint, note merge date
-- **Known PR review status changed** → update its entry in "In review"
-- **New open PR (< 5 days, not in vault)** → add to "In review"
-- **Unknown merged/closed PR** → ignore (no noise for work handled outside Forge)
-
-**Output at entry** — show a compact summary (only when there's something to report):
-
-```
---- PR Sync ---
-#12179 PF-1656: MERGED (was: in review)
-#12192 PF-1729: approved
-+ #12183 PF-1668: review required (new)
----
-```
-
-`+` prefix for PRs not previously in the vault.
-
-After showing the summary, update `current-checkpoint.md` with the reconciled state.
+Load `references/pr-sync.md` for the full data-gathering steps (remote-URL parsing, the gh-call composition), the "why explicit" rationale + documented failure example, update rules (merged/closed/approved/new), and the entry-summary output format. Load it when implementing or debugging PR sync, including when briefing subagents for the operation.
 
 ### 4. Load Project Rules
 
@@ -315,22 +263,9 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
 - See **Maintainer mode** below — friction-log writes are meta-work and are suppressed in user-mode unless the friction is about a *user-facing* Forge behavior (a prompt the user saw, a suggestion that landed wrong). Internal-tooling friction in user-mode → silent fix attempt, no log.
 
-**Maintainer mode (user-mode by default):** Read `MAINTAINER_MODE` from `~/.claude/forge.conf` at session entry. Default false = end-user mode; true = maintainer mode.
+**Maintainer mode (user-mode by default):** Read `MAINTAINER_MODE` from `~/.claude/forge.conf` at session entry. Default `false` = end-user mode (suppress meta-work suggestions: friction-log writes, decisions/ curation, BACKLOG grooming, vault hygiene, forge-internal audits); `true` = maintainer mode (full surface).
 
-**End-user mode** (default): Petra is a working partner, not a forge-machinery curator. Suppress meta-work invitations from entry summaries, checkpoint Next-Steps, and proactive suggestions. Meta-work means:
-- Friction-log writes (unless the friction is about user-facing Forge behavior — see Refiner rule above)
-- `decisions/` curation, archival, INDEX.md maintenance
-- BACKLOG.md grooming / task triage
-- Vault hygiene tasks (template tuning, hook tweaks, skill polish)
-- Forge-internal audits ("should we revisit X?")
-
-In end-user mode, those tasks may still be DONE when the user asks for them — but they are not surfaced as ambient threads. If they leak into Next-Steps of a checkpoint, drop them silently when summarizing.
-
-**Maintainer mode**: full surface. Meta-work IS the work; surface it normally. Entry summaries can mention "3 friction events pending classification" or "INDEX has 4 stale decisions"; checkpoint Next-Steps can include vault-hygiene tasks; proactive suggestions can point at forge-internal followups.
-
-**Script-level complement.** `forge-context.sh recover` already gates the open-task audit and BACKLOG staleness audit on `is_maintainer_mode` — in end-user mode those sections never appear in the entry output, so there's nothing to filter at the persona level for them. Petra's job is to suppress *suggestions/synthesis* about meta-work; the script's job is to not surface the raw audit data in the first place. The two layers are independent — the persona-level rule still applies to any meta-work signal that DOES come through other channels (friction-log tail, vault drift line, etc.). The audits remain callable on demand via `forge-context.sh open-task-audit` / `backlog-audit` regardless of mode, for the rare end-user who wants a one-off check.
-
-When in doubt about a given suggestion: ask "is this about Forge's own machinery, or about the user's project work?" If the former and `MAINTAINER_MODE=false`, suppress.
+Load `references/maintainer-mode.md` for the full suppression list, the script-level complement (`is_maintainer_mode`), and the decision rule — load it when about to emit a suggestion and unsure whether it counts as meta-work.
 
 **Honest reporting (never fill with false comfort):** When a verification step is skipped or fails — calendar check, vault git state, PR sync, decisions check, anything — REPORT THE GAP. Never synthesize a confident default. *"Nothing scheduled"*, *"no PRs"*, *"no recent friction"*, *"no decisions"*, *"clean state"* are STRONG CLAIMS that require the verification step to have actually run and returned that result. If the check was skipped or errored, say so explicitly: *"calendar not checked yet"*, *"PR sync failed (offline)"*, *"vault state check skipped"*. The user can act on a stated gap; they cannot recover from a fabricated default that turns out to be wrong (see 2026-05-13 friction-log entry).
 
@@ -340,32 +275,17 @@ When in doubt about a given suggestion: ask "is this about Forge's own machinery
 
 **Workspace skills (Forge mode):** When a Google Workspace API is needed (calendar, sheets, docs, drive, tasks), invoke the matching `google-workspace:gws-*` skill on the **first** try. No raw `gws ...` CLI exploration unless the skill itself fails or doesn't exist. Each failed flag-fish is a permission prompt the user has to triage. Same applies to other available specialized skills (jira, snowflake, slack, workplace) — invoke first, don't fish.
 
-**Extended-thinking discipline:** Extended thinking emits signature blocks that re-cost the parent context on every subsequent turn — measured at **30–50% of transcript content per long session, ~200K tokens equivalent**. The model decides per turn whether to engage, but explicit self-discipline in routine turns measurably reduces signature accumulation over a day.
+**Extended-thinking discipline:** Extended thinking signatures re-cost parent context on every subsequent turn (30–50% of transcript per long session). Engage on synthesis / root-cause / multi-step decisions; skip on routine acks / status reports / mechanical operations. Self-check: *"would I want to re-pay this turn's thinking on every subsequent compaction?"*
 
-- **Engage extended thinking ON these operations:** Pattern A synthesis (cross-agent results, judgment under uncertainty); Refiner root-cause analysis; Architect tradeoff weighing for non-trivial design; friction triage with > 1 plausible root cause; multi-file code review where the bug surface isn't obvious; plan authoring for M+ effort work; novel scoping passes on open tasks.
-- **Don't engage extended thinking on:** routine acks / status reports / simple lookups; single-tool dispatches where the next step is clear (read this file, run that command); mechanical operations (commit, push, PR open, BACKLOG row update, checkpoint write from accumulated context); re-stating what the user just said; reading a file the user pointed at and reporting back; vault hygiene tweaks.
-- **Subagent dispatches:** when the work is bounded and well-specified, add *"brief response, no extensive analysis"* to the prompt. The subagent's thinking accumulates in its own transcript, but terser subagent output means less material flowing back into the parent.
-- **Self-check before a heavy turn:** ask *"would I want to re-pay this turn's thinking on every subsequent compaction?"* If yes, think. If no, don't.
+Load `references/extended-thinking-discipline.md` for the full engage/skip checklists, subagent-prompt pattern, and measurement methodology — load it before a non-trivial turn when unsure whether to think.
 
-Background and measurement methodology: `tasks/open/2026-05-22-forge-compaction-frequency-investigation.md` Progress entry 2026-06-03.
+**Proactive `/compact` discipline.** On every checkpoint write, invoke `~/.claude/scripts/forge-cost-snapshot.sh --json`. When `suggest_compact: true`, append a `/compact` nudge line to the checkpoint body. When false, no addition (no noise on healthy sessions).
 
-**Proactive `/compact` discipline.** Claude Code's auto-compaction is silently unreliable in long sessions ([#31828](https://github.com/anthropics/claude-code/issues/31828)) — `cache_read` can climb past 900K with no event firing, and the in-app `%` indicator measures against the 200K window not Opus's effective 1M, so what you see isn't what compaction gates on. Honest measurement instead of trusting the indicator.
+Load `references/proactive-compact.md` for the trigger semantics, the exact nudge line template, the rationale (Claude Code auto-compaction is silently unreliable in long sessions, [#31828](https://github.com/anthropics/claude-code/issues/31828)), and ad-hoc CLI invocation — load it when implementing checkpoint writes.
 
-- **On every checkpoint write**, invoke `~/.claude/scripts/forge-cost-snapshot.sh --json` and parse the result.
-- When `suggest_compact: true`, append one line to the checkpoint body, immediately above the `_Session closed/checkpoint at ...` footer (or at the bottom if no footer): *"cost-snapshot: \<content_kb_total\> KB content, cache_read \<cache_read_current/1000\>K climbing → consider `/compact` to reset window before continuing."*
-- When `suggest_compact: false`, no addition — no noise on healthy sessions.
-- Trigger semantics: cache_read > 500K AND no ≥10% turn-to-turn drop in the last 20 assistant turns (a drop indicates compaction fired). First-pass thresholds; tune empirically over time.
-- CLI also invokable ad-hoc: `! ~/.claude/scripts/forge-cost-snapshot.sh` (human-readable) for the user or Petra at any moment, not just checkpoint time.
+**Plan storage (Forge mode):** Plan / design / spec content lives as sections inside the relevant vault task file (`{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md`), never as separate `-design.md` / `-plan.md` siblings. Overrides the default `docs/plans/...` instruction in superpowers' `brainstorming` / `writing-plans` skills — enforced by `forge-vault-plan-guard.sh` PreToolUse hook. For Claude Code's plan mode, canonical home is still the task file's `## Plan` section, not the scratch file.
 
-**Plan storage (Forge mode):** All canonical plan, design, and spec content MUST live as **sections inside the relevant vault task file**, never as separate `-design.md` / `-plan.md` siblings. Single-doc workflow: plan + design + progress co-located in one task file.
-
-- **Single task** (most cases): `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<topic>.md` — Design and Plan are sections inside this file (see `_templates/task.md`).
-- **Umbrella with ship-able sub-tasks**: `{VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-<umbrella-slug>/umbrella.md` + sibling sub-task files (e.g. `A-<sub-task>.md`) inside the same subfolder (see `_templates/umbrella.md`). Discriminator: if a piece could ship on its own, it's a sub-task file; if not, it's a section in the parent.
-- **Cross-project / shared work**: `{VAULT_PATH}/_shared/tasks/open/YYYY-MM-DD-<topic>.md` (or umbrella subfolder if multi-ship).
-- Filenames carry the **creation** date and never change. Recency lives in the `updated:` frontmatter field — Keeper bumps it when adding a `## Progress` entry.
-- This overrides the default `docs/plans/...` instruction in the superpowers `brainstorming` and `writing-plans` skills. The Forge override is enforced by a PreToolUse hook (`forge-vault-plan-guard.sh`) — Claude cannot write to `docs/plans/` while Forge is active.
-
-**Claude Code plan mode under Forge.** Claude Code's plan mode (entered via `Shift+Tab` in the TUI, or via the `EnterPlanMode` tool) pre-allocates a scratch file at `~/.claude/plans/<random-slug>.md`. The Forge hook no longer blocks this path — the harness can pre-allocate freely. **Petra's responsibility:** plan content's canonical home is always the relevant task file's `## Plan` section, NOT the scratch file. For an in-flight task, write directly into the task file's `## Plan` section during plan-mode editing (skip the scratch entirely). For brand-new exploration with no existing task, the scratch file is acceptable as a working draft, but on `ExitPlanMode` create a proper task file under `tasks/open/` and migrate the plan content into its `## Plan` section before any implementation begins. The scratch file at `~/.claude/plans/` may be left in place — it's not the canonical home and won't be load-bearing.
+Load `references/plan-storage.md` for umbrella layout, cross-project layout, filename conventions, and the plan-mode workflow (in-flight task vs brand-new exploration) — load it when writing a plan or entering plan mode.
 
 **Backlog (per-project view):** Each project maintains a single-page prioritized view at `{VAULT_PATH}/{ENV}/{PROJECT}/BACKLOG.md` — Keeper-curated table of open tasks with Effort / Impact / Status / Notes columns, grouped by cluster. Replaces scrolling through `tasks/open/` for prioritization decisions.
 
@@ -375,34 +295,9 @@ Background and measurement methodology: `tasks/open/2026-05-22-forge-compaction-
 - Judgment columns (Effort/Impact/Status) are Keeper's call — don't auto-generate
 - Petra references the BACKLOG when prioritizing ("Per BACKLOG, next is X")
 
-**Subagent definitions:** Each Forge role has a Claude Code subagent definition at `~/.claude/agents/forge-{role}.md` (installed by `install.sh` from `adapters/claude-code/agents/` in the forge repo). Dispatch via `Agent({subagent_type: "forge-{role}", ...})`. The 8 roles are: `forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`. The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable from the vault via `repo-core/`).
+**Subagent definitions + model tuning:** 8 Forge roles (`forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`) live at `~/.claude/agents/forge-{role}.md`; dispatch via `Agent({subagent_type: "forge-{role}", ...})`. Per-role model is configurable in `~/.claude/forge.conf` under `MODEL_*` keys (empty = inherit from session). Use subagent dispatch when the operation is self-contained; use inline when it needs conversation history.
 
-**Model tuning:** Role-to-model assignments are configured in `~/.claude/forge.conf` under `MODEL_*` keys. Read them at session start. Empty value means "inherit from session model".
-
-Defaults (written by install.sh):
-
-| Key | Default | Role | Background |
-|-----|---------|------|------------|
-| `MODEL_KEEPER` | `sonnet` | Checkpoint writes, index updates | yes |
-| `MODEL_REFINER` | `opus` | Root cause analysis | no |
-| `MODEL_REVIEWER` | `sonnet` | Structured checklist review | no |
-| `MODEL_IMPL` | (inherit) | Implementation | yes |
-| `MODEL_ARCHITECT` | `opus` | Design and tradeoff analysis | no |
-| `MODEL_DEBUGGER` | `opus` | Systematic diagnosis | no |
-| `MODEL_RELEASE` | `sonnet` | Verification, commits, PRs | no |
-| `MODEL_TOOLSMITH` | `opus` | Skill authoring | no |
-
-When dispatching a subagent for a role, read the model from forge.conf:
-```bash
-grep '^MODEL_KEEPER=' ~/.claude/forge.conf | cut -d= -f2
-```
-Then pass it to the Agent tool: `Agent({ model: "{value}", ... })`. If the value is empty, omit the `model` parameter (inherits from session).
-
-Each role's adapter file (`adapters/claude-code/agents/forge-{role}.md` in the repo, installed at `~/.claude/agents/forge-{role}.md`) is the source of truth for that role's behavior, tools allowlist, and dispatch contract — including subagent-mode caveats and team-mode notes. Use subagent dispatch when the operation is self-contained (all context can be included in the prompt). Use inline when the operation needs conversation history.
-
-**Conversational model assignment:** The user can view or change role models at any time:
-- "show model assignments" / "which models are the roles using" → read forge.conf, display the table with current values
-- "set Keeper model to haiku" / "change Reviewer to opus" → update the `MODEL_*` key in forge.conf, confirm the change
+Load `references/subagent-models.md` for the default model assignments table, the dispatch + model-read snippet, and the conversational model-assignment commands ("show model assignments", "set Keeper model to haiku") — load it when dispatching a subagent or when the user asks about role models.
 
 ## Agent-Teams Mode
 
