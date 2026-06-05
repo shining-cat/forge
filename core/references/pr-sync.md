@@ -43,3 +43,21 @@ Show a compact summary (only when there's something to report):
 `+` prefix for PRs not previously in the vault.
 
 After showing the summary, update `current-checkpoint.md` with the reconciled state.
+
+## Reviewed-PR sync (`forge-context.sh review-sync`)
+
+Alongside the author=me sync above, run `~/.claude/scripts/forge-context.sh review-sync` to walk `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/reviews/*.md` and emit a row for any review doc whose PR is merged or closed-unmerged. Output format mirrors the own-PR rows but uses a `~` prefix:
+
+```
+~ #12460 COMM-3670: Extract UseCases from ConvVM: MERGED — review doc cleanup queued
+```
+
+Merge these rows into the same `--- PR Sync ---` block in the entry summary. After the summary, queue a single line offer to the user (don't run the cleanup automatically):
+
+> *"N merged review docs queued — `/promote-from-review <pr>` when ready."*
+
+The user opts in when they have headspace. `/promote-from-review` walks them through extracting durable patterns from the review doc into `patterns/<slug>.md`, then `git rm`s the review doc.
+
+`--backfill` mode (`review-sync --backfill`) scans all projects under VAULT_PATH, not just the active one. Useful for first-deploy cleanup of accumulated review docs across multiple projects.
+
+Cost: one `gh pr view` per review doc, typically ≤5 per project. `gh` caches; acceptable for entry-time invocation. Silent on `gh` missing or `gh pr view` failures (review-sync degrades to "no rows" rather than blocking entry).

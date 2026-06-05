@@ -457,7 +457,7 @@ set_conf_key() {
 build_pairs() {
   {
     # Core skills (SKILL.md per skill dir) — install_skill_md handles {{VAULT}}
-    for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+    for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer promote-from-review; do
       printf "%s\t%s\tskill_md\toverwrite\n" "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
     done
 
@@ -1358,11 +1358,11 @@ echo ""
 info "Installing skills..."
 
 # Core skills
-for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer; do
+for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-audit-permissions forge-vault-sync keeper refiner plan-reviewer promote-from-review; do
   run mkdir -p "$SKILLS_DIR/$skill"
   install_skill_md "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
-ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer)"
+ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer, promote-from-review)"
 
 # Symlink core references into forge skill — A2 preserve policy:
 # users may copy a ref to a real file and edit it (e.g. tweaking
@@ -1834,7 +1834,7 @@ fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "  Core skills:   forge, forge-checkpoint, forge-exit, forge-audit, forge-audit-permissions,"
-echo "                 forge-vault-sync, keeper, refiner, plan-reviewer"
+echo "                 forge-vault-sync, keeper, refiner, plan-reviewer, promote-from-review"
 echo "  Agents:        forge-architect, forge-debugger, forge-impl, forge-keeper,"
 echo "                 forge-refiner, forge-release, forge-reviewer, forge-toolsmith"
 echo "  Wellness:      files ready — offered during onboarding"
