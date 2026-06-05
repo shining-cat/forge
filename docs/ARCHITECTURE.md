@@ -1,6 +1,6 @@
 # Forge — Architecture
 
-What Forge IS — its components, how they fit together, and the principles that drive it. For the high-level pitch and install instructions, see the [README](../README.md). For per-role details, see [ROLES.md](ROLES.md). For vault project layout conventions, see [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md).
+What Forge IS — its components, how they fit together, and the principles that drive it. For the high-level pitch and daily workflow, see the [README](../README.md). For install / customization / rollback, see [SETUP.md](SETUP.md). For per-role details, see [ROLES.md](ROLES.md). For vault project layout conventions, see [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md).
 
 ## Philosophy
 
