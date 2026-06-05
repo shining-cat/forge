@@ -427,7 +427,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check|review-sync)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -3865,6 +3865,126 @@ do_substrate_check() {
   fi
 }
 
+# ── Subcommand: review-sync ────────────────────────────────────────────
+# Scan tasks/reviews/ for PR-numbered review docs, query gh for each PR's
+# state, and emit one line per doc whose PR is merged or closed-unmerged
+# (i.e. ripe for the /promote-from-review cleanup flow).
+#
+# Output format (one line per merged/closed review doc):
+#   ~ #<num> <title-prefix>: <state> — review doc cleanup queued
+# where the leading `~` distinguishes reviewed-PR rows from own-PR rows
+# in the entry-summary PR Sync block. Silent on open PRs (still active —
+# review doc legitimately in place). Silent when no review docs exist.
+#
+# Args:
+#   (default)   — scan the ACTIVE project only (resolved from forge-active marker)
+#   --backfill  — scan every {ENV}/{PROJECT}/tasks/reviews/ under VAULT_PATH
+#
+# PR-number extraction: regex over filename + first 20 lines of each doc,
+# dedup. Pattern: `pr-(\d+)` OR `#(\d+)` (capped at 4-6 digits to avoid
+# matching anchors).
+#
+# Cross-host: per-project. Each project's git remote determines (host,
+# owner/repo) for the gh call. Matches the existing PR sync pattern.
+#
+# Cost: one `gh pr view` per (doc, PR), typically ≤5 docs per project.
+# Each call ~200ms. Acceptable for entry-time invocation.
+do_review_sync() {
+  local mode="${1:-active}"
+  local scan_dirs=()
+
+  case "$mode" in
+    --backfill|backfill)
+      # All projects: walk every {ENV}/{PROJECT}/tasks/reviews
+      local env_dir env_name proj_dir
+      for env_dir in "$VAULT_PATH"/*/; do
+        [ -d "$env_dir" ] || continue
+        env_name="$(basename "$env_dir")"
+        case "$env_name" in _*) continue ;; esac
+        for proj_dir in "$env_dir"*/; do
+          [ -d "$proj_dir" ] || continue
+          [ -d "${proj_dir%/}/tasks/reviews" ] || continue
+          scan_dirs+=("${proj_dir%/}")
+        done
+      done
+      ;;
+    active|"")
+      # Active project only — resolve via marker
+      [ -f "$MARKER" ] || return 0
+      local project; project="$(extract_marker_project)" || return 0
+      [ -n "$project" ] || return 0
+      local proj_dir; proj_dir="$(get_vault_dir "$project")"
+      [ -d "$proj_dir/tasks/reviews" ] || return 0
+      scan_dirs+=("$proj_dir")
+      ;;
+    *)
+      echo "[review-sync] unknown mode: $mode (try: active | --backfill)" >&2
+      return 2
+      ;;
+  esac
+
+  command -v gh >/dev/null 2>&1 || return 0
+
+  local scan_dir reviews_dir
+  for scan_dir in "${scan_dirs[@]}"; do
+    reviews_dir="$scan_dir/tasks/reviews"
+
+    # Resolve project's git remote → (host, repo) for gh calls
+    local project_dir_for_git project_name
+    project_name="$(basename "$scan_dir")"
+    project_dir_for_git="$(get_project_dir "$project_name" 2>/dev/null || true)"
+    [ -d "$project_dir_for_git/.git" ] || continue
+
+    local remote host repo
+    remote="$(git -C "$project_dir_for_git" remote get-url origin 2>/dev/null || true)"
+    [ -n "$remote" ] || continue
+    host="$(echo "$remote" | sed -nE 's#^(https?://|git@)([^/:]+)[/:].*#\2#p')"
+    [ -z "$host" ] && host="github.com"
+    repo="$(echo "$remote" | sed "s|.*${host}[:/]||;s|\.git$||")"
+
+    # Walk review docs, extract PR numbers, dedup
+    local f
+    for f in "$reviews_dir"/*.md; do
+      [ -f "$f" ] || continue
+      # Filename + first 20 lines content
+      local extracted
+      extracted=$(
+        {
+          basename "$f"
+          head -n 20 "$f" 2>/dev/null
+        } |
+          grep -oE 'pr-[0-9]{3,6}|#[0-9]{3,6}' |
+          sed -E 's/^(pr-|#)//' |
+          sort -un
+      )
+      [ -n "$extracted" ] || continue
+
+      local pr_num
+      while IFS= read -r pr_num; do
+        [ -n "$pr_num" ] || continue
+        # Query gh — state + title; silent on failure
+        local pr_json state title
+        pr_json="$(GH_HOST="$host" gh pr view "$pr_num" --repo "$repo" \
+                    --json state,title 2>/dev/null || true)"
+        [ -n "$pr_json" ] || continue
+        state="$(echo "$pr_json" | jq -r '.state // empty' 2>/dev/null)"
+        title="$(echo "$pr_json" | jq -r '.title // empty' 2>/dev/null)"
+        case "$state" in
+          MERGED|CLOSED)
+            # Truncate title to 50 chars for the row
+            local short_title="${title:0:50}"
+            printf '~ #%s %s: %s — review doc cleanup queued\n' \
+              "$pr_num" "$short_title" "$state"
+            ;;
+          OPEN|*)
+            # Silent — review doc legitimately still active
+            ;;
+        esac
+      done <<< "$extracted"
+    done
+  done
+}
+
 # ── Subcommand: draft-list ────────────────────────────────────────────
 # Enumerate captured draft tasks across all draft folders for the weekly-wrap
 # triage step. Output is TSV with columns: path \t project \t title.
@@ -3956,9 +4076,10 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   substrate-check)     do_substrate_check ;;
+  review-sync)         do_review_sync "${@:2}" ;;
   draft-list)          do_draft_list ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|draft-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|draft-list}" >&2
     exit 1
     ;;
 esac

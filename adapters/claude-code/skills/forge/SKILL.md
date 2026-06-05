@@ -153,6 +153,8 @@ This step is project-specific and fully optional — projects without a KB secti
 
 Sync the vault against GitHub to catch merges, approvals, and new PRs since the last session. Resolve the remote explicitly via `git -C {project_path} remote get-url origin` → compose `gh pr list --author @me --repo {owner/repo}` with `GH_HOST={host}` for enterprise. Never let `gh` guess from cwd — it silently defaults to github.com and picks the wrong repo on enterprise or multi-project workspaces.
 
+**Also run** `~/.claude/scripts/forge-context.sh review-sync` — scans `tasks/reviews/*.md` for PR-numbered review docs, queries gh for each PR's state, and emits `~`-prefixed rows for any merged or closed-unmerged PRs (review doc is ripe for cleanup). Merge these rows into the same PR Sync block. The `~` prefix distinguishes reviewed-PR rows from your own-PR rows. **Don't run the cleanup at entry time** — queue a single one-line offer after the entry summary: *"N merged review docs queued — `/promote-from-review <pr>` when ready."* The user opts in when they have headspace.
+
 Load `references/pr-sync.md` for the full data-gathering steps (remote-URL parsing, the gh-call composition), the "why explicit" rationale + documented failure example, update rules (merged/closed/approved/new), and the entry-summary output format. Load it when implementing or debugging PR sync, including when briefing subagents for the operation.
 
 ### 4. Load Project Rules
