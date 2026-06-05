@@ -98,7 +98,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** decisions (to verify implementation matches intent), architecture notes, CLAUDE.md rules
-- **Writes:** nothing directly
+- **Writes:** (read-only)
 
 ---
 
@@ -132,7 +132,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** latest checkpoint, active decisions
-- **Writes:** nothing directly (Keeper handles persistence)
+- **Writes:** (read-only) — Keeper handles persistence
 
 ---
 
@@ -147,7 +147,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** architecture notes for context
-- **Writes:** nothing directly
+- **Writes:** (read-only)
 
 ---
 
@@ -164,7 +164,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** scope tracking (to verify PR size is reasonable)
-- **Writes:** nothing directly
+- **Writes:** (read-only)
 
 ---
 
@@ -179,4 +179,4 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** friction log (for improvement priorities)
-- **Writes:** nothing directly (changes go to skill files)
+- **Writes:** (read-only) — changes go to skill files

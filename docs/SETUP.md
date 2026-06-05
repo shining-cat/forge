@@ -107,41 +107,6 @@ After install, start Claude Code and type `/forge`. On first run, Forge will:
 3. **Set up your vault** — creates project directories and starter files.
 4. **Enter Forge mode** — Petra takes over.
 
-## Maintainer mode
-
-Two postures, picked during onboarding (and flippable anytime via `MAINTAINER_MODE` in `~/.claude/forge.conf`):
-
-- **End-user mode (default, `MAINTAINER_MODE=false`)** — Petra stays focused on your project work. Forge's own machinery (decisions/INDEX maintenance, friction-log curation, BACKLOG triage, vault hygiene threads) doesn't get surfaced as ambient suggestions. Session-entry recovery skips the open-task and BACKLOG-staleness audits to keep the summary tight.
-- **Maintainer mode (`MAINTAINER_MODE=true`)** — for people extending Forge itself (adding skills, tuning hooks, reshaping the vault layout). Audit surfaces fire at every session entry, Petra proactively suggests vault-hygiene threads (friction-log promotions, decision archival, stale-task triage), and `decisions/` / `INDEX.md` get treated as actionable surfaces rather than noise.
-
-What stays identical in both modes:
-
-- Project work, the Keeper's checkpoint cadence, the Refiner's correction loop, wellness reminders, PR sync, commit/push nudges, brain-dump prompts, install drift + rollback hints. These are productivity surfaces, not Forge-internal machinery, so they fire the same way.
-
-What changes in user mode (suppressed by default):
-
-| Surface | Where it's gated |
-|---|---|
-| Open-task audit (`Possibly-shipped tasks (>Nd, not in checkpoint)`) at session entry | `forge-context.sh` (script-level) |
-| BACKLOG staleness audit at session entry | `forge-context.sh` (script-level) |
-| Petra proactively raising friction-log / decisions / INDEX / BACKLOG / vault-hygiene threads in checkpoint Next-Steps | `forge/SKILL.md` (persona-level) |
-| Keeper writing meta-work items into Next-Steps / Open-follow-up sections | `keeper/SKILL.md` (persona-level) |
-
-End-user mode doesn't disable these capabilities — you can still ask for any of them explicitly, or run the audits one-off:
-
-```bash
-~/.claude/scripts/forge-context.sh open-task-audit
-~/.claude/scripts/forge-context.sh backlog-audit
-```
-
-Flip the mode by editing `~/.claude/forge.conf`:
-
-```ini
-MAINTAINER_MODE=true   # or false
-```
-
-The change takes effect on the next `/forge` invocation.
-
 ## Extending
 
 ### Adding a project
@@ -180,3 +145,39 @@ If you're contributing to the forge repo itself (vs just using forge), run the o
 ```
 
 This installs git hooks that lint each commit — currently a `no-hardcoded-paths` check that prevents maintainer paths (`__DEV`, `/Users/...`) and brand identifiers from leaking into shipped code. Idempotent; re-run safe.
+
+## Maintainer mode
+
+For people extending Forge itself — adding skills, tuning hooks, reshaping the vault layout. **You probably don't want this**; most users want the default end-user mode (Forge stays out of its own way).
+
+Two postures, flippable via `MAINTAINER_MODE` in `~/.claude/forge.conf`:
+
+- **End-user (default, `MAINTAINER_MODE=false`)** — Petra stays focused on your project work. Forge-internal machinery (decisions/INDEX maintenance, friction-log curation, BACKLOG triage, vault hygiene) is not surfaced as ambient suggestions. Session-entry recovery skips the open-task and BACKLOG-staleness audits.
+- **Maintainer (`MAINTAINER_MODE=true`)** — audit surfaces fire at session entry; Petra proactively suggests vault-hygiene threads; `decisions/` and `INDEX.md` are treated as actionable surfaces rather than noise.
+
+Productivity surfaces (Keeper checkpoint cadence, Refiner correction loop, wellness reminders, PR sync, commit/push nudges, brain-dump prompts, install drift + rollback hints) fire identically in both modes.
+
+What's suppressed in end-user mode:
+
+| Surface | Where it's gated |
+|---|---|
+| Open-task audit at session entry | `forge-context.sh` (script-level) |
+| BACKLOG staleness audit at session entry | `forge-context.sh` (script-level) |
+| Petra raising friction-log / decisions / INDEX / BACKLOG / vault-hygiene threads in checkpoint Next-Steps | `forge/SKILL.md` (persona-level) |
+| Keeper writing meta-work items into Next-Steps / Open-follow-up sections | `keeper/SKILL.md` (persona-level) |
+
+End-user mode doesn't disable these capabilities — ask for them explicitly or run the audits one-off:
+
+```bash
+~/.claude/scripts/forge-context.sh open-task-audit
+~/.claude/scripts/forge-context.sh backlog-audit
+```
+
+Flip the mode:
+
+```ini
+# ~/.claude/forge.conf
+MAINTAINER_MODE=true
+```
+
+The change takes effect on the next `/forge` invocation.

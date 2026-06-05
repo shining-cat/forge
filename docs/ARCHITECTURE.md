@@ -12,23 +12,30 @@ The human is the architect and decision-maker. Agents execute, challenge during 
 
 ## Components
 
-The forge is assembled from Claude Code building blocks:
+The forge is assembled from Claude Code building blocks, in two layers: **skills** (what Claude invokes — most user-facing) and **hooks + scripts + config** (what the runtime layer wires up around them).
+
+### Skills (11 + wellness module)
+
+| Skill | What it does |
+|-------|-------------|
+| `forge` | Entry point — loads vault, syncs own + reviewed PRs, activates Petra and session rules |
+| `forge-checkpoint` | Mid-session state save |
+| `forge-exit` | End-of-session wrap-up |
+| `forge-weekly` | Friday wrap ceremony — friction harvest, BACKLOG triage, draft promotion (Quartermaster persona) |
+| `forge-audit` | User-invocable scan for MUST/Never/always-style prose in skills/scripts (recurrence-aware) |
+| `forge-audit-permissions` | Surfaces anti-patterns in `settings.json` permission rules |
+| `forge-vault-sync` | Commit + push the vault when drift accumulates (categorized commits) |
+| `keeper` | Decision logging, checkpoints, scope monitoring, INDEX maintenance, auto-archive |
+| `refiner` | Friction detection, root cause analysis, classification, friction-log writes |
+| `plan-reviewer` | Checklist-based plan validation |
+| `promote-from-review` | Walks the user through extracting durable patterns from merged review docs into `patterns/`, then deletes the review doc |
+| `wellness-coach` | Forge module (skill + hooks + scripts) — break reminders, escalation, strike enforcement (optional, opt-in) |
+
+### Hooks, scripts, and config
 
 | Component | Type | What it does |
 |-----------|------|-------------|
-| `forge` | Skill | Entry point — loads vault, syncs own + reviewed PRs, activates Petra and session rules |
-| `forge-checkpoint` | Skill | Mid-session state save |
-| `forge-exit` | Skill | End-of-session wrap-up |
-| `forge-weekly` | Skill | Friday wrap ceremony — friction harvest, BACKLOG triage, draft promotion (Quartermaster persona) |
-| `forge-audit` | Skill | User-invocable scan for MUST/Never/always-style prose in skills/scripts (recurrence-aware) |
-| `forge-audit-permissions` | Skill | Surfaces anti-patterns in `settings.json` permission rules |
-| `forge-vault-sync` | Skill | Commit + push the vault when drift accumulates (categorized commits) |
-| `keeper` | Skill | Decision logging, checkpoints, scope monitoring, INDEX maintenance, auto-archive |
-| `refiner` | Skill | Friction detection, root cause analysis, classification, friction-log writes |
-| `plan-reviewer` | Skill | Checklist-based plan validation |
-| `promote-from-review` | Skill | Walks the user through extracting durable patterns from merged review docs into `patterns/`, then deletes the review doc |
-| `wellness-coach` | Forge module (skill + hooks + scripts) | Break reminders, escalation, strike enforcement (optional, opt-in) |
-| `wellness-timer.py` | Hook (PreToolUse + Stop) | Runtime break timer — injects reminders, blocks tools on strike. Stop tick covers Pattern A workflows where PreToolUse fires too rarely. Schedule-aware defer for in-progress / imminent meetings. |
+| `wellness-timer.py` | Hook (PreToolUse + Stop) | Runtime break timer — injects reminders, blocks tools on strike. Stop tick covers workflows where PreToolUse fires too rarely (user reading long agent output). Schedule-aware defer for in-progress / imminent meetings. |
 | `wellness-precompact.py` | Hook (PreCompact) | Break suggestion during compaction |
 | `idle-sampler.py` | Daemon (launchd, 60s) | Samples screen state when activity monitor is enabled. Marker-gated: no-ops when Forge isn't active. |
 | `approval-notifier.sh` | Hook (PreToolUse) | Notification on tool approval prompts |
@@ -42,7 +49,7 @@ The forge is assembled from Claude Code building blocks:
 | `forge-cost-snapshot.sh` | Script | Reads transcript metrics, emits `suggest_compact: true/false` for proactive `/compact` discipline |
 | `forge-gap-since-last-signal.sh` | Script | Unified gap detection across checkpoints / marker / braindumps / vault git. Underpins cold-start logic |
 | `forge-permission-lint.sh` | Script | Fails install when `settings.json` permissions match known anti-patterns; also surfaced via `/forge-audit-permissions` |
-| `forge-shell-init.sh` | Shell wrapper | Auto-wraps interactive `claude` in tmux for Pattern A team substrate |
+| `forge-shell-init.sh` | Shell wrapper | Auto-wraps interactive `claude` in tmux for agent-team substrate |
 | `statusline.sh` | Script (statusline) | Status bar showing session state, drift, next break, next meeting |
 | `settings.json` | Config | Hook wiring, permissions, plugin enablement |
 | `forge-tmux.conf` | Config | tmux config consumed by `forge-shell-init.sh` (mouse-on for scroll-buffer correctness) |
@@ -140,6 +147,14 @@ Roles are behaviours, not separate agents. Output uses two layers:
 - **Keeper** — logs decisions when validated, writes checkpoints at natural pauses, reconciles PRs on each checkpoint
 - **Refiner** — activates on any user correction, before continuing with the corrected approach
 
+**Agent-team modes.** For work that genuinely benefits from parallel collaboration, Petra can spawn a team instead of dispatching subagents sequentially:
+
+- **Pattern A** — pair of different roles on the same artifact (e.g. Reviewer + Refiner on a PR)
+- **Pattern B** — multiple instances of the same role with competing hypotheses (e.g. 3-5 Debuggers on an unclear root cause)
+- **Pattern C** — same role, scope-partitioned (e.g. Reviewers split across security / performance / test coverage)
+
+Most Forge work doesn't need teams — sequential subagent dispatch is the default. Teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Claude Code v2.1.32+) and tmux; falls back to inline sequential dispatch when the substrate is missing. Full pattern protocol: `core/references/agent-teams-mode.md`.
+
 For per-role specifications (proactive flag, vault interaction, etc.), see [ROLES.md](ROLES.md).
 
 ## Friction framework
@@ -163,7 +178,7 @@ Converts recurrent friction events (permission prompts, prose-discipline failure
 
 **Error handling:** `append-friction` uses write-then-flag — on pattern validation failure, the entry is still written with `validation_failed: true` and `pattern: unknown`, and the subcommand exits non-zero. Refiner can then surface the failure rather than swallow it.
 
-**Spec & rationale:** see vault task `PERSO/forge/tasks/open/2026-05-20-forge-friction-meta-framework.md` for the full design, decision history, and rollout walkthrough.
+**Spec & rationale:** the full design, decision history, and rollout walkthrough live in the maintainer's vault; the pattern catalog (`core/references/script-replacement-patterns.md`) and classifier tree (`core/references/friction-classifier.md`) are the parts shipped to users.
 
 ## Petra — The Forge Master
 
