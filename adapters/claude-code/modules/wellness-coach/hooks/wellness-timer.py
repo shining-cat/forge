@@ -59,6 +59,19 @@ def read_hook_input():
         return {}
 
 
+def is_stop_event(hook_input):
+    """True iff this invocation is a Stop hook (vs the default PreToolUse).
+
+    Stop fires at the end of every assistant turn — it's the supplemental
+    tick source for Pattern A workflows where the user is mostly reading
+    long agent output and PreToolUse fires too rarely. Same level-
+    determination logic applies; the only differences are output shape
+    (no permissionDecision; Stop can't deny) and the tool-specific gates
+    don't apply (no tool_name to inspect).
+    """
+    return hook_input.get("hook_event_name") == "Stop"
+
+
 def is_wellness_coach_skill(hook_input):
     """Check if the current tool call is invoking the wellness-coach skill."""
     tool_name = hook_input.get("tool_name", "")
@@ -155,6 +168,24 @@ def emit_deny(short_reason, detail_message):
         "systemMessage": detail_message,
     }))
     sys.exit(2)
+
+
+def emit_stop_message(message):
+    """Print Stop hook output with systemMessage and exit.
+
+    Stop has no permissionDecision (the assistant turn already ended;
+    there's nothing to allow/deny). The systemMessage gets surfaced to
+    the user the same way as PreToolUse's. Strike escalation through
+    Stop sets `strike_active=true` in state — the next PreToolUse picks
+    up the strike and emits the actual deny.
+    """
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "Stop",
+        },
+        "systemMessage": message,
+    }))
+    sys.exit(0)
 
 
 # ── Schedule-aware defer (Slice 4 of wellness-coverage-audit, 2026-06-05) ──
@@ -254,6 +285,14 @@ def main():
     coach_name = prefs.get("coach_name", "Wellness Coach")
     hook_input = read_hook_input()
 
+    # IS_STOP gates the tool-specific logic below. Stop fires at assistant
+    # turn-end; there's no tool_input to inspect, no permission to grant/deny.
+    # See slice 5 of wellness-coverage-audit (2026-06-05) — Stop is the
+    # supplemental tick source for Pattern A workflows where PreToolUse
+    # fires too rarely (user is mostly reading long agent output, so the
+    # break timer was ticking silently).
+    IS_STOP = is_stop_event(hook_input)
+
     # Always allow the wellness-coach skill through — even during strike.
     # When invoked during an active strike, ONLY lift the strike flag (so the
     # skill body's subsequent state-writes and persona conversation can run).
@@ -267,7 +306,9 @@ def main():
     # downstream so subsequent tool calls don't re-strike while the
     # conversation is in flight, even though `last_break_timestamp` is still
     # stale.
-    if is_wellness_coach_skill(hook_input):
+    #
+    # Stop events skip this — there's no tool_name to match against.
+    if not IS_STOP and is_wellness_coach_skill(hook_input):
         if prefs.get("strike_active"):
             def lift_strike_for_conversation(p):
                 now = now_iso()
@@ -318,8 +359,12 @@ def main():
             # Re-read prefs after crediting — strike may have been cleared
             prefs = read_prefs() or prefs
 
-    # Strike already active — block most tool calls
-    if prefs.get("strike_active"):
+    # Strike already active — block most tool calls.
+    # Skip this branch for Stop events: Stop can't deny (the assistant turn
+    # already ended) and Stop has no tool_name to match exempt paths against.
+    # The next PreToolUse will pick up the strike state and emit the actual
+    # block; Stop just stays silent on an existing strike.
+    if not IS_STOP and prefs.get("strike_active"):
         # Let through:
         #   - vault writes (context preservation must not deadlock)
         #   - wellness state file access (preferences + runtime — recovery path)
@@ -428,18 +473,28 @@ def main():
     # Micro-break — no context enrichment, thin box
     if level == "micro":
         log_event(prefs, "reminder",
-            f"Micro-break reminder. {int(elapsed)} min since last break.")
+            f"Micro-break reminder. {int(elapsed)} min since last break."
+            + (" [via Stop]" if IS_STOP else ""))
         box = format_box(coach_name, content_lines, "micro")
         notify(coach_name, notif_body)
+        if IS_STOP:
+            emit_stop_message(center_block(box))
         emit_allow(center_block(box))
 
-    # Strike — short reason in error callout, full box in systemMessage
+    # Strike — short reason in error callout, full box in systemMessage.
+    # Under Stop, we can't deny (no permission to deny on a turn that's already
+    # ending) — set strike_active in state (already done by update_prefs above)
+    # and emit a systemMessage. The NEXT PreToolUse will see the strike flag
+    # and emit the actual block.
     if level == "strike":
         log_event(prefs, "strike",
-            f"Strike triggered. {int(elapsed)} min without break.",
+            f"Strike triggered. {int(elapsed)} min without break."
+            + (" [via Stop — next PreToolUse will enforce]" if IS_STOP else ""),
             {"strike_active": "false → true"})
         box = format_box(coach_name, content_lines, "strike")
         notify(coach_name, notif_body)
+        if IS_STOP:
+            emit_stop_message(center_block(box))
         emit_deny(
             f"On strike — {int(elapsed)} min without a break",
             center_block(box),
@@ -448,11 +503,16 @@ def main():
     # Break / insist — double box with context enrichment
     log_event(prefs, "reminder",
         f"{'Insistent break' if level == 'insist' else 'Break'} reminder."
-        f" {int(elapsed)} min since last break.")
+        f" {int(elapsed)} min since last break."
+        + (" [via Stop]" if IS_STOP else ""))
     context = get_context_lines(prefs)
     all_lines = content_lines + context
     box = format_box(coach_name, all_lines, "break")
     centered = center_block(box)
+    if IS_STOP:
+        if notif_body:
+            notify(coach_name, notif_body)
+        emit_stop_message(centered)
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
