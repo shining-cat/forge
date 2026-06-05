@@ -48,6 +48,7 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
    Wellness preferences live at `${VAULT_PATH}/_shared/wellness-preferences.json` — covered by the existing vault allowlist, no per-file permission needed.
 3. Add these hooks if not present:
    - PreToolUse: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5)
+   - Stop: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5) — supplemental tick on assistant turn-end; covers Pattern A workflows where the user is mostly reading agent output and PreToolUse fires too rarely
    - PreCompact: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-precompact.py` (timeout: 5)
 4. Write the updated settings.json
 5. Update `~/.claude/forge.conf`: set `WELLNESS_ENABLED=true`
