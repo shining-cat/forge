@@ -44,33 +44,33 @@ Settings → Templater → **Template folder location** → set to `_templates`.
 
 Forge's `install.sh` creates `_templates/` at the vault root with `draft.md` already seeded.
 
-### 3. Enable Folder Templates
+### 3. Enable "Trigger Templater on new file creation"
 
-Settings → Templater → **Folder Templates** → toggle on.
+Settings → Templater → scroll to **"Trigger Templater on new file creation"** → toggle on.
 
-### 4. Map the draft folder(s) to the draft template
+This is the gate for the next step — without it, the **Folder Templates** section doesn't appear in the settings UI.
 
-Under Folder Templates, add at minimum:
+### 4. (Optional) Map per-project draft folders to the draft template
 
-| Folder                | Template              |
-| --------------------- | --------------------- |
-| `_shared/tasks/draft` | `_templates/draft.md` |
+Under **Folder Templates** (now visible thanks to step 3), add a mapping for each project where you want draft capture to land in that project's own folder:
 
-This makes new files in `_shared/tasks/draft/` get the draft template's frontmatter and structure automatically.
-
-**Optional — per-project capture.** If you usually know at capture-time which project a draft belongs to, add additional mappings:
-
-| Folder | Template |
-|---|---|
-| `WORK/my-app/tasks/draft` | `_templates/draft.md` |
+| Folder                           | Template              |
+| -------------------------------- | --------------------- |
+| `WORK/my-app/tasks/draft`        | `_templates/draft.md` |
 | `PERSO/side-project/tasks/draft` | `_templates/draft.md` |
-| (etc — one per project) | |
+| (etc — one per project)          |                       |
 
-If you don't bother, drop everything in `_shared/tasks/draft/` and the weekly triage assigns project then.
+When a new note is created **inside one of these folders** (via Obsidian's "new note" button while navigated there), Templater auto-applies the draft template.
 
-### 5. Bind a hotkey
+**You don't need a mapping for `_shared/tasks/draft/`** — the draft template itself auto-moves new files to that folder by default (see step 5). The per-project mappings above only matter if you want drafts to skip the `_shared` default and land in a specific project folder.
 
-Settings → Hotkeys → search **Templater: Create new note from template** → bind a hotkey you'll remember (e.g. `Cmd-Shift-D` for "draft").
+### 5. Bind a global hotkey
+
+Go to **Obsidian Settings → Hotkeys** (left sidebar — *not* Templater's own "Template hotkeys" section, which is a different mechanism with confusing UI).
+
+Search for **"Templater: Create new note from template"** and bind a hotkey you'll remember (e.g. `Cmd-Shift-D` for "draft").
+
+When you hit it: Templater pops a template picker, you pick `draft.md`, a new file gets created. The template includes a `tp.file.move(...)` call that auto-relocates the new file to `_shared/tasks/draft/` (unless it was already created inside a `tasks/draft` folder via step 4's Folder Template mapping, in which case it stays put).
 
 ---
 
@@ -78,13 +78,14 @@ Settings → Hotkeys → search **Templater: Create new note from template** →
 
 1. An idea surfaces. You're in Obsidian (or hit your global Obsidian hotkey from anywhere).
 2. Press your bound hotkey (e.g. `Cmd-Shift-D`).
-3. Templater prompts for the destination folder. Pick `_shared/tasks/draft/` (or a per-project draft folder if you've set them up).
-4. Type a one-line title for the file.
-5. The file opens with frontmatter pre-filled. Type your one-line idea below the heading. Save.
+3. The template picker pops up. Type "draft" → select `draft.md`.
+4. Templater prompts for the new file's name (defaults to "Untitled"). Type a one-line title.
+5. The file opens with frontmatter pre-filled. **It auto-moves to `_shared/tasks/draft/`** (via the template's `tp.file.move(...)` call) unless you created it inside a per-project draft folder you mapped in Stage 1 step 4.
+6. Type your one-line idea below the heading. Save.
 
 Total time: ~3-5 seconds. Zero conversation with Claude.
 
-Drafts live where you dropped them until the weekly triage. The vault syncs them like any other file.
+Drafts live where they landed until the weekly triage. The vault syncs them like any other file.
 
 ---
 
