@@ -157,6 +157,62 @@ def emit_deny(short_reason, detail_message):
     sys.exit(2)
 
 
+# ── Schedule-aware defer (Slice 4 of wellness-coverage-audit, 2026-06-05) ──
+
+# Defer-window for "imminent meeting": if a meeting starts within this many
+# minutes, defer the real-break nag (no time for a real break anyway). Smaller
+# than Petra's MEETING_WINDOW_MIN (30) — Petra paces task suggestions, the
+# wellness hook only defers the nag itself.
+WELLNESS_MEETING_IMMINENT_MIN = 5
+
+
+def should_defer_for_meeting():
+    """Check the calendar for in-progress or imminent meetings.
+
+    Returns (True, reason_str) if a real-break nag should be deferred;
+    (False, '') otherwise. Silent on calendar disabled / fetch failure /
+    script missing — treated as 'not deferring' so the wellness hook
+    falls through to normal behavior rather than gaming itself off the
+    nag path when the calendar layer is unavailable.
+
+    Two checks via forge-calendar.sh:
+      - in-meeting       : presence-only; non-empty output → currently in a meeting
+      - next-meeting <N> : upcoming-only; non-empty output → meeting starting in <=N min
+
+    Either triggers the defer.
+    """
+    calendar_sh = os.path.expanduser("~/.claude/scripts/forge-calendar.sh")
+    if not os.path.isfile(calendar_sh):
+        return False, ""
+    try:
+        # In-progress check (no parameter)
+        out = subprocess.run(
+            ["bash", calendar_sh, "in-meeting"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if out:
+            parts = out.split("|")
+            if len(parts) == 2:
+                return True, f"in meeting '{parts[0]}' ({parts[1]} min remaining)"
+            return True, "in meeting"
+        # Imminent check (next WELLNESS_MEETING_IMMINENT_MIN minutes)
+        out = subprocess.run(
+            ["bash", calendar_sh, "next-meeting", str(WELLNESS_MEETING_IMMINENT_MIN)],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if out:
+            parts = out.split("|")
+            if len(parts) == 3:
+                return True, f"meeting '{parts[1]}' starting in {parts[2]} min"
+            return True, "meeting imminent"
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        # Calendar layer unavailable — treat as "no meeting" so the wellness
+        # hook falls through to normal behavior. Don't silently defer; that
+        # would game the user out of nags whenever gws auth flakes.
+        return False, ""
+    return False, ""
+
+
 # ── Escalation logic ──────────────────────────────────────
 
 def determine_level(prefs, elapsed_min):
@@ -310,6 +366,28 @@ def main():
 
     if level is None:
         sys.exit(0)
+
+    # Schedule-aware defer (Slice 4 of wellness-coverage-audit, 2026-06-05).
+    # If the user is in a meeting or has one starting imminently, defer
+    # real-break nags + strikes — they can't act on them mid-meeting, and a
+    # strike fired during a call is pure friction. Micro nags still fire
+    # (they're gentle, one-line, and don't escalate). Petra already does
+    # this externally for task pacing; Pip now does it natively for nags.
+    if level in ("break", "insist", "strike"):
+        defer, reason = should_defer_for_meeting()
+        if defer:
+            # Bump last_reminder_timestamp so subsequent PreToolUse ticks
+            # within the meeting hit the standard cooldown and stay silent.
+            # When the meeting ends, the nag fires at the next PreToolUse
+            # after cooldown elapses — normal cadence resumes.
+            def bump_reminder(p):
+                p["last_reminder_timestamp"] = now_iso()
+                return p
+            read_modify_write(bump_reminder)
+            log_event(prefs, "deferred-for-meeting",
+                f"{level.capitalize()}-level nag deferred — {reason}.",
+                {"level": level, "elapsed_min": int(elapsed)})
+            sys.exit(0)
 
     # Grace period after skill-cleared strike
     STRIKE_GRACE_MINUTES = 10

@@ -299,13 +299,93 @@ for e in resp.get('items', []):
 PYEOF
 }
 
+do_in_meeting() {
+  # Print the currently-in-progress (non-declined) meeting, or nothing.
+  # Output format (single line): title|minutes_remaining
+  # Silent (no output, exit 0) when calendar disabled, no event spans now,
+  # or fetch fails — caller treats absence as "user is free right now".
+  #
+  # Distinct from next-meeting which only reports UPCOMING events
+  # (skips events with negative minutes_until). This subcommand is the
+  # in-progress counterpart, used by wellness-timer.py to defer real-break
+  # nags + strikes when the user is mid-meeting (can't act on a nag).
+  #
+  # Implementation: query a wider time window (now-3h to now+1min) to catch
+  # events that started up to 3h ago, then filter in Python on
+  # start.dateTime <= now <= end.dateTime. Three hours is the realistic
+  # maximum meeting length on the user's calendar; longer events
+  # (workshops, off-sites) would benefit from explicit "DND" instead of
+  # auto-defer anyway.
+  if ! check_calendar_enabled; then
+    return 0
+  fi
+
+  local now_iso start_iso end_iso
+  { read -r now_iso; read -r start_iso; read -r end_iso; } < <(python3 -c "
+import datetime
+now = datetime.datetime.now().astimezone()
+print(now.isoformat())
+print((now - datetime.timedelta(hours=3)).isoformat())
+print((now + datetime.timedelta(minutes=1)).isoformat())
+")
+
+  local params
+  params=$(START="$start_iso" END="$end_iso" python3 -c "
+import json, os
+print(json.dumps({
+  'calendarId': 'primary',
+  'timeMin': os.environ['START'],
+  'timeMax': os.environ['END'],
+  'singleEvents': True,
+  'orderBy': 'startTime',
+  'maxResults': 10,
+}))")
+
+  local resp
+  resp=$(gws_list_events "$params") || return 0
+
+  RESP="$resp" NOW_ISO="$now_iso" python3 - <<'PYEOF'
+import json, os, sys, datetime
+raw = os.environ['RESP']
+now_iso = os.environ['NOW_ISO']
+try:
+    resp = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(0)
+
+now = datetime.datetime.fromisoformat(now_iso)
+for e in resp.get('items', []):
+    self_attendee = next((a for a in e.get('attendees', []) if a.get('self')), None)
+    if self_attendee and self_attendee.get('responseStatus') == 'declined':
+        continue
+    start = e.get('start', {})
+    end = e.get('end', {})
+    if 'dateTime' not in start or 'dateTime' not in end:
+        continue
+    try:
+        start_dt = datetime.datetime.fromisoformat(start['dateTime'])
+        end_dt = datetime.datetime.fromisoformat(end['dateTime'])
+    except ValueError:
+        continue
+    if not (start_dt <= now <= end_dt):
+        continue
+    minutes_remaining = int((end_dt - now).total_seconds() // 60)
+    if minutes_remaining < 0:
+        continue
+    title = e.get('summary', '(no title)').replace('|', '/')
+    print(f"{title}|{minutes_remaining}")
+    break
+PYEOF
+}
+
 case "${1:-}" in
   entry-fetch) do_entry_fetch ;;
   delta-check) do_delta_check ;;
   next-meeting) shift; do_next_meeting "${1:-30}" ;;
+  in-meeting)  do_in_meeting ;;
   reset)       do_reset ;;
   *)
-    echo "Usage: forge-calendar.sh {entry-fetch|delta-check|next-meeting [window_min]|reset}" >&2
+    echo "Usage: forge-calendar.sh {entry-fetch|delta-check|next-meeting [window_min]|in-meeting|reset}" >&2
     exit 1
     ;;
 esac
