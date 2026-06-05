@@ -478,11 +478,12 @@ build_pairs() {
       [ -e "$hook" ] && printf "%s\t%s\tfile\toverwrite\n" "$hook" "$wc_dst/hooks/$(basename "$hook")"
     done
     for script in "$wc_src/scripts/"*; do
-      [ -e "$script" ] && printf "%s\t%s\tfile\toverwrite\n" "$script" "$wc_dst/scripts/$(basename "$script")"
+      # Skip subdirs (e.g. tests/) — only top-level script files get installed
+      [ -f "$script" ] && printf "%s\t%s\tfile\toverwrite\n" "$script" "$wc_dst/scripts/$(basename "$script")"
     done
     printf "%s\t%s\tfile\toverwrite\n" "$wc_src/src/screen_state.c" "$wc_dst/src/screen_state.c"
     # Wellness-coach references — A2 (same logic as forge skill references)
-    for ref in onboarding.md conflict-resolution.md; do
+    for ref in onboarding.md conflict-resolution.md window-isolation.md personas.md auto-detected-tiers.md strike-conversation.md; do
       printf "%s\t%s\tsymlink\tpreserve\n" "$wc_src/references/$ref" "$wc_dst/references/$ref"
     done
 
@@ -1388,13 +1389,16 @@ run mkdir -p "$WC_DST/hooks" "$WC_DST/scripts" "$WC_DST/src"
 safe_cp "$WC_SRC/skills/wellness-coach/SKILL.md" "$WC_DST/SKILL.md"
 safe_cp "$WC_SRC/README.md" "$WC_DST/"
 for hook in "$WC_SRC/hooks/"*.py; do safe_cp "$hook" "$WC_DST/hooks/"; done
-for script in "$WC_SRC/scripts/"*; do safe_cp "$script" "$WC_DST/scripts/"; done
+for script in "$WC_SRC/scripts/"*; do
+  # Skip subdirs (e.g. tests/) — only top-level script files get installed at runtime
+  [ -f "$script" ] && safe_cp "$script" "$WC_DST/scripts/"
+done
 safe_cp "$WC_SRC/src/screen_state.c" "$WC_DST/src/"
 run chmod +x "$WC_DST/scripts/"*.sh
 
 # Symlink wellness-coach references (lazy-loaded by SKILL.md stubs) — A2 preserve.
 run mkdir -p "$WC_DST/references"
-for ref in onboarding.md conflict-resolution.md; do
+for ref in onboarding.md conflict-resolution.md window-isolation.md personas.md auto-detected-tiers.md strike-conversation.md; do
   install_symlink "$WC_SRC/references/$ref" "$WC_DST/references/$ref" preserve
 done
 ok "Wellness coach files (activation offered during first /forge session)"
