@@ -201,5 +201,30 @@ assert_exit "exit 0" "0" "$rc"
 teardown
 
 echo ""
+echo "Check 9 — non-numeric --recurrence: clean error, no jq leak, no file mutation"
+setup_tmp_vault
+err=$("$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "test event I non-numeric recurrence" \
+  --pattern allowlist-patch \
+  --recurrence "first-observed" \
+  --action-ref "tasks/open/2026-05-20-test-i.md" 2>&1 >/dev/null)
+rc=$?
+assert_exit "exit 2 on non-numeric recurrence" "2" "$rc"
+if printf '%s' "$err" | grep -q "must be a non-negative integer"; then
+  echo "  ✓ error message names the constraint"; PASS=$((PASS+1));
+else
+  echo "  ✗ error message missing constraint name (got: $err)"; FAIL=$((FAIL+1));
+fi
+if printf '%s' "$err" | grep -qi "argjson\|invalid JSON"; then
+  echo "  ✗ raw jq error leaked through"; FAIL=$((FAIL+1));
+else
+  echo "  ✓ no raw jq error leak"; PASS=$((PASS+1));
+fi
+assert_file_not_contains "no friction-log mutation on rejection" "$TMP/_shared/friction-log.md" "test event I"
+assert_file_not_contains "no JSON mutation on rejection" "$TMP/_shared/friction-classified.json" "test event I"
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

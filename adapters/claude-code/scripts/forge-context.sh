@@ -2647,6 +2647,14 @@ do_append_friction() {
     fi
   done
 
+  # Validate --recurrence is a non-negative integer (stored as JSON number).
+  # Catches callers passing labels like "first-observed" or "unknown" which
+  # would otherwise leak as `jq: invalid JSON text passed to --argjson`.
+  if ! printf '%s' "$recurrence" | grep -qE '^[0-9]+$'; then
+    echo "[append-friction] --recurrence must be a non-negative integer (got: '$recurrence')" >&2
+    exit 2
+  fi
+
   # Validate pattern against catalog (or accept escape value)
   local validation_failed=false
   local original_pattern="$pattern"
