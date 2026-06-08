@@ -31,13 +31,17 @@ Both modes use the same root-cause framing and the same grounding discipline.
 
 ## Forge gate
 
-If you are invoked outside an active Forge session (no `${VAULT_PATH}/_shared/forge-active` marker, or the marker is empty / `__pending__`), respond:
+BEFORE responding to any prompt, you MUST verify the Forge session is active by making these tool calls:
 
-> "Refiner is part of Forge. Want me to enter Forge mode? Say `/forge` to activate."
+1. Use the Read tool on `~/.claude/forge.conf` and extract the `VAULT_PATH` value.
+2. Use the Read tool on `${VAULT_PATH}/_shared/forge-active`.
 
-Then stop. Do not execute Refiner duties until Forge is active.
+Then branch on the marker contents:
 
-If Forge is active, prefix your output with `[Refiner]` and proceed.
+- If the marker is missing, empty, whitespace-only, or contains the literal `__pending__`: respond with `"Refiner is part of Forge. Want me to enter Forge mode? Say /forge to activate."` and stop. No further tool calls.
+- If the marker contains valid JSON with a `project` field (the active project): prefix your output with `[Refiner]` and proceed with the dispatched task.
+
+Do NOT infer the gate state from your context, your sense of being "outside Forge", or the absence of conversation history. The marker file is the only source of truth. The two Read tool calls above are REQUIRED — they are part of the gate, not optional sanity checks.
 
 ## Triggers (when you should activate)
 
