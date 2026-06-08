@@ -10,7 +10,7 @@ For the day-walkthrough that shows how these fit together, see the [README](../R
 |---|---|
 | `/forge` | **Enter Forge mode.** Loads the active project's vault, reconciles your open + reviewed PRs against GitHub, surfaces calendar interruptions for the day, flags merged review docs ripe for cleanup. Cold-start after a long gap (>~4h, configurable) gets a special banner reminding you not to trust the checkpoint implicitly. |
 | `/forge-exit` | **Wrap the session.** Writes a final checkpoint, deactivates the active-project marker, resets the wellness break clock. Hooks stop firing into a dead session. Also triggered conversationally by phrases like *"done for today"* / *"calling it"* / *"logging off"*. |
-| `/forge-weekly` | **Friday wrap ceremony.** The Quartermaster persona harvests the week's friction into structured patterns, triages captured drafts into proper tasks, runs the cross-project retro, logs the week. Usually run before `/forge-exit` on a Friday afternoon. |
+| `/forge-weekly` | **Friday wrap ceremony.** The Quartermaster persona harvests the week's friction into structured patterns, triages captured drafts into proper tasks, runs the cross-project retro, logs the week. Ends by asking whether to chain into `/forge-exit` and close out the day too (defaults to no — ceremony alone is a valid reason to run it, e.g. mid-day triage). |
 
 ## During work
 
