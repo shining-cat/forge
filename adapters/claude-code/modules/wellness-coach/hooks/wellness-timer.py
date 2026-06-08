@@ -559,6 +559,17 @@ def _detect_auto_break(prefs):
                 real_threshold_minutes=real_t)
             if result is not None:
                 ts, _duration, tier = result
+                # Cold-start / macro-gap override: a short lock can't represent
+                # a "micro break" if the user has been away from the keyboard
+                # for longer than the real-break threshold. Reuse real_t as the
+                # gap floor — avoids a new config knob, and the semantics match
+                # ("any gap that would qualify as a real-tier lock also
+                # qualifies as a real-tier macro-gap"). Prevents the Bug B
+                # pattern where micro credit leaves last_break_timestamp stale
+                # and the next PreToolUse immediately fires strike.
+                gap_min = minutes_since(prefs.get("last_break_timestamp"))
+                if tier == "micro" and gap_min >= (real_t or REAL_BREAK_LOCK_THRESHOLD_MINUTES):
+                    tier = "real"
                 return (ts, tier)
 
     # System wake / boot fallback — always real tier. Gate on the real-break
