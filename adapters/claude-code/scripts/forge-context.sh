@@ -432,7 +432,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check|review-sync)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check|review-sync|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -445,6 +445,12 @@ case "$SUBCMD_PEEK" in
     # substrate-check inspects $TMUX env + `command -v tmux` — fully project-
     # independent; routed through the script so the substrate detection
     # inherits the existing allowlist instead of prompting on every entry.
+    # write-checkpoint / new-task / set-task-status / bump-backlog-header /
+    # add-recently-shipped / update-backlog-row — Tier 1 vault-write subcommands
+    # (see core/references/vault-write-protocol.md). They resolve project from
+    # the marker themselves (via extract_marker_project + get_vault_dir) so
+    # they can write through the hook's pre-existing allowlist without
+    # double-resolution. Each rejects when no active project is resolvable.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -4076,6 +4082,716 @@ do_draft_list() {
   done
 }
 
+# ── Tier 1 vault-write subcommands ──────────────────────────────────────
+# Shared infrastructure for the six Tier 1 subcommands below
+# (write-checkpoint, new-task, set-task-status, bump-backlog-header,
+# add-recently-shipped, update-backlog-row). See
+# `core/references/vault-write-protocol.md` for the three-tier model
+# rationale: these subcommands make operational-state vault writes silent
+# by ergonomics (one Bash call, no diff render) rather than by Petra
+# discipline (subagent dispatch, which kept getting bypassed when inline
+# Edit felt faster in-the-moment).
+
+# Path-prefix validation: resolve TARGET and BASE to absolute paths, then
+# confirm TARGET is strictly inside BASE. Uses Python for portability —
+# avoids depending on coreutils `realpath` (not always present on macOS)
+# and `readlink -f` (not portable across BSD/GNU).
+# Returns 0 if TARGET is inside BASE; 1 otherwise. Both paths must exist
+# OR TARGET's parent must exist (we'll be writing a new file there).
+vault_path_inside() {
+  local target="$1" base="$2"
+  python3 - "$target" "$base" <<'PY' 2>/dev/null || return 1
+import os, sys
+target = os.path.abspath(sys.argv[1])
+base = os.path.abspath(sys.argv[2])
+# Walk up target until we find an existing path so resolve doesn't fail
+# on not-yet-created files.
+probe = target
+while probe and not os.path.exists(probe):
+    parent = os.path.dirname(probe)
+    if parent == probe:
+        break
+    probe = parent
+real_target_dir = os.path.realpath(probe) if probe else target
+real_base = os.path.realpath(base) if os.path.exists(base) else base
+# Re-attach any path tail that didn't exist
+tail = os.path.relpath(target, probe) if probe else ""
+real_target = os.path.join(real_target_dir, tail) if tail and tail != "." else real_target_dir
+try:
+    common = os.path.commonpath([real_target, real_base])
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if common == real_base else 1)
+PY
+}
+
+# Resolve the active project + vault dir. Echoes "<project>|<vault_dir>"
+# on stdout (pipe-delimited so callers can `cut -d'|'`). Exits 2 with the
+# given prefix on stderr if no active marker or project unresolvable.
+# Tier 1 subcommands all need this; centralising avoids drift.
+resolve_active_project_or_die() {
+  local prefix="$1"
+  if [ ! -f "$MARKER" ]; then
+    echo "[$prefix] FAIL: no active forge session (marker missing at $MARKER)" >&2
+    exit 2
+  fi
+  local project vault_dir
+  project="$(extract_marker_project)"
+  if [ -z "$project" ]; then
+    echo "[$prefix] FAIL: no active project (marker empty or __pending__)" >&2
+    exit 2
+  fi
+  vault_dir="$(get_vault_dir "$project" 2>/dev/null)"
+  if [ -z "$vault_dir" ] || [ ! -d "$vault_dir" ]; then
+    echo "[$prefix] FAIL: no vault directory found for project '$project' under $VAULT_PATH" >&2
+    exit 2
+  fi
+  echo "$project|$vault_dir"
+}
+
+# ── Subcommand: write-checkpoint (Tier 1 — full checkpoint replacement) ──
+# Replaces inline Edit/Write on current-checkpoint.md. Reads body from
+# stdin (heredoc), prepends frontmatter computed from current system time
+# + active marker's project field. Validates target stays inside
+# $VAULT_PATH. Atomic write via temp file + mv.
+#
+# Usage:
+#   forge-context.sh write-checkpoint <<'EOF'
+#   # forge Checkpoint — title here
+#
+#   Body content here.
+#   EOF
+do_write_checkpoint() {
+  local resolved project vault_dir target
+  resolved="$(resolve_active_project_or_die "write-checkpoint")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  target="$vault_dir/current-checkpoint.md"
+
+  if ! vault_path_inside "$target" "$VAULT_PATH"; then
+    echo "[write-checkpoint] FAIL: target '$target' is not inside VAULT_PATH '$VAULT_PATH'" >&2
+    exit 2
+  fi
+
+  # Read body from stdin. If stdin is a TTY (manual misuse), bail rather than block.
+  if [ -t 0 ]; then
+    echo "[write-checkpoint] FAIL: body must be piped on stdin (use a heredoc)" >&2
+    exit 2
+  fi
+  local body
+  body="$(cat)"
+  if [ -z "$body" ]; then
+    echo "[write-checkpoint] FAIL: stdin body is empty" >&2
+    exit 2
+  fi
+
+  local today now_time
+  today="$(date +%Y-%m-%d)"
+  now_time="$(date +%H:%M)"
+
+  local tmp="$target.tmp.$$"
+  {
+    printf -- '---\n'
+    printf 'date: %s\n' "$today"
+    printf 'time: "%s"\n' "$now_time"
+    printf 'project: %s\n' "$project"
+    printf 'session: open\n'
+    printf -- '---\n\n'
+    printf '%s' "$body"
+    # Ensure trailing newline
+    case "$body" in
+      *$'\n') ;;
+      *) printf '\n' ;;
+    esac
+  } > "$tmp" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[write-checkpoint] FAIL: could not write temp file" >&2
+    exit 2
+  }
+  mv "$tmp" "$target" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[write-checkpoint] FAIL: could not atomically rename temp file to '$target'" >&2
+    exit 2
+  }
+
+  local size
+  size="$(wc -c < "$target" | tr -d ' ')"
+  echo "[write-checkpoint] current-checkpoint.md updated (project: $project, $size bytes)"
+}
+
+# ── Subcommand: new-task (Tier 1 — template-driven task creation) ───────
+# Creates a new task file at tasks/open/<slug>.md from a template-shaped
+# frontmatter + H1 + body. Body comes from stdin (optional — defaults to
+# the standard `## What / Why` skeleton).
+#
+# Required args: --slug <date-slug> --title <prose>
+# Optional args: --status <s> --effort <e> --impact <i> --priority <p>
+#                --tags <comma-list>
+# Refuses to overwrite an existing file (exit 2).
+do_new_task() {
+  local slug="" title="" status="open" effort="" impact="" priority="" tags=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --slug)     slug="$2"; shift 2 ;;
+      --title)    title="$2"; shift 2 ;;
+      --status)   status="$2"; shift 2 ;;
+      --effort)   effort="$2"; shift 2 ;;
+      --impact)   impact="$2"; shift 2 ;;
+      --priority) priority="$2"; shift 2 ;;
+      --tags)     tags="$2"; shift 2 ;;
+      *) echo "[new-task] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ -z "$slug" ]; then
+    echo "[new-task] FAIL: --slug required" >&2; exit 2
+  fi
+  if [ -z "$title" ]; then
+    echo "[new-task] FAIL: --title required" >&2; exit 2
+  fi
+
+  local resolved project vault_dir target
+  resolved="$(resolve_active_project_or_die "new-task")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  local open_dir="$vault_dir/tasks/open"
+  target="$open_dir/$slug.md"
+
+  if ! vault_path_inside "$target" "$VAULT_PATH"; then
+    echo "[new-task] FAIL: target '$target' is not inside VAULT_PATH '$VAULT_PATH'" >&2
+    exit 2
+  fi
+  # Also require it lands under the project's tasks/open/
+  if ! vault_path_inside "$target" "$open_dir"; then
+    echo "[new-task] FAIL: target '$target' is not inside '$open_dir'" >&2
+    exit 2
+  fi
+
+  if [ -e "$target" ]; then
+    echo "[new-task] FAIL: file already exists at '$target' (refusing to overwrite)" >&2
+    exit 2
+  fi
+
+  mkdir -p "$open_dir" || {
+    echo "[new-task] FAIL: could not create '$open_dir'" >&2; exit 2
+  }
+
+  # Body from stdin if piped; else default template skeleton
+  local body=""
+  if [ ! -t 0 ]; then
+    body="$(cat)"
+  fi
+  if [ -z "$body" ]; then
+    body=$'## What / Why\n\n## Design\n\n## Plan\n\n## Progress\n\n## Resolution\n\n## Related\n'
+  fi
+
+  # Render tags as YAML list. Caller passes "tag1,tag2" → [tag1, tag2].
+  local tags_yaml="[]"
+  if [ -n "$tags" ]; then
+    tags_yaml="["
+    local first=1 t
+    local IFS=','
+    for t in $tags; do
+      t="$(echo "$t" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      [ -z "$t" ] && continue
+      if [ "$first" -eq 1 ]; then
+        tags_yaml="$tags_yaml$t"; first=0
+      else
+        tags_yaml="$tags_yaml, $t"
+      fi
+    done
+    tags_yaml="$tags_yaml]"
+  fi
+
+  local today
+  today="$(date +%Y-%m-%d)"
+
+  local tmp="$target.tmp.$$"
+  {
+    printf -- '---\n'
+    printf 'created: %s\n' "$today"
+    printf 'updated: %s\n' "$today"
+    printf 'project: %s\n' "$project"
+    printf 'type: task\n'
+    printf 'status: %s\n' "$status"
+    printf 'tags: %s\n' "$tags_yaml"
+    [ -n "$effort" ]   && printf 'effort: %s\n' "$effort"
+    [ -n "$impact" ]   && printf 'impact: %s\n' "$impact"
+    [ -n "$priority" ] && printf 'priority: %s\n' "$priority"
+    printf -- '---\n\n'
+    printf '# %s\n\n' "$title"
+    printf '%s' "$body"
+    case "$body" in
+      *$'\n') ;;
+      *) printf '\n' ;;
+    esac
+  } > "$tmp" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[new-task] FAIL: could not write temp file" >&2
+    exit 2
+  }
+  mv "$tmp" "$target" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[new-task] FAIL: atomic rename to '$target' failed" >&2
+    exit 2
+  }
+
+  local rel="${target#$VAULT_PATH/}"
+  echo "[new-task] $rel created"
+}
+
+# ── Subcommand: set-task-status (Tier 1 — frontmatter edit) ─────────────
+# Updates `status:` (and refreshes `updated:`) on an existing task. If
+# --add-progress is given, appends a timestamped line to the ## Progress
+# section (warns if the section is missing).
+#
+# Searches tasks/open/<slug>.md AND tasks/resolved/<slug>.md.
+# Required args: --slug <date-slug> --status <new-status>
+# Optional: --add-progress <prose>
+do_set_task_status() {
+  local slug="" new_status="" progress=""
+  local progress_set=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --slug)         slug="$2"; shift 2 ;;
+      --status)       new_status="$2"; shift 2 ;;
+      --add-progress) progress="$2"; progress_set=1; shift 2 ;;
+      *) echo "[set-task-status] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ -z "$slug" ]; then
+    echo "[set-task-status] FAIL: --slug required" >&2; exit 2
+  fi
+  if [ -z "$new_status" ]; then
+    echo "[set-task-status] FAIL: --status required" >&2; exit 2
+  fi
+
+  local resolved project vault_dir
+  resolved="$(resolve_active_project_or_die "set-task-status")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+
+  local target=""
+  if [ -f "$vault_dir/tasks/open/$slug.md" ]; then
+    target="$vault_dir/tasks/open/$slug.md"
+  elif [ -f "$vault_dir/tasks/resolved/$slug.md" ]; then
+    target="$vault_dir/tasks/resolved/$slug.md"
+  fi
+  if [ -z "$target" ]; then
+    echo "[set-task-status] FAIL: no task file found for slug '$slug' under '$vault_dir/tasks/{open,resolved}/'" >&2
+    exit 2
+  fi
+  if ! vault_path_inside "$target" "$VAULT_PATH"; then
+    echo "[set-task-status] FAIL: target '$target' is not inside VAULT_PATH '$VAULT_PATH'" >&2
+    exit 2
+  fi
+
+  local today now_time
+  today="$(date +%Y-%m-%d)"
+  now_time="$(date +%H:%M)"
+
+  local tmp="$target.tmp.$$"
+  awk -v new_status="$new_status" -v today="$today" '
+    BEGIN { in_fm=0; fm_count=0; saw_updated=0 }
+    /^---[[:space:]]*$/ {
+      fm_count++
+      if (fm_count == 1) { in_fm=1; print; next }
+      if (fm_count == 2 && in_fm) {
+        if (!saw_updated) print "updated: " today
+        in_fm=0
+        print
+        next
+      }
+      print; next
+    }
+    in_fm && /^status:[[:space:]]/ { print "status: " new_status; next }
+    in_fm && /^updated:[[:space:]]/ { print "updated: " today; saw_updated=1; next }
+    { print }
+  ' "$target" > "$tmp" && mv "$tmp" "$target" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[set-task-status] FAIL: could not rewrite frontmatter" >&2
+    exit 2
+  }
+
+  local progress_note=""
+  if [ "$progress_set" -eq 1 ]; then
+    if [ -z "$progress" ]; then
+      echo "[set-task-status] FAIL: --add-progress requires a non-empty value" >&2
+      exit 2
+    fi
+    # Insert under the existing `## Progress` section if present.
+    if grep -q '^## Progress' "$target"; then
+      local tmp2="$target.tmp2.$$"
+      awk -v line="- $today $now_time — $progress" '
+        BEGIN { inserted=0; in_section=0 }
+        /^## Progress[[:space:]]*$/ {
+          print
+          in_section=1
+          next
+        }
+        in_section && /^## / {
+          if (!inserted) { print line; print ""; inserted=1 }
+          in_section=0
+          print
+          next
+        }
+        { print }
+        END {
+          if (in_section && !inserted) {
+            print ""
+            print line
+          }
+        }
+      ' "$target" > "$tmp2" && mv "$tmp2" "$target" || {
+        rm -f "$tmp2" 2>/dev/null
+        echo "[set-task-status] FAIL: could not append progress entry" >&2
+        exit 2
+      }
+      progress_note=" (progress appended)"
+    else
+      echo "[set-task-status] WARN: '## Progress' section not found in '$target'; status updated but progress entry skipped" >&2
+    fi
+  fi
+
+  local base
+  base="$(basename "$target")"
+  echo "[set-task-status] $base → status: $new_status$progress_note"
+}
+
+# ── Subcommand: bump-backlog-header (Tier 1 — single-line header refresh) ──
+# Updates the `**Updated:**` line in BACKLOG.md. Recomputes Active count
+# from wikilink-task rows OUTSIDE any <details>...</details> block
+# (mirrors the pattern do_backlog_audit uses at lines 1294-1302). Dormant
+# count is preserved (too complex to auto-compute; user overrides
+# manually). Latest prose is taken verbatim from --latest.
+#
+# Required: --latest <prose>
+do_bump_backlog_header() {
+  local latest=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --latest) latest="$2"; shift 2 ;;
+      *) echo "[bump-backlog-header] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ -z "$latest" ]; then
+    echo "[bump-backlog-header] FAIL: --latest required" >&2; exit 2
+  fi
+
+  local resolved project vault_dir backlog
+  resolved="$(resolve_active_project_or_die "bump-backlog-header")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  backlog="$vault_dir/BACKLOG.md"
+
+  if [ ! -f "$backlog" ]; then
+    echo "[bump-backlog-header] FAIL: BACKLOG.md not found at '$backlog'" >&2
+    exit 2
+  fi
+  if ! vault_path_inside "$backlog" "$VAULT_PATH"; then
+    echo "[bump-backlog-header] FAIL: target '$backlog' is not inside VAULT_PATH '$VAULT_PATH'" >&2
+    exit 2
+  fi
+
+  # Active count: unique wikilink-task slugs OUTSIDE any <details> block.
+  local active_count
+  active_count="$(
+    awk '
+      /<details/    { in_details=1; next }
+      /<\/details>/ { in_details=0; next }
+      !in_details   { print }
+    ' "$backlog" 2>/dev/null |
+      { grep -oE '\[\[[0-9]{4}-[0-9]{2}-[0-9]{2}-[^]]+\]\]' 2>/dev/null || true; } |
+      sort -u | wc -l | tr -d ' '
+  )"
+
+  # Preserve the existing Dormant count from the current header.
+  local dormant_count
+  dormant_count="$(grep -m1 '\*\*Updated:\*\*' "$backlog" 2>/dev/null \
+    | sed -nE 's/.*\*\*Dormant:\*\*[[:space:]]*([0-9]+).*/\1/p')"
+  if [ -z "$dormant_count" ]; then
+    dormant_count=0
+  fi
+
+  local now_ts
+  now_ts="$(date '+%Y-%m-%d %H:%M CEST')"
+
+  local new_header
+  new_header="**Updated:** ${now_ts} • **Active:** ${active_count} rows • **Dormant:** ${dormant_count} • **Latest:** ${latest}"
+
+  # Replace the FIRST line starting with `**Updated:**`. Use python to keep
+  # arbitrary characters in $latest safe (sed/awk substitution would need
+  # heavy escaping for special chars in the latest prose).
+  local tmp="$backlog.tmp.$$"
+  # `set -e` would abort the whole script on python exit 3; wrap in `if` so
+  # we can surface a Tier 1 FAIL message instead.
+  local rc=0
+  if HEADER_OUT="$new_header" python3 - "$backlog" > "$tmp" <<'PY'
+import os, sys
+path = sys.argv[1]
+new_header = os.environ["HEADER_OUT"]
+replaced = False
+with open(path, 'r', encoding='utf-8') as fh:
+    for line in fh:
+        if not replaced and line.startswith("**Updated:**"):
+            sys.stdout.write(new_header + "\n")
+            replaced = True
+        else:
+            sys.stdout.write(line)
+if not replaced:
+    sys.exit(3)
+PY
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$tmp" 2>/dev/null
+    echo "[bump-backlog-header] FAIL: no '**Updated:**' header line found in '$backlog'" >&2
+    exit 2
+  fi
+  mv "$tmp" "$backlog" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[bump-backlog-header] FAIL: atomic rename failed for '$backlog'" >&2
+    exit 2
+  }
+
+  # Truncate latest for the log line so the output stays one-line in the conversation.
+  local latest_trunc="$latest"
+  if [ "${#latest_trunc}" -gt 80 ]; then
+    latest_trunc="${latest_trunc:0:77}..."
+  fi
+  echo "[bump-backlog-header] BACKLOG.md header updated (active: ${active_count}, latest: ${latest_trunc})"
+}
+
+# ── Subcommand: add-recently-shipped (Tier 1 — prepend inside <details>) ──
+# Prepends a `> **Shipped <date> — <title>:**` block (followed by the body
+# lines) immediately after the `<summary>` line of BACKLOG's
+# `<details>` Recently-shipped block.
+#
+# Required: --date "<YYYY-MM-DD HH:MM>" --title <prose>
+# Body from stdin (use `--body -` for explicit intent; either way stdin
+# is read when piped).
+do_add_recently_shipped() {
+  local date_str="" title="" body_flag=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --date)  date_str="$2"; shift 2 ;;
+      --title) title="$2"; shift 2 ;;
+      --body)  body_flag="$2"; shift 2 ;;
+      *) echo "[add-recently-shipped] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ -z "$date_str" ]; then
+    echo "[add-recently-shipped] FAIL: --date required" >&2; exit 2
+  fi
+  if [ -z "$title" ]; then
+    echo "[add-recently-shipped] FAIL: --title required" >&2; exit 2
+  fi
+
+  local body=""
+  if [ ! -t 0 ]; then
+    body="$(cat)"
+  fi
+  if [ -z "$body" ]; then
+    echo "[add-recently-shipped] FAIL: body must be piped on stdin (use --body - <<EOF ... EOF)" >&2
+    exit 2
+  fi
+
+  local resolved project vault_dir backlog
+  resolved="$(resolve_active_project_or_die "add-recently-shipped")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  backlog="$vault_dir/BACKLOG.md"
+
+  if [ ! -f "$backlog" ]; then
+    echo "[add-recently-shipped] FAIL: BACKLOG.md not found at '$backlog'" >&2
+    exit 2
+  fi
+  if ! vault_path_inside "$backlog" "$VAULT_PATH"; then
+    echo "[add-recently-shipped] FAIL: '$backlog' is not inside VAULT_PATH" >&2
+    exit 2
+  fi
+  if ! grep -q '<summary' "$backlog"; then
+    echo "[add-recently-shipped] FAIL: no '<summary>' opener found in '$backlog' (no Recently-shipped block)" >&2
+    exit 2
+  fi
+
+  local tmp="$backlog.tmp.$$"
+  # `set -e` would abort on python exit 3; wrap in `if` to capture rc.
+  local rc=0
+  if ENTRY_DATE="$date_str" ENTRY_TITLE="$title" ENTRY_BODY="$body" \
+       python3 - "$backlog" > "$tmp" <<'PY'
+import os, sys
+path = sys.argv[1]
+date_str = os.environ["ENTRY_DATE"]
+title = os.environ["ENTRY_TITLE"]
+body = os.environ["ENTRY_BODY"]
+# Normalise body: ensure exactly one trailing newline so the blank-line
+# separator below renders cleanly.
+body = body.rstrip("\n") + "\n"
+entry_header = f"> **Shipped {date_str} — {title}:**\n"
+inserted = False
+with open(path, 'r', encoding='utf-8') as fh:
+    for line in fh:
+        sys.stdout.write(line)
+        if not inserted and "<summary" in line:
+            sys.stdout.write("\n")
+            sys.stdout.write(entry_header)
+            sys.stdout.write(body)
+            inserted = True
+if not inserted:
+    sys.exit(3)
+PY
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$tmp" 2>/dev/null
+    echo "[add-recently-shipped] FAIL: insertion failed (no <summary> seen during scan?)" >&2
+    exit 2
+  fi
+  mv "$tmp" "$backlog" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[add-recently-shipped] FAIL: atomic rename failed for '$backlog'" >&2
+    exit 2
+  }
+
+  local size
+  size="$(wc -c < "$backlog" | tr -d ' ')"
+  echo "[add-recently-shipped] entry prepended to BACKLOG.md Recently shipped block ($size bytes)"
+}
+
+# ── Subcommand: update-backlog-row (Tier 1 — table row Status/Notes edit) ──
+# Locates a BACKLOG row whose Task column contains [[<wikilink-slug>]] and
+# replaces its Status and/or Notes column. Preserves Effort and Impact and
+# cluster placement. Matches only rows OUTSIDE any <details> block
+# (historical entries in Recently-shipped don't count as active rows).
+#
+# Required: --task <wikilink-slug>; at least one of --status / --notes.
+do_update_backlog_row() {
+  local slug="" new_status="" new_notes=""
+  local status_set=0 notes_set=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --task)   slug="$2"; shift 2 ;;
+      --status) new_status="$2"; status_set=1; shift 2 ;;
+      --notes)  new_notes="$2"; notes_set=1; shift 2 ;;
+      *) echo "[update-backlog-row] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ -z "$slug" ]; then
+    echo "[update-backlog-row] FAIL: --task required" >&2; exit 2
+  fi
+  if [ "$status_set" -eq 0 ] && [ "$notes_set" -eq 0 ]; then
+    echo "[update-backlog-row] FAIL: at least one of --status or --notes required" >&2; exit 2
+  fi
+
+  local resolved project vault_dir backlog
+  resolved="$(resolve_active_project_or_die "update-backlog-row")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  backlog="$vault_dir/BACKLOG.md"
+
+  if [ ! -f "$backlog" ]; then
+    echo "[update-backlog-row] FAIL: BACKLOG.md not found at '$backlog'" >&2
+    exit 2
+  fi
+  if ! vault_path_inside "$backlog" "$VAULT_PATH"; then
+    echo "[update-backlog-row] FAIL: '$backlog' is not inside VAULT_PATH" >&2
+    exit 2
+  fi
+
+  local tmp="$backlog.tmp.$$"
+  # `set -e` would abort the whole script if python exits non-zero; capture
+  # the exit code via an `if` block (which is allowed under errexit) so we
+  # can surface a Tier 1-shaped FAIL message instead of the script aborting.
+  local rc=0
+  if SLUG="$slug" NEW_STATUS="$new_status" NEW_NOTES="$new_notes" \
+       STATUS_SET="$status_set" NOTES_SET="$notes_set" \
+       python3 - "$backlog" > "$tmp" <<'PY'
+import os, sys
+path = sys.argv[1]
+slug = os.environ["SLUG"]
+new_status = os.environ["NEW_STATUS"]
+new_notes = os.environ["NEW_NOTES"]
+status_set = os.environ["STATUS_SET"] == "1"
+notes_set = os.environ["NOTES_SET"] == "1"
+
+needle = f"[[{slug}]]"
+in_details = False
+replaced = False
+with open(path, 'r', encoding='utf-8') as fh:
+    for line in fh:
+        # Track <details> region (case-insensitive open/close detection
+        # matches do_backlog_audit's pattern). Rows inside details/Recently
+        # shipped block are NOT updated.
+        lowered = line.lower()
+        if "<details" in lowered:
+            in_details = True
+        elif "</details>" in lowered:
+            in_details = False
+            sys.stdout.write(line)
+            continue
+        if (not in_details) and (not replaced) and needle in line and line.lstrip().startswith("|"):
+            # Split row into cells. A markdown table row looks like:
+            #   | a | b | c | d | e |
+            # The split yields leading + trailing empty strings; strip them.
+            raw = line.rstrip("\n")
+            parts = raw.split("|")
+            # Strip first/last (the outer pipes wrap empties)
+            if parts and parts[0].strip() == "":
+                parts = parts[1:]
+            if parts and parts[-1].strip() == "":
+                parts = parts[:-1]
+            # Expect 5 columns: Task | Effort | Impact | Status | Notes
+            if len(parts) >= 5:
+                if status_set:
+                    parts[3] = f" {new_status} "
+                if notes_set:
+                    parts[4] = f" {new_notes} "
+                rebuilt = "|" + "|".join(parts) + "|\n"
+                sys.stdout.write(rebuilt)
+                replaced = True
+                continue
+        sys.stdout.write(line)
+if not replaced:
+    sys.exit(3)
+PY
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$tmp" 2>/dev/null
+    echo "[update-backlog-row] FAIL: no active row found containing [[$slug]] in '$backlog' (rows inside <details> are not updated)" >&2
+    exit 2
+  fi
+  mv "$tmp" "$backlog" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[update-backlog-row] FAIL: atomic rename failed for '$backlog'" >&2
+    exit 2
+  }
+
+  local what=""
+  if [ "$status_set" -eq 1 ]; then
+    what="status='$new_status'"
+  fi
+  if [ "$notes_set" -eq 1 ]; then
+    [ -n "$what" ] && what="$what, "
+    what="${what}notes updated"
+  fi
+  echo "[update-backlog-row] $slug: $what"
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -4114,8 +4830,14 @@ case "$SUBCMD" in
   substrate-check)     do_substrate_check ;;
   review-sync)         do_review_sync "${@:2}" ;;
   draft-list)          do_draft_list ;;
+  write-checkpoint)        do_write_checkpoint "${@:2}" ;;
+  new-task)                do_new_task "${@:2}" ;;
+  set-task-status)         do_set_task_status "${@:2}" ;;
+  bump-backlog-header)     do_bump_backlog_header "${@:2}" ;;
+  add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
+  update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|draft-list}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|draft-list|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
     exit 1
     ;;
 esac
