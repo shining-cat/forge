@@ -745,9 +745,32 @@ do_gate() {
   age="$(get_checkpoint_age_minutes)"
 
   if [ "$age" -gt 15 ]; then
-    cat <<EOF
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[Keeper] Checkpoint is ${age}min stale (project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."}}
-EOF
+    local reason="[Keeper] Checkpoint is ${age}min stale (project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."
+
+    # Compound-rejection postscript: PreToolUse deny rejects the ENTIRE Bash
+    # command as one unit — neither half of `git add … && git commit …` runs.
+    # Builders dispatched in subagent contexts have misread this: assuming the
+    # `git add` survived and retrying only the `git commit`, which then fails
+    # with "no changes added to commit" (the pre-commit lint hook runs
+    # unconditionally and returns trivial PASS on an empty index, masking the
+    # real cause — see 2026-06-08-commit-failure-unstages-files). Loud
+    # failure beats silent assumption: when the denied compound carries `git
+    # add`, spell out the re-run contract. ERE matches both the bare `git add`
+    # form and the per-repo `git -C <path> add` form Builders use under
+    # MEMORY.md's "ALWAYS use git -C" convention.
+    if printf '%s' "$command" | grep -Eq 'git( +-C +[^ ]+)? +add'; then
+      reason="${reason} Note: the entire compound (including any chained \`git add\`) was rejected. After refreshing the checkpoint, re-run the WHOLE command, not just the trailing \`git commit\`."
+    fi
+
+    # Emit via jq so the reason string is JSON-escaped safely (backticks,
+    # quotes, newlines all survive the trip into permissionDecisionReason).
+    jq -nc --arg reason "$reason" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }'
     exit 0
   fi
 
