@@ -355,7 +355,7 @@ def main():
             except (ValueError, KeyError, TypeError):
                 pass  # Malformed entry — fall through to existing dedup
         if not rate_limited and (not prior or auto_break > prior):
-            _credit_auto_break(prefs, auto_break, last_break, coach_name, tier)
+            _credit_auto_break(prefs, auto_break, last_break, coach_name, tier, IS_STOP)
             # Re-read prefs after crediting — strike may have been cleared
             prefs = read_prefs() or prefs
 
@@ -602,7 +602,8 @@ def _detect_auto_break(prefs):
     return None
 
 
-def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real"):
+def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real",
+                       is_stop=False):
     """Credit an auto-detected break and optionally show welcome-back.
 
     Tier semantics:
@@ -610,6 +611,15 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real"):
       "micro" — reset only last_micro_break_timestamp, keep last_break_timestamp
                 and strike intact, log "auto-micro". A short lock isn't a
                 substitute for a real break.
+
+    `is_stop` selects the welcome-back emit shape: Stop hooks can't carry
+    `permissionDecision` (the turn already ended), so under Stop we route to
+    `emit_stop_message()` instead of `emit_allow()`. Mirrors the if/else at
+    lines 481-482 and 497. Without this branch, a Stop hook firing
+    welcome-back emitted PreToolUse-shaped JSON and surfaced as
+    `"Hook returned incorrect event name: expected 'Stop' but got 'PreToolUse'"`
+    (user-reported 2026-06-08; collateral of PR #82 which fixed only the
+    strike-escalation Stop path).
     """
     old_strike = prefs.get("strike_active", False)
     old_snooze = prefs.get("snooze_count", 0)
@@ -676,7 +686,10 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real"):
                 log_event(prefs, "welcome-back",
                     f"Welcome-back shown ({tier}) — user returned from "
                     f"auto-detected break.")
-                emit_allow(center_block(box))
+                if is_stop:
+                    emit_stop_message(center_block(box))
+                else:
+                    emit_allow(center_block(box))
     except (ValueError, TypeError, OverflowError):
         pass
 
