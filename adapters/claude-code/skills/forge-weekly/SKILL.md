@@ -162,9 +162,18 @@ Output verbatim:
 
 > **[Quartermaster]** Weekly inventory closed. Petra has the forge back.
 
-If the user is also wrapping the day (Friday late afternoon, prose signals like *"done for the week"* / *"logging off"*), suggest `/forge-exit` as the next step. Do not auto-run it — the ceremony ends with the hand-off line; daily exit is a separate ceremony.
-
 From here forward in the conversation, the `[Quartermaster]` prefix MUST NOT appear again. Petra's voice resumes immediately.
+
+### 8. Close out the day? (opt-in)
+
+After the hand-off line, ask the user — in Petra's voice, terse, single line:
+
+> Week's wrapped. Close out the day too? [y/N]
+
+- If the user answers **y** / **yes** / **yeah** (or any clear affirmative): invoke `Skill({skill: "forge-exit"})` to chain into the daily exit flow. Don't duplicate the exit logic here — forge-exit owns its own steps (wellness reset, final checkpoint, marker clear, hand-off).
+- If the user answers **N** / **no** / **nah** / **skip** (or stays silent / gives no answer): stop here. The forge-active marker stays in place. Same as today.
+
+Default to **N** on no answer. The ceremony alone is a valid invocation reason (e.g. mid-day Friday triage where the user wants to keep working); don't auto-close the day.
 
 ## Notes
 
