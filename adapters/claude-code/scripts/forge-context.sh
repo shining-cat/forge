@@ -399,7 +399,12 @@ get_project_dir() {
     echo "[forge-context] no project repo found for '$project' under: $repo_roots" >&2
     touch "$warn_marker" 2>/dev/null || true
   fi
-  return 1
+  # Contract: warn-don't-exit. Miss returns 0 with empty stdout so callers
+  # under `set -e` (notably the PreToolUse/PostToolUse hooks) don't surface
+  # a "Failed with non-blocking status code" on every tool call for
+  # greenfield projects that have no repo yet. All real callers already
+  # guard with `[ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]`.
+  return 0
 }
 
 # ── Sourceable boundary ─────────────────────────────────────────────────
