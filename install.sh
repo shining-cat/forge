@@ -496,6 +496,7 @@ build_pairs() {
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-compaction.sh"          "$CLAUDE_DIR/hooks/forge-compaction.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/approval-notifier.sh"         "$CLAUDE_DIR/hooks/approval-notifier.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-vault-plan-guard.sh"    "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-vault-write-guard.sh"   "$CLAUDE_DIR/hooks/forge-vault-write-guard.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-session-end.sh"         "$CLAUDE_DIR/hooks/forge-session-end.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/inject-current-time.sh"       "$CLAUDE_DIR/hooks/inject-current-time.sh"
 
@@ -662,6 +663,7 @@ expected_perms() {
     "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
     "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
     "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
+    "Bash($HOME/.claude/hooks/forge-vault-write-guard.sh:*)"
     "Bash($HOME/.claude/hooks/forge-session-end.sh:*)"
     "Bash($HOME/.claude/hooks/inject-current-time.sh:*)"
     "Read($HOME/.claude/forge.conf)"
@@ -713,6 +715,7 @@ expected_hooks() {
     "PreToolUse"        "null"        "$HOME/.claude/hooks/approval-notifier.sh" \
     "PreToolUse"        "Bash"        "$HOME/.claude/scripts/forge-context.sh gate" \
     "PreToolUse"        "Write|Edit"  "$HOME/.claude/hooks/forge-vault-plan-guard.sh" \
+    "PreToolUse"        "Write|Edit"  "$HOME/.claude/hooks/forge-vault-write-guard.sh" \
     "PreCompact"        "null"        "$HOME/.claude/hooks/forge-compaction.sh pre" \
     "PostCompact"       "null"        "$HOME/.claude/hooks/forge-compaction.sh post" \
     "PostToolUse"       "null"        "$HOME/.claude/scripts/forge-context.sh post-tool" \
@@ -1424,6 +1427,7 @@ run mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
 safe_cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/forge-vault-write-guard.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
@@ -1437,6 +1441,7 @@ safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh" preserve
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
+             "$CLAUDE_DIR/hooks/forge-vault-write-guard.sh" \
              "$CLAUDE_DIR/hooks/forge-session-end.sh" \
              "$CLAUDE_DIR/hooks/inject-current-time.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
@@ -1528,6 +1533,7 @@ PERMS_TO_ADD=(
   "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
   "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
   "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
+  "Bash($HOME/.claude/hooks/forge-vault-write-guard.sh:*)"
   "Bash($HOME/.claude/hooks/forge-session-end.sh:*)"
   "Bash($HOME/.claude/hooks/inject-current-time.sh:*)"
   # Forge config
@@ -1621,6 +1627,7 @@ add_hook() {
 SETTINGS=$(add_hook "PreToolUse" "null" "$HOME/.claude/hooks/approval-notifier.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreToolUse" "Bash" "$HOME/.claude/scripts/forge-context.sh gate" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreToolUse" "Write|Edit" "$HOME/.claude/hooks/forge-vault-plan-guard.sh" 5 "$SETTINGS")
+SETTINGS=$(add_hook "PreToolUse" "Write|Edit" "$HOME/.claude/hooks/forge-vault-write-guard.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreCompact" "null" "$HOME/.claude/hooks/forge-compaction.sh pre" 10 "$SETTINGS")
 SETTINGS=$(add_hook "PostCompact" "null" "$HOME/.claude/hooks/forge-compaction.sh post" 10 "$SETTINGS")
 SETTINGS=$(add_hook "PostToolUse" "null" "$HOME/.claude/scripts/forge-context.sh post-tool" 5 "$SETTINGS")
