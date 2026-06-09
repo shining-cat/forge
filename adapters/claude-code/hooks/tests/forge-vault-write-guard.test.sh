@@ -6,15 +6,14 @@
 # forge.conf + forge-active marker. Test the deny/allow decisions.
 #
 # Cases:
-#   1. main session + vault path (Edit)            → DENY
-#   2. main session + vault path (Write)           → DENY
-#   3. subagent (different session_id) + vault    → ALLOW
-#   4. main session + non-vault path              → ALLOW
-#   5. Forge inactive (no marker)                  → ALLOW
-#   6. Marker is __pending__                       → ALLOW
-#   7. Marker is legacy plain-string               → ALLOW
-#   8. Tool other than Write/Edit (Bash)           → ALLOW
-#   9. Empty session_id on input                  → ALLOW (fail-safe)
+#   1. main session + vault path (Edit)              → DENY
+#   2. main session + vault path (Write)             → DENY
+#   3. subagent (agent_id populated) + vault         → ALLOW
+#   4. main session + non-vault path                 → ALLOW
+#   5. Forge inactive (no marker)                    → ALLOW
+#   6. Marker is __pending__                         → ALLOW
+#   7. Marker is legacy plain-string                 → ALLOW
+#   8. Tool other than Write/Edit (Bash)             → ALLOW
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,15 +93,17 @@ OUT="$(invoke "$INPUT")"
 assert_contains "case 2: main+vault+Write emits deny" '"permissionDecision": "deny"' "$OUT"
 teardown_env
 
-# --- Case 3: subagent (different session_id) + vault → ALLOW ---
+# --- Case 3: subagent (agent_id populated) + vault → ALLOW ---
+# Claude Code populates `agent_id` on hook input only for subagent contexts.
 setup_env '{"session_id":"main-3","project":"forge"}'
 INPUT="$(jq -n --arg path "$TMP_VAULT/tasks/y.md" '{
-  session_id: "subagent-xyz",
+  session_id: "main-3",
+  agent_id: "subagent-abc-123",
   tool_name: "Edit",
   tool_input: {file_path: $path}
 }')"
 OUT="$(invoke "$INPUT")"
-assert_eq "case 3: subagent invocation produces no output (allow)" "" "$OUT"
+assert_eq "case 3: subagent invocation (agent_id present) produces no output (allow)" "" "$OUT"
 teardown_env
 
 # --- Case 4: main session + non-vault path → ALLOW ---
@@ -158,16 +159,6 @@ INPUT="$(jq -n --arg path "$TMP_VAULT/tasks/b.md" '{
 }')"
 OUT="$(invoke "$INPUT")"
 assert_eq "case 8: non-Write/Edit tool → allow" "" "$OUT"
-teardown_env
-
-# --- Case 9: empty session_id on input → ALLOW (fail-safe) ---
-setup_env '{"session_id":"main-9","project":"forge"}'
-INPUT="$(jq -n --arg path "$TMP_VAULT/tasks/e.md" '{
-  tool_name: "Edit",
-  tool_input: {file_path: $path}
-}')"
-OUT="$(invoke "$INPUT")"
-assert_eq "case 9: missing session_id on input → allow (fail-safe)" "" "$OUT"
 teardown_env
 
 echo ""

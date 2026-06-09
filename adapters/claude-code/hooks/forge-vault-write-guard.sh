@@ -7,16 +7,21 @@
 # (forge-keeper), preventing the noisy diff render + permission prompt that
 # inline Edit/Write produces.
 #
-# Subagent detection: the hook input's `session_id` is compared against the
-# forge-active marker's `session_id` (which is set to the main session's id at
-# Forge activation per forge/SKILL.md step 1c). Match → main session, enforce.
-# Mismatch → subagent, allow.
+# Subagent detection: Claude Code populates the hook input's `agent_id` field
+# when the tool call originates from an Agent-tool subagent. Empty/missing
+# means the main session. Same detection mechanism used by the braindump
+# guard in forge-context.sh (search `agent_id` there for prior art).
+#
+# (An earlier v1 of this hook tried to compare `session_id` against the
+# forge-active marker, but `session_id` is shared between parent and
+# subagents in Claude Code's hook input — see resolved bug task
+# [[2026-06-09-vault-write-guard-subagent-detection-bug]].)
 #
 # Composes alongside forge-vault-plan-guard.sh — independent paths, first to
 # deny wins.
 #
 # Fail-safe: any missing precondition (Forge inactive, no marker, marker
-# pending or legacy plain-string, no session_id on input, etc.) → allow.
+# pending or legacy plain-string) → allow.
 
 set -euo pipefail
 
@@ -52,14 +57,11 @@ MARKER_CONTENT="$(cat "$MARKER" 2>/dev/null)"
 [ "$MARKER_CONTENT" = "__pending__" ] && exit 0
 echo "$MARKER_CONTENT" | jq -e . >/dev/null 2>&1 || exit 0
 
-MAIN_SESSION_ID="$(echo "$MARKER_CONTENT" | jq -r '.session_id // empty')"
-[ -z "$MAIN_SESSION_ID" ] && exit 0
-
-HOOK_SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
-[ -z "$HOOK_SESSION_ID" ] && exit 0
-
-# Subagent dispatch (different session_id) → allow.
-[ "$HOOK_SESSION_ID" != "$MAIN_SESSION_ID" ] && exit 0
+# Subagent dispatch (Agent-tool invocation) → allow. Claude Code populates
+# `agent_id` on hook input only for subagent contexts; main session has it
+# empty/missing.
+AGENT_ID="$(echo "$INPUT" | jq -r '.agent_id // empty')"
+[ -n "$AGENT_ID" ] && exit 0
 
 # Main session attempting a raw Write/Edit on a vault file → deny.
 REASON="[forge] Vault write from main session — dispatch a forge-keeper subagent instead.
