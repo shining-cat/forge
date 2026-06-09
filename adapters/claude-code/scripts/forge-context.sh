@@ -2389,10 +2389,15 @@ do_vault_sync() {
   fi
 
   # Extract paths from `git status --short` output, handling renames (" R old -> new").
+  # git wraps paths containing whitespace or special chars in double quotes (e.g. `D "_shared/has space.md"`);
+  # strip leading/trailing quotes so the group-name parser below sees plain path segments
+  # (otherwise the leading `"` bleeds into the group label and into the suggested commit message).
   local dirty_paths
   dirty_paths=$(echo "$dirty_short" | awk '{
     $1=""; sub(/^[[:space:]]+/, "")
     if (/ -> /) sub(/.*-> /, "")
+    sub(/^"/, "")
+    sub(/"$/, "")
     print
   }')
 
