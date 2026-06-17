@@ -54,9 +54,11 @@ Only two cases:
 
 After context compression, the inline Read of `current-checkpoint.md` to reorient is unchanged — reading is always inline; the protocol here is about *writes* that produce diff render.
 
-## What the spike proved (2026-06-08, PR #89)
+## What the spike proved (2026-06-08, PR #89) — partially contradicted 2026-06-11
 
-Foreground `forge-keeper` subagent dispatched to Write a 380-byte test file into `${VAULT_PATH}/_shared/_meta/spike-test-2026-06-08.md`. Result: no permission prompt (subagent inherits parent vault-write permissions), no diff render in parent conversation (Write contained inside the agent invocation block). Direction locked. Spike artifact archived under `_shared/_meta/_discarded/`. Full audit trail: `[[2026-06-08-quiet-forge-vault-writes]]`.
+Foreground `forge-keeper` subagent dispatched to Write a 380-byte test file into `${VAULT_PATH}/_shared/_meta/spike-test-2026-06-08.md`. Result at the time: no permission prompt (subagent claimed to inherit parent vault-write permissions), no diff render in parent conversation (Write contained inside the agent invocation block). Direction locked then. Spike artifact archived under `_shared/_meta/_discarded/`. Full audit trail: `[[2026-06-08-quiet-forge-vault-writes]]`.
+
+**Contradicting evidence (2026-06-11):** A forge-keeper subagent dispatched to Write `current-checkpoint.md` triggered a user-visible permission prompt AND rendered the red/green diff in the parent conversation. Both halves of the spike's claim failed. Possible causes (untested): (a) Claude Code version drift since 2026-06-08; (b) the spike was environment-specific or under-instrumented; (c) the subagent's specific `Write` invocation pattern differed in a load-bearing way (e.g. path under `Vault/PRO/**` vs `Vault/_shared/**`, settings allowlist scoping). Until re-validated, treat Tier 2 dispatch as "should-be-quiet but not guaranteed" — Tier 1 (script subcommand) is the only reliably-silent path for the six operational-state surfaces with dedicated subcommands. The protocol's Tier 1 ranking is unchanged by this contradiction; Tier 2 is the fallback, not the default. Re-spike is filed as a follow-up.
 
 ## Verification discipline (still applies for Tier 2 dispatch)
 
