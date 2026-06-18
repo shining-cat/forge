@@ -108,5 +108,27 @@ fi
 teardown
 
 echo ""
+echo "Check 3 — stale checkpoint + VAULT-targeted commit → NO deny (vault exclusion)"
+setup_stale_session
+# VAULT_PATH is $TMP in this harness; a commit targeting a path under it is
+# vault bookkeeping and must skip the stale-checkpoint deny.
+input=$(build_hook_input "git -C $TMP/PERSO/forge add . && git -C $TMP/PERSO/forge commit -m 'checkpoint bookkeeping'")
+out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
+if [ -z "$out" ]; then
+  echo "  ✓ vault-targeted commit not denied despite stale checkpoint"; PASS=$((PASS+1))
+else
+  echo "  ✗ vault commit was denied (got: $out)"; FAIL=$((FAIL+1))
+fi
+# Control: a code-repo commit (outside VAULT_PATH) under the same stale state still denies.
+input=$(build_hook_input "git -C /tmp/some-code-repo commit -m 'x'")
+out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
+if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" = "deny" ]; then
+  echo "  ✓ control: non-vault code-repo commit still denied (stale guard intact)"; PASS=$((PASS+1))
+else
+  echo "  ✗ control: non-vault commit should still deny (got: $out)"; FAIL=$((FAIL+1))
+fi
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

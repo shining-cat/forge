@@ -823,10 +823,25 @@ do_gate() {
       ;;
   esac
 
+  # Vault-targeted commits skip the stale-checkpoint deny. The checkpoint,
+  # tasks, and BACKLOG all live IN the vault, so a vault-bookkeeping commit is a
+  # distinct activity from capturing uncaptured code work — and on high-cadence
+  # ship days it fired the deny repeatedly (~5x on 2026-06-18) for commits whose
+  # work was already captured in PR descriptions + commit messages. Checkpoint
+  # discipline is still enforced by the Stop hook (turn-end, 30/60 min),
+  # independent of this commit gate. Code-repo commits stay gated. Mirrors
+  # branch_check_ask's vault exclusion; reuses extract_commit_repo_dir.
+  # See 2026-06-05-keeper-stale-checkpoint-guard-high-cadence.
+  local commit_repo_dir skip_stale=0
+  commit_repo_dir="$(extract_commit_repo_dir "$command")"
+  if [ -n "$commit_repo_dir" ] && [ -n "$VAULT_PATH" ]; then
+    case "$commit_repo_dir/" in "$VAULT_PATH"/*) skip_stale=1 ;; esac
+  fi
+
   local age
   age="$(get_checkpoint_age_minutes)"
 
-  if [ "$age" -gt 15 ]; then
+  if [ "$skip_stale" -eq 0 ] && [ "$age" -gt 15 ]; then
     local reason="[Keeper] Checkpoint is ${age}min stale (project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."
 
     # Compound-rejection postscript: PreToolUse deny rejects the ENTIRE Bash
