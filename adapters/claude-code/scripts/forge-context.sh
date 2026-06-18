@@ -659,6 +659,23 @@ print(summary)
       ;;
   esac
 
+  # ── Daily mid-session install-drift note ──────────────────────────────
+  # Placed BEFORE the brain-dump section (which has early `return 0` branches)
+  # so it isn't swallowed by nag throttling. Skips in subagents (no daily fetch
+  # from a dispatched agent). Own once-per-day throttle inside the helper. When
+  # it fires it emits + returns, taking precedence over a braindump/push nudge
+  # for that single tool call — acceptable at once/day. See helper above.
+  local pt_agent_id drift_note
+  pt_agent_id="$(echo "$STDIN_JSON" | jq -r '.agent_id // empty' 2>/dev/null)"
+  if [ -z "$pt_agent_id" ]; then
+    drift_note="$(maybe_daily_install_drift_note)"
+    if [ -n "$drift_note" ]; then
+      jq -nc --arg ctx "$drift_note" \
+        '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+      return 0
+    fi
+  fi
+
   # ── Brain dump prompt (interval-driven; tunable + no-novelty skip) ─────
   # Stacked throttle: subagent guard + just-dumped mtime + per-response cooldown
   # + no-novelty marker. Interval threshold is tunable via BRAINDUMP_INTERVAL_MIN
@@ -1784,6 +1801,48 @@ do_status() {
   fi
 
   echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
+}
+
+# ── Daily mid-session install-drift note ──────────────────────────────
+# do_check_install_drift (below) fires only at /forge ENTRY. Users who keep a
+# long-running session open and skip the eod/eow rituals never re-enter, so they
+# never learn their install is behind. This helper re-surfaces the same check on
+# a once-per-day throttle from do_post_tool (fires on tool use → reaches them
+# mid-session). Operates on FORGE_REPO (the install clone), so it works for every
+# user regardless of which project is active. Unlike the entry check it does an
+# ACTIVE fetch — the target population never fetches, so a cached count would
+# read stale forever (that's the load-bearing difference). Best-effort + bounded:
+# the throttle marker is stamped BEFORE the fetch, so a slow/offline fetch can't
+# retrigger on the next tool call. Returns the note text (empty = nothing to say).
+# See 2026-06-05-versioning-and-changelog (repurposed to this).
+maybe_daily_install_drift_note() {
+  local forge_repo marker now last_check behind fetch_cmd
+  forge_repo=$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
+  [ -z "$forge_repo" ] && return 0
+  [ -d "$forge_repo/.git" ] || return 0
+
+  # Once-per-day throttle, shared across sessions (no session id in the name).
+  marker="/tmp/forge-drift-daily-check"
+  now=$(date +%s)
+  if [ -f "$marker" ]; then
+    last_check=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)
+    [ $(( now - last_check )) -lt 86400 ] && return 0
+  fi
+  # Stamp first so a hanging/failing fetch doesn't retrigger every tool call.
+  touch "$marker" 2>/dev/null
+
+  # Active fetch, time-bounded if a timeout binary is available (macOS often
+  # only has gtimeout via coreutils; fall back to a plain fetch otherwise).
+  if command -v timeout >/dev/null 2>&1; then fetch_cmd="timeout 15 git"
+  elif command -v gtimeout >/dev/null 2>&1; then fetch_cmd="gtimeout 15 git"
+  else fetch_cmd="git"; fi
+  $fetch_cmd -C "$forge_repo" fetch --quiet 2>/dev/null || return 0
+
+  behind=$(git -C "$forge_repo" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)
+  [ "$behind" -gt 0 ] || return 0
+
+  printf '[Keeper] Daily check: your Forge install is %s commit(s) behind upstream. Update when convenient: (cd %s && git pull && ./install.sh --interactive). Details: ~/.claude/scripts/forge-context.sh check-install' \
+    "$behind" "$forge_repo"
 }
 
 # ── Install drift check ───────────────────────────────────────────────
