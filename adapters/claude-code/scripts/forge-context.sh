@@ -432,7 +432,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check|review-sync|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -4032,6 +4032,119 @@ do_review_sync() {
   done
 }
 
+# ── Subcommand: repo-gh ───────────────────────────────────────────────
+# Generic gh CLI wrapper. Collapses the (cd <repo> && GH_HOST=<host> gh ...) | jq
+# cartesian product into one allowlisted call shape — solves the
+# permission-prompt explosion when the user's gh is a per-cwd-routing zsh
+# function and the call combines cd + env-var-prefix + gh subcommand +
+# post-processing pipe (the three independent variation dimensions can't
+# be matched by flat allowlist entries; same pitfall class as compound-
+# command substrate check, see core/references/permission-patterns.md #2).
+#
+# Behaviour:
+#   1. Resolves repo: --repo override, else active project's mapped repo
+#      via get_project_dir, else error.
+#   2. Resolves GH_HOST from `git remote get-url origin` — handles
+#      git@host:, https://host/, ssh://git@host/.
+#   3. Runs gh via `zsh -ic "cd <repo> && GH_HOST=<host> gh <args>"` so the
+#      user's zsh `gh` function fires (it auto-routes GH_TOKEN per cwd).
+#   4. Optional --jq <filter> pipes gh stdout through jq.
+#
+# Usage:
+#   forge-context.sh repo-gh [--repo <path>] [--jq <filter>] [--] <gh args...>
+#
+# Examples:
+#   forge-context.sh repo-gh pr view 12345 --json title,state,body
+#   forge-context.sh repo-gh --jq '.[] | .user.login' \
+#       api repos/owner/repo/pulls/12345/comments --paginate
+#   forge-context.sh repo-gh --repo /path/to/other/repo issue list
+do_repo_gh() {
+  local repo="" jq_filter=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo) repo="$2"; shift 2 ;;
+      --jq)   jq_filter="$2"; shift 2 ;;
+      --)     shift; break ;;
+      -h|--help)
+        cat >&2 <<'USAGE'
+Usage: forge-context.sh repo-gh [--repo <path>] [--jq <filter>] [--] <gh args...>
+
+  --repo <path>   Override repo directory (defaults to active forge project's repo)
+  --jq <filter>   Pipe gh stdout through jq with this filter
+  --              Stop wrapper flag parsing; remaining args go to gh verbatim
+USAGE
+        return 0 ;;
+      *) break ;;
+    esac
+  done
+
+  if [ $# -eq 0 ]; then
+    echo "[repo-gh] FAIL: no gh arguments provided" >&2
+    echo "Usage: forge-context.sh repo-gh [--repo <path>] [--jq <filter>] [--] <gh args...>" >&2
+    return 2
+  fi
+
+  # Resolve repo: explicit --repo wins; else fall back to active project.
+  if [ -z "$repo" ]; then
+    if [ ! -s "$MARKER" ]; then
+      echo "[repo-gh] FAIL: no active forge project (marker empty) — use --repo <path>" >&2
+      return 2
+    fi
+    local project
+    project="$(jq -r '.project // empty' "$MARKER" 2>/dev/null)"
+    if [ -z "$project" ]; then
+      # Legacy plain-string marker (pre-JSON migration)
+      project="$(tr -d '[:space:]' < "$MARKER")"
+    fi
+    if [ -z "$project" ]; then
+      echo "[repo-gh] FAIL: cannot read project from marker — use --repo <path>" >&2
+      return 2
+    fi
+    repo="$(get_project_dir "$project")"
+    if [ -z "$repo" ]; then
+      echo "[repo-gh] FAIL: cannot resolve repo for project '$project' — use --repo <path>" >&2
+      return 2
+    fi
+  fi
+
+  if [ ! -d "$repo/.git" ]; then
+    echo "[repo-gh] FAIL: not a git repository: $repo" >&2
+    return 2
+  fi
+
+  # Resolve GH_HOST from origin URL.
+  # Handles: git@host:owner/repo[.git]  AND  https://host/...  AND  ssh://git@host/...
+  local origin_url gh_host
+  origin_url="$(git -C "$repo" remote get-url origin 2>/dev/null)" || {
+    echo "[repo-gh] FAIL: no origin remote in $repo" >&2; return 2;
+  }
+  gh_host="$(printf '%s' "$origin_url" \
+    | sed -E 's#^git@([^:]+):.*#\1#; s#^https?://([^/]+)/.*#\1#; s#^ssh://git@([^/]+)/.*#\1#')"
+  if [ -z "$gh_host" ] || [ "$gh_host" = "$origin_url" ]; then
+    echo "[repo-gh] FAIL: cannot parse host from origin '$origin_url'" >&2
+    return 2
+  fi
+
+  # Build shell-quoted arg string for the zsh -ic command.
+  # printf '%q' is a bash builtin that produces safe shell-quoted output.
+  local quoted_args="" a
+  for a in "$@"; do
+    quoted_args="$quoted_args $(printf '%q' "$a")"
+  done
+
+  # zsh -ic: interactive shell sources .zshrc where the user's gh function
+  # is defined (see feedback_gh_account_routing_by_cwd memory). Without -i,
+  # the function wouldn't be loaded and per-cwd GH_TOKEN routing would break.
+  local zsh_cmd
+  zsh_cmd="cd $(printf '%q' "$repo") && GH_HOST=$(printf '%q' "$gh_host") gh$quoted_args"
+
+  if [ -n "$jq_filter" ]; then
+    zsh -ic "$zsh_cmd" | jq "$jq_filter"
+  else
+    zsh -ic "$zsh_cmd"
+  fi
+}
+
 # ── Subcommand: draft-list ────────────────────────────────────────────
 # Enumerate captured draft tasks across all drafts folders for the weekly-wrap
 # triage step. Output is TSV with columns: path \t project \t title.
@@ -4834,6 +4947,7 @@ case "$SUBCMD" in
   next-meeting)        do_next_meeting ;;
   substrate-check)     do_substrate_check ;;
   review-sync)         do_review_sync "${@:2}" ;;
+  repo-gh)             do_repo_gh "${@:2}" ;;
   draft-list)          do_draft_list ;;
   write-checkpoint)        do_write_checkpoint "${@:2}" ;;
   new-task)                do_new_task "${@:2}" ;;
@@ -4842,7 +4956,7 @@ case "$SUBCMD" in
   add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|draft-list|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
     exit 1
     ;;
 esac
