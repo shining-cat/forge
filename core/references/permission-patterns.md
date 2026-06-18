@@ -2,7 +2,7 @@
 
 Reference for writing `permissions.allow` / `permissions.deny` entries in `~/.claude/settings.json` (and project-level `.claude/settings.local.json`). Each entry below documents a pitfall observed in the wild — every one has cost a debugging session.
 
-## The 5 known pitfalls
+## The 6 known pitfalls
 
 ### 1. Single `*` does NOT cross `/`
 
@@ -76,6 +76,22 @@ Claude Code treats `~/.claude/` as a protected directory with mandatory permissi
 **The fix:** for runtime state files that need silent writes, place them outside `~/.claude/` — typically in the vault, which is freely allowlistable. Reserve `~/.claude/` for files Claude Code itself manages (settings.json, hooks/, skills/, scripts/) where the prompt friction is acceptable because those files change rarely.
 
 **Implications for past hypotheses:** pitfall #4 (matcher uses CWD-relative chip text) is correct for normal paths, but inside `~/.claude/` it's moot — no allowlist match fires regardless. Don't trust mid-session pattern experiments inside `~/.claude/`; they'll always fail, and the failure tells you nothing about whether the pattern shape is correct.
+
+### 6. Subagents don't reliably inherit narrow / `settings.local.json` Bash patterns — use a broad pattern in global settings.json
+
+A dispatched subagent (Agent tool) inherits the parent session's Write permissions (confirmed by the 2026-06-08 quiet-vault-writes spike), but **narrow `gh` patterns and `settings.local.json` entries did NOT carry into the subagent's allowlist** — a Builder hit `Permission to use Bash has been denied` even on a bare `gh --version`, while the parent session had `Bash(gh pr list*)`, `Bash(gh pr create:*)` (global) and `Bash(gh pr *)` (local).
+
+```jsonc
+// ❌ present in parent, did NOT cover the subagent:
+"Bash(gh pr create:*)"   // colon-form, single pattern — global
+"Bash(gh pr *)"          // catch-all — but in settings.local.json
+// ✅ the fix — broad colon-form in GLOBAL settings.json:
+"Bash(gh:*)"             // matches any `gh ...`, inherited by subagents
+```
+
+**Why it bites:** you allowlist `gh` for your own work, dispatch a Builder to ship a PR end-to-end, and it dies on the first `gh` call — forcing the parent to run `gh pr create`/`merge` inline and breaking the dispatch-ships-end-to-end pattern. The narrow patterns work fine in the main session, masking the gap until a subagent needs them.
+
+**The fix:** put a broad `Bash(gh:*)` in **global** `~/.claude/settings.json` (not `settings.local.json`). **Verified 2026-06-18:** after the `Bash(gh:*)` patch + a CC restart, a dispatched subagent ran `gh --version` and `gh auth status` cleanly (exit 0, no prompt). Mirrors the broad-prefix precedent used for `rm`. (Combine with pitfall: mid-session settings patches don't apply until restart — see Meta-rules.)
 
 ## Meta-rules for permission-pattern work
 
