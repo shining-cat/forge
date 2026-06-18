@@ -727,6 +727,82 @@ print(summary)
 }
 
 # ── Subcommand: gate (conditional commit gate) ────────────────────────
+# Extract the target repo directory from a git-commit Bash command. Handles the
+# two forms the MEMORY convention produces: `git -C <path> ... commit` and
+# `cd <path> && git commit ...`. Returns empty for the bare `git commit` form
+# (cwd unknown to the hook → caller skips). Best-effort; unquoted paths only.
+extract_commit_repo_dir() {
+  local cmd="$1" dir=""
+  if printf '%s' "$cmd" | grep -Eq 'git +-C +'; then
+    dir="$(printf '%s' "$cmd" | grep -Eo 'git +-C +[^ ]+' | head -1 | sed -E 's/git +-C +//')"
+  elif printf '%s' "$cmd" | grep -Eq '(^|[;&]| )cd +'; then
+    dir="$(printf '%s' "$cmd" | grep -Eo 'cd +[^ ]+' | head -1 | sed -E 's/cd +//')"
+  fi
+  # Strip one layer of surrounding quotes; expand a leading ~.
+  dir="${dir%\"}"; dir="${dir#\"}"; dir="${dir%\'}"; dir="${dir#\'}"
+  case "$dir" in "~"*) dir="${HOME_DIR}${dir#\~}" ;; esac
+  printf '%s' "$dir"
+}
+
+# Branch-discipline check (PreToolUse, decision = "ask", NOT deny). Committing
+# directly onto main/master in a PR-workflow code repo is usually a missed
+# feature-branch checkout (friction 2026-06-05, PR #72 recovery). Scope: only
+# repos under REPO_ROOTS, and never the vault (committing to vault main is the
+# normal workflow). "ask" preserves the escape hatch for legitimate hotfix
+# commits. Emits the ask JSON + exits on match; returns 0 (caller continues) on
+# any non-match / unknown.
+branch_check_ask() {
+  local cmd="$1"
+
+  local repo_dir
+  repo_dir="$(extract_commit_repo_dir "$cmd")"
+  [ -z "$repo_dir" ] && return 0
+  [ -d "$repo_dir" ] || return 0
+
+  # Vault commits to main are normal → skip (checked before REPO_ROOTS so the
+  # vault is excluded even when it sits under a repo root).
+  if [ -n "$VAULT_PATH" ]; then
+    case "$repo_dir/" in "$VAULT_PATH"/*) return 0 ;; esac
+  fi
+
+  # Only enforce inside configured code-repo roots.
+  local repo_roots
+  repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+  [ -z "$repo_roots" ] && return 0
+  local in_roots=0 root
+  local OLDIFS="$IFS"; IFS=:
+  for root in $repo_roots; do
+    [ -n "$root" ] || continue
+    case "$repo_dir/" in "$root"/*) in_roots=1; break ;; esac
+  done
+  IFS="$OLDIFS"
+  [ "$in_roots" -eq 1 ] || return 0
+
+  # On main/master? `symbolic-ref --short` reports the branch even on an unborn
+  # branch (no commits yet) and fails cleanly on detached HEAD (→ skip).
+  local branch
+  branch="$(git -C "$repo_dir" symbolic-ref --short HEAD 2>/dev/null || true)"
+  case "$branch" in main|master) ;; *) return 0 ;; esac
+
+  # Something to commit? Staged changes, or an auto-staging -a/-am flag.
+  local has_work=0
+  if ! git -C "$repo_dir" diff --cached --quiet 2>/dev/null; then has_work=1; fi
+  if printf '%s' "$cmd" | grep -Eq 'commit[^|&;]* -[A-Za-z]*a'; then has_work=1; fi
+  [ "$has_work" -eq 1 ] || return 0
+
+  local base reason
+  base="$(basename "$repo_dir")"
+  reason="[Keeper] About to commit on '$branch' in $base — a code repo under REPO_ROOTS. PR-workflow repos branch first; this is usually a missed feature-branch checkout. If intentional (hotfix, direct-push repo), approve. If not: \`git -C $repo_dir branch <feature>\` then \`git -C $repo_dir reset --soft @{u}\` to move these staged changes onto a branch."
+  jq -nc --arg reason "$reason" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "ask",
+      permissionDecisionReason: $reason
+    }
+  }'
+  exit 0
+}
+
 do_gate() {
   # Session-isolation gate: don't block commits in sibling Claude Code windows
   # that didn't run /forge themselves. See session_owns_forge().
@@ -779,6 +855,10 @@ do_gate() {
     }'
     exit 0
   fi
+
+  # Checkpoint is fresh — fall through to branch discipline (ask, not deny).
+  # Stale-deny above is strictly stronger and returns first when it fires.
+  branch_check_ask "$command"
 
   exit 0
 }
