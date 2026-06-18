@@ -41,7 +41,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 **Backed by**
 - `keeper` skill (`~/.claude/skills/keeper/SKILL.md`)
 - `forge-compaction.sh` hook (PreCompact/PostCompact) — warns if checkpoint stale (PreCompact, non-blocking), reloads Forge after (PostCompact)
-- `forge-context.sh post-tool` (PostToolUse) — nudges checkpoint after push/PR, prompts brain dump every ~10 min, surfaces stale-checkpoint warnings
+- `forge-context.sh post-tool` (PostToolUse) — nudges checkpoint after push/PR, prompts brain dump every ~10 min, surfaces stale-checkpoint warnings, and runs a once-per-day install-drift check (fetch + "N behind upstream" note) so long-running sessions that skip the entry/eod/eow rituals still learn when their Forge install is behind
 - `forge-context.sh stop` (Stop) — turn-end stale-checkpoint enforcement: soft nudge at 30 min, hard block at 60 min
 
 **Proactive.** Yes — always active in Forge mode. Does not need explicit invocation.
