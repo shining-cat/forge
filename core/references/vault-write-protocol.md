@@ -54,11 +54,21 @@ Only two cases:
 
 After context compression, the inline Read of `current-checkpoint.md` to reorient is unchanged — reading is always inline; the protocol here is about *writes* that produce diff render.
 
-## What the spike proved (2026-06-08, PR #89) — partially contradicted 2026-06-11
+## What the spike proved (2026-06-08, PR #89) — refined 2026-06-18 (PRO nested-repo exception)
 
 Foreground `forge-keeper` subagent dispatched to Write a 380-byte test file into `${VAULT_PATH}/_shared/_meta/spike-test-2026-06-08.md`. Result at the time: no permission prompt (subagent claimed to inherit parent vault-write permissions), no diff render in parent conversation (Write contained inside the agent invocation block). Direction locked then. Spike artifact archived under `_shared/_meta/_discarded/`. Full audit trail: `[[2026-06-08-quiet-forge-vault-writes]]`.
 
-**Contradicting evidence (2026-06-11):** A forge-keeper subagent dispatched to Write `current-checkpoint.md` triggered a user-visible permission prompt AND rendered the red/green diff in the parent conversation. Both halves of the spike's claim failed. Possible causes (untested): (a) Claude Code version drift since 2026-06-08; (b) the spike was environment-specific or under-instrumented; (c) the subagent's specific `Write` invocation pattern differed in a load-bearing way (e.g. path under `Vault/PRO/**` vs `Vault/_shared/**`, settings allowlist scoping). Until re-validated, treat Tier 2 dispatch as "should-be-quiet but not guaranteed" — Tier 1 (script subcommand) is the only reliably-silent path for the six operational-state surfaces with dedicated subcommands. The protocol's Tier 1 ranking is unchanged by this contradiction; Tier 2 is the fallback, not the default. Re-spike is filed as a follow-up.
+**Resolved finding (2026-06-18) — Tier 2 prompts on `Vault/PRO/**`, silent on `Vault/PERSO/**` + `Vault/_shared/**`.** Confirmed across three observations (2026-06-11 checkpoint-write failure; 2026-06-18 background forge-keeper Edit on a PRO-project task → auto-denied; same-session foreground forge-impl on the same PRO files → succeeded). Cause attribution:
+
+- **Not an allowlist-pattern issue (hypothesis 2 ruled out).** `~/.claude/settings.json` already carries broad `Write(${VAULT_PATH}/**)` + `Edit(${VAULT_PATH}/**)` (and `/**/*`) patterns that match `Vault/PRO/...` at the filesystem level. They're present and still prompt on PRO — so a more-specific `Vault/PRO/**` entry won't help.
+- **Upstream trust-boundary gate (hypothesis 1, most likely).** `Vault/PRO/` is a nested git repo with its own remote (Schibsted GHEC), distinct from the outer personal-GitHub vault repo. Claude Code appears to gate writes that cross into the nested repo *upstream* of allowlist matching — same **class** of behavior as the `~/.claude/` sensitive zone (permission-patterns pitfall #5), where the chip matches but the request is gated separately. Allowlist patterns can't suppress it.
+
+**Operating guidance (this is the actionable resolution):**
+- **PRO projects → Tier 1 for the six operational-state ops** (`write-checkpoint`, `new-task`, `set-task-status`, `bump-backlog-header`, `add-recently-shipped`, `update-backlog-row`): reliably silent on all projects, PRO included (they're allowlisted Bash, not Edit/Write — no trust-boundary gate).
+- **Arbitrary-content PRO writes** (INDEX rewrites, decision files, multi-file template instantiation) → dispatch the subagent in the **foreground**, never background. A **background** Tier 2 dispatch on PRO **auto-denies** (it can't answer the prompt the trust boundary raises → the Edit/Write silently fails); a **foreground** dispatch surfaces the prompt for one approval and proceeds.
+- **PERSO + `_shared` → Tier 2 is silent** as the 2026-06-08 spike claimed; no change.
+
+If a future Claude Code release changes the nested-repo behavior, re-test with a foreground vs background dispatch to a throwaway `Vault/PRO/<proj>/_meta/` file. Tracked + closed: `2026-06-11-tier2-subagent-vault-pro-silence-broken`.
 
 ## Verification discipline (still applies for Tier 2 dispatch)
 
