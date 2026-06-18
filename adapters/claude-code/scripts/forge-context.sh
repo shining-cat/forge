@@ -1425,6 +1425,12 @@ do_backlog_audit() {
   fi
 }
 
+# Convert a YYYY-MM-DD date to epoch seconds (BSD + GNU date). Echoes 0 on a
+# value `date` can't parse, so callers can guard.
+date_to_epoch() {
+  date -j -f "%Y-%m-%d" "$1" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null || echo 0
+}
+
 do_recover() {
   echo "=== FORGE RECOVERY — $PROJECT_NAME ==="
 
@@ -1439,6 +1445,55 @@ do_recover() {
   else
     echo "Checkpoint: NONE"
     local cp_mod="0"
+  fi
+
+  # Per-project last-activity — honest project recency, distinct from the
+  # checkpoint-file mtime above (contaminated by Obsidian sync / marker writes /
+  # vault git ops) and from the global wellness cold-start gap (spans ALL
+  # projects). Two trustworthy project-specific sources shown side by side so
+  # divergence is visible: (1) checkpoint frontmatter `date:` — set by Keeper
+  # only on a genuine refresh, never touched by sync; (2) last vault commit
+  # touching this project's dir (`git -C` resolves the containing repo, so
+  # nested PRO/ works too). See 2026-06-13-entry-summary-per-project-last-touched.
+  if [ -f "$CHECKPOINT_FILE" ]; then
+    local vault_proj_dir fm_date last_commit_date today_epoch
+    vault_proj_dir="$(dirname "$CHECKPOINT_FILE")"
+    today_epoch="$(date +%s)"
+    # (1) frontmatter `date:` — first such line inside the leading --- block.
+    fm_date="$(awk '/^---[[:space:]]*$/{n++; next} n==1 && /^date:/{v=$2; gsub(/["'\'' ]/,"",v); print v; exit}' "$CHECKPOINT_FILE" 2>/dev/null)"
+    # (2) last vault commit touching this project dir.
+    last_commit_date="$(git -C "$vault_proj_dir" log -1 --format=%cs -- . 2>/dev/null || true)"
+    echo "Last project activity:"
+    if [ -n "$fm_date" ]; then
+      local fm_epoch fm_age
+      fm_epoch="$(date_to_epoch "$fm_date")"
+      if [ "$fm_epoch" != "0" ]; then
+        fm_age=$(( (today_epoch - fm_epoch) / 86400 ))
+        echo "  Checkpoint frontmatter: $fm_date (${fm_age}d ago)"
+      else
+        echo "  Checkpoint frontmatter: $fm_date (unparseable)"
+      fi
+    else
+      echo "  Checkpoint frontmatter: (no date: field)"
+    fi
+    if [ -n "$last_commit_date" ]; then
+      local lc_epoch lc_age
+      lc_epoch="$(date_to_epoch "$last_commit_date")"
+      lc_age=$(( (today_epoch - lc_epoch) / 86400 ))
+      echo "  Last vault commit:      $last_commit_date (${lc_age}d ago)"
+      # Divergence: vault content moved after the last genuine checkpoint refresh
+      # (e.g. brain dump appended, tasks edited) — the mtime "0 min ago" would
+      # otherwise read as a fresh session when the checkpoint is days stale.
+      if [ -n "$fm_date" ]; then
+        local fm_e
+        fm_e="$(date_to_epoch "$fm_date")"
+        if [ "$fm_e" != "0" ] && [ $(( lc_epoch - fm_e )) -ge 172800 ]; then
+          echo "  → divergence: vault activity $(( (lc_epoch - fm_e) / 86400 ))d after last checkpoint refresh — re-read the checkpoint, it may be stale"
+        fi
+      fi
+    else
+      echo "  Last vault commit:      (none tracked)"
+    fi
   fi
 
   # Git state

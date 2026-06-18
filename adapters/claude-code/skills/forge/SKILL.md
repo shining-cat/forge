@@ -29,7 +29,7 @@ Forge is the orchestration layer that ties together the vault, agent roles (Keep
 **Time-prose discipline:**
 When referencing prior work (checkpoint events, past commits, prior decisions, friction events), prepend a relative-time qualifier so the reader knows when something happened. Examples: *"this morning — "*, *"yesterday — "*, *"2 days ago — "*, *"last week — "*.
 
-Source from: (a) `forge-context.sh recover` output line `Checkpoint: ... (X minutes ago)`, (b) checkpoint frontmatter `date:` field, (c) system-reminder `currentDate` for absolute date deltas.
+Source from, in order of trust: (a) `forge-context.sh recover`'s **`Last project activity:`** block — frontmatter `date:` + last vault commit, the honest per-project recency signals; **prefer these for project-recency time-prose**; (b) the recover `Checkpoint: ... (X minutes ago)` line — mtime-based, contaminated by Obsidian sync / marker writes, so do NOT trust it for "how long since real work on this project"; (c) system-reminder `currentDate` for absolute date deltas. When `Last project activity` shows a divergence note, the checkpoint is staler than its mtime suggests — re-read it.
 
 **Anti-pattern (the bug this rule fixes):** "we just shipped X" when X shipped yesterday. Or "yesterday — " when X shipped five minutes ago. The current date is in context — use it.
 
@@ -216,6 +216,7 @@ Petra: Anvil's warm. Let's see what we've got.
 
 Branch: {current branch}
 Checkpoint: {date} — {current goal summary}
+Last project activity: {frontmatter date (Nd ago) · last vault commit (Nd ago); note divergence if shown}
 Active decisions: {count or "none"}
 Friction events: {count recent or "none"}
 Git state: {clean / N uncommitted changes}
