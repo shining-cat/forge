@@ -226,5 +226,58 @@ assert_file_not_contains "no JSON mutation on rejection" "$TMP/_shared/friction-
 teardown
 
 echo ""
+echo "Check 10 — non-path --action-ref 'none': clean error, no mutation, no garbage file"
+setup_tmp_vault
+err=$("$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "test event J none action-ref" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "none" 2>&1 >/dev/null)
+rc=$?
+assert_exit "exit 2 on non-path action-ref" "2" "$rc"
+if printf '%s' "$err" | grep -qF "needs_new_pattern"; then
+  echo "  ✓ error message names the escape value"; PASS=$((PASS+1));
+else
+  echo "  ✗ error message missing 'needs_new_pattern' (got: $err)"; FAIL=$((FAIL+1));
+fi
+assert_file_not_contains "no friction-log mutation on rejection" "$TMP/_shared/friction-log.md" "test event J"
+assert_file_not_contains "no JSON mutation on rejection" "$TMP/_shared/friction-classified.json" "test event J"
+[ ! -f "$TMP/none" ] && { echo "  ✓ no garbage file at vault root"; PASS=$((PASS+1)); } || { echo "  ✗ garbage file 'none' written at vault root"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
+echo "Check 11 — prose --action-ref (the 2026-06-08 case): rejected, no garbage file"
+setup_tmp_vault
+"$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "test event K prose action-ref" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "commit: TBD this session" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 2 on prose action-ref" "2" "$rc"
+[ ! -f "$TMP/commit: TBD this session" ] && { echo "  ✓ no garbage file from prose action-ref"; PASS=$((PASS+1)); } || { echo "  ✗ garbage file written from prose"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
+echo "Check 12 — env-prefixed task path still accepted (regression guard for Check 8 shape)"
+setup_tmp_vault
+mkdir -p "$TMP/PERSO/forge"
+cat > "$TMP/_shared/forge-active" <<'EOF'
+{"session_id":"test-session","project":"forge","started_at":"2026-05-20T10:00:00+0200","tmux_pane":null}
+EOF
+"$FORGE_CONTEXT" append-friction \
+  --date 2026-05-20 \
+  --description "env-prefixed accepted" \
+  --pattern allowlist-patch \
+  --recurrence 1 \
+  --action-ref "PERSO/forge/tasks/open/2026-05-20-envpfx.md" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 0 on env-prefixed task path" "0" "$rc"
+[ -f "$TMP/PERSO/forge/tasks/open/2026-05-20-envpfx.md" ] && { echo "  ✓ stub created at env-prefixed path"; PASS=$((PASS+1)); } || { echo "  ✗ stub not created"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

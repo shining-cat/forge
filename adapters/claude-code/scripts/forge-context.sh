@@ -2774,6 +2774,25 @@ do_append_friction() {
     exit 2
   fi
 
+  # Validate --action-ref is the no-stub escape value OR a task path. Without
+  # this, a non-path string was used verbatim as the stub's output path,
+  # writing a garbage file at vault root (e.g. literal "none", a prose sketch
+  # from the classifier's action_sketch field, "commit: TBD this session" —
+  # 2026-06-06/08). Accept `needs_new_pattern` (no stub) or any path containing
+  # a `tasks/open/` or `tasks/resolved/` segment (covers the project-relative
+  # `tasks/open/x.md`, the env-prefixed `PERSO/forge/tasks/open/x.md`, and the
+  # `_shared/tasks/open/x.md` forms). Reject everything else at the boundary
+  # before any file mutation (same write-nothing-on-reject contract as the
+  # --recurrence check above).
+  case "$action_ref" in
+    needs_new_pattern) ;;
+    *tasks/open/?*|*tasks/resolved/?*) ;;
+    *)
+      echo "[append-friction] --action-ref must be 'needs_new_pattern' (no stub created) or a task path under tasks/open/ or tasks/resolved/ (got: '$action_ref'). The classifier emits a prose action_sketch, not a path — pass 'needs_new_pattern' when no task file exists yet." >&2
+      exit 2
+      ;;
+  esac
+
   # Validate pattern against catalog (or accept escape value)
   local validation_failed=false
   local original_pattern="$pattern"
