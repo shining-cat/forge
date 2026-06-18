@@ -51,7 +51,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 | Trigger | Mechanism | Behaviour |
 |---------|-----------|-----------|
 | `git push` or `gh pr create` | PostToolUse hook (`forge-context.sh post-tool`) | Nudge to checkpoint if stale (>2 min); brain-dump nag every ~10 min |
-| `git commit` | PreToolUse hook (`forge-context.sh gate`) | Blocks commit if checkpoint is stale (>15 min); also `ask`s when committing onto main/master in a code repo under `REPO_ROOTS` (vault excluded) — missed feature-branch checkout |
+| `git commit` | PreToolUse hook (`forge-context.sh gate`) | Blocks commit if checkpoint is stale (>15 min) — **vault-targeted commits exempt** (Stop hook still enforces checkpoints); also `ask`s when committing onto main/master in a code repo under `REPO_ROOTS` (vault excluded) — missed feature-branch checkout |
 | End of every Claude turn | Stop hook (`forge-context.sh stop`) | 30 min → soft nudge, 60 min → **blocks response** |
 | Before context compaction | PreCompact hook (`forge-compaction.sh pre`) | Warns if checkpoint stale (>2 min), **allows compaction** (non-blocking) |
 | After context compaction | PostCompact hook (`forge-compaction.sh post`) | Instructs Claude to re-invoke `/forge` for full skill reload |
