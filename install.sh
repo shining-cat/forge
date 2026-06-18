@@ -462,7 +462,7 @@ build_pairs() {
     done
 
     # Forge skill references (symlinks to core/references/*) — A2: preserve local edits
-    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md subagent-models.md marker-takeover.md pr-sync.md; do
+    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md subagent-models.md marker-takeover.md pr-sync.md credential-discipline.md; do
       printf "%s\t%s\tsymlink\tpreserve\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
     done
 
@@ -492,11 +492,12 @@ build_pairs() {
       printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/agents/$agent.md" "$AGENTS_DIR/$agent.md"
     done
 
-    # Hooks (5)
+    # Hooks (7)
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-compaction.sh"          "$CLAUDE_DIR/hooks/forge-compaction.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/approval-notifier.sh"         "$CLAUDE_DIR/hooks/approval-notifier.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-vault-plan-guard.sh"    "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-vault-write-guard.sh"   "$CLAUDE_DIR/hooks/forge-vault-write-guard.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-credential-guard.sh"    "$CLAUDE_DIR/hooks/forge-credential-guard.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-session-end.sh"         "$CLAUDE_DIR/hooks/forge-session-end.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/inject-current-time.sh"       "$CLAUDE_DIR/hooks/inject-current-time.sh"
 
@@ -664,6 +665,7 @@ expected_perms() {
     "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
     "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
     "Bash($HOME/.claude/hooks/forge-vault-write-guard.sh:*)"
+    "Bash($HOME/.claude/hooks/forge-credential-guard.sh:*)"
     "Bash($HOME/.claude/hooks/forge-session-end.sh:*)"
     "Bash($HOME/.claude/hooks/inject-current-time.sh:*)"
     "Read($HOME/.claude/forge.conf)"
@@ -714,6 +716,7 @@ expected_hooks() {
   printf '%s\t%s\t%s\n' \
     "PreToolUse"        "null"        "$HOME/.claude/hooks/approval-notifier.sh" \
     "PreToolUse"        "Bash"        "$HOME/.claude/scripts/forge-context.sh gate" \
+    "PreToolUse"        "Bash"        "$HOME/.claude/hooks/forge-credential-guard.sh" \
     "PreToolUse"        "Write|Edit"  "$HOME/.claude/hooks/forge-vault-plan-guard.sh" \
     "PreToolUse"        "Write|Edit"  "$HOME/.claude/hooks/forge-vault-write-guard.sh" \
     "PreCompact"        "null"        "$HOME/.claude/hooks/forge-compaction.sh pre" \
@@ -1372,7 +1375,7 @@ ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit,
 # wellness-cold-start thresholds). install_symlink with preserve leaves
 # those copies alone and writes a `.upstream.<ts>` sibling for diff.
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md subagent-models.md marker-takeover.md pr-sync.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md subagent-models.md marker-takeover.md pr-sync.md credential-discipline.md; do
   install_symlink "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref" preserve
 done
 ok "References symlinked (updates with git pull; A2-preserve for local edits)"
@@ -1428,6 +1431,7 @@ safe_cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/forge-vault-write-guard.sh" "$CLAUDE_DIR/hooks/"
+safe_cp "$ADAPTER/hooks/forge-credential-guard.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/forge-session-end.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/inject-current-time.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/scripts/forge-context.sh" "$CLAUDE_DIR/scripts/"
@@ -1442,6 +1446,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/hooks/approval-notifier.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-plan-guard.sh" \
              "$CLAUDE_DIR/hooks/forge-vault-write-guard.sh" \
+             "$CLAUDE_DIR/hooks/forge-credential-guard.sh" \
              "$CLAUDE_DIR/hooks/forge-session-end.sh" \
              "$CLAUDE_DIR/hooks/inject-current-time.sh" \
              "$CLAUDE_DIR/scripts/forge-context.sh" \
@@ -1534,6 +1539,7 @@ PERMS_TO_ADD=(
   "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"
   "Bash($HOME/.claude/hooks/forge-vault-plan-guard.sh:*)"
   "Bash($HOME/.claude/hooks/forge-vault-write-guard.sh:*)"
+  "Bash($HOME/.claude/hooks/forge-credential-guard.sh:*)"
   "Bash($HOME/.claude/hooks/forge-session-end.sh:*)"
   "Bash($HOME/.claude/hooks/inject-current-time.sh:*)"
   # Forge config
@@ -1626,6 +1632,7 @@ add_hook() {
 # Core hooks only — wellness hooks are wired during onboarding
 SETTINGS=$(add_hook "PreToolUse" "null" "$HOME/.claude/hooks/approval-notifier.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreToolUse" "Bash" "$HOME/.claude/scripts/forge-context.sh gate" 5 "$SETTINGS")
+SETTINGS=$(add_hook "PreToolUse" "Bash" "$HOME/.claude/hooks/forge-credential-guard.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreToolUse" "Write|Edit" "$HOME/.claude/hooks/forge-vault-plan-guard.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreToolUse" "Write|Edit" "$HOME/.claude/hooks/forge-vault-write-guard.sh" 5 "$SETTINGS")
 SETTINGS=$(add_hook "PreCompact" "null" "$HOME/.claude/hooks/forge-compaction.sh pre" 10 "$SETTINGS")
