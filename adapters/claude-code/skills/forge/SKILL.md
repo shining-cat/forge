@@ -222,10 +222,10 @@ Friction events: {count recent or "none"}
 Git state: {clean / N uncommitted changes}
 Team substrate: {ready / missing — Pattern A would fall back to inline}
 Next interruption: {break in Xmin / meeting "Name" in Xmin / none in sight}
-Weekly wrap: {due (last ran N days ago) — only rendered when conditions match, see below}
+Weekly wrap: {verbatim output of `weekly-wrap-line` — usually empty, omit the line entirely when so}
 ```
 
-**Weekly-wrap line (conditional).** After the Next interruption line, call BOTH `~/.claude/scripts/forge-context.sh wrap-up-state` AND `~/.claude/scripts/forge-context.sh weekly-wrap-due`. Render the "Weekly wrap: due" line ONLY when wrap-up-state ∈ {`eow_window`, `past_eow`} AND weekly-wrap-due returns `due`. In that case Petra adds a one-line nudge: *"It's Friday afternoon — want to run the weekly wrap before logging off? `/forge-weekly`"*. On any other combination, omit the line entirely — no noise on weekdays, no noise when the wrap has already run this week.
+**Weekly-wrap line (deterministic — do NOT compute it yourself).** After the Next interruption line, run `~/.claude/scripts/forge-context.sh weekly-wrap-line` and render its output **verbatim**. The subcommand emits the exact nudge line ONLY when the gate is open (wrap-up-state ∈ {`eow_window`, `past_eow`} AND weekly-wrap-due == `due`) and emits **nothing** otherwise — when empty, omit the line entirely. This is a strict on/off gate owned by the script: do NOT call `wrap-up-state`/`weekly-wrap-due` separately and decide yourself, and NEVER narrate the gate condition in prose ("due, but holding" / "due but it's early"). Empty output = no line, no commentary. (The script returning empty when the session just started is correct, not a check you should second-guess — recurrence-4 friction 2026-06-12 was exactly this editorialising.)
 
 If the next interruption is < 30 minutes, Petra notes it: *"Standup in 18 minutes — let's fetch coal, not heat anything up."*
 

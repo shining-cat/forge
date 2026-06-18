@@ -118,6 +118,13 @@ BRAINDUMP_INTERVAL_MIN="${BRAINDUMP_INTERVAL_MIN:-10}"
 EOW_DAY="$(grep '^EOW_DAY=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 EOW_DAY="${EOW_DAY:-5}"
 
+# Minutes-before-projected-EOD on EOW_DAY within which the weekly-wrap nudge may
+# surface. Narrower-or-equal to the daily eod window so the EOW line only appears
+# in the final stretch of the last worked day (2026-06-12 friction: the nudge
+# leaked at session entry, hours early). Default 60 (last hour).
+EOW_LAST_HOUR_MIN="$(grep '^EOW_LAST_HOUR_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+EOW_LAST_HOUR_MIN="${EOW_LAST_HOUR_MIN:-60}"
+
 # Look-ahead horizon (minutes) for do_next_meeting. Default 30.
 MEETING_WINDOW_MIN="$(grep '^MEETING_WINDOW_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 MEETING_WINDOW_MIN="${MEETING_WINDOW_MIN:-30}"
@@ -432,7 +439,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -2427,7 +2434,16 @@ do_wrap_up_state() {
   today_dow=$(date +%u 2>/dev/null)
   if [ "$today_dow" = "$EOW_DAY" ]; then
     case "$base_state" in
-      eod_window) echo "eow_window" ;;
+      eod_window)
+        # Only flip to eow (which triggers the weekly-wrap line) inside the
+        # final EOW_LAST_HOUR_MIN before EOD. Earlier in the eod window on
+        # EOW_DAY, stay eod_window — daily nudge yes, weekly-wrap line no.
+        if [ "$minutes_to_eod" -le "$EOW_LAST_HOUR_MIN" ]; then
+          echo "eow_window"
+        else
+          echo "eod_window"
+        fi
+        ;;
       past_eod)   echo "past_eow" ;;
     esac
   else
@@ -2473,6 +2489,26 @@ do_weekly_wrap_due() {
   else
     echo "not-due"
   fi
+}
+
+# ── Subcommand: weekly-wrap-line ──────────────────────────────────────
+# Deterministic gate for the entry-summary weekly-wrap nudge. Emits the exact
+# line to render VERBATIM when BOTH wrap-up-state ∈ {eow_window, past_eow} AND
+# weekly-wrap-due == due; emits NOTHING (empty) otherwise. Petra renders the
+# output as-is and never computes or narrates the condition herself — this
+# collapses the two-signal judgment into one script decision, closing the
+# recurring "knew-the-gate, surfaced-anyway / editorialized 'due but holding'"
+# friction (2026-06-12, recurrence 4). See 2026-06-12-eow-wrap-line-strict-gate.
+do_weekly_wrap_line() {
+  local state due
+  state="$(do_wrap_up_state)"
+  case "$state" in
+    eow_window|past_eow) ;;
+    *) return 0 ;;
+  esac
+  due="$(do_weekly_wrap_due)"
+  [ "$due" = "due" ] || return 0
+  echo "Weekly wrap: due — end of the week. Run the weekly wrap before logging off? \`/forge-weekly\`"
 }
 
 # ── Subcommand: mark-weekly-wrap-done ─────────────────────────────────
@@ -5092,6 +5128,7 @@ case "$SUBCMD" in
   vault-sync)          do_vault_sync "${@:2}" ;;
   wrap-up-state)       do_wrap_up_state ;;
   weekly-wrap-due)     do_weekly_wrap_due ;;
+  weekly-wrap-line)    do_weekly_wrap_line ;;
   mark-weekly-wrap-done) do_mark_weekly_wrap_done ;;
   check-install)       do_check_install ;;
   rollback-install)    do_rollback_install "${@:2}" ;;
