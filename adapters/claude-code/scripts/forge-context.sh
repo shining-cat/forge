@@ -439,7 +439,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -4464,6 +4464,28 @@ do_draft_list() {
   done
 }
 
+# ── Subcommand: draft-invite-line ─────────────────────────────────────
+# Deterministic entry-summary line. Counts captured drafts across all
+# drafts folders (reusing do_draft_list) and emits a one-line INVITE to
+# triage them later via /forge-weekly. Emits NOTHING when no drafts exist.
+#
+# Petra renders the output VERBATIM in the Step 6 entry summary and never
+# triggers triage from session start — entry is for starting work, not
+# housekeeping; the invite just makes mobile-captured drafts visible so the
+# user can PLAN a triage pass later in the day. Mirrors weekly-wrap-line's
+# render-verbatim-or-nothing contract (no narrating the gate).
+do_draft_invite_line() {
+  local n
+  n="$(do_draft_list | grep -c . || true)"
+  n="${n:-0}"
+  [ "$n" -gt 0 ] 2>/dev/null || return 0
+  if [ "$n" -eq 1 ]; then
+    echo "Drafts waiting: 1 captured idea pending triage — \`/forge-weekly\` when you have headspace (not now; entry is for starting work)."
+  else
+    echo "Drafts waiting: $n captured ideas pending triage — \`/forge-weekly\` when you have headspace (not now; entry is for starting work)."
+  fi
+}
+
 # ── Tier 1 vault-write subcommands ──────────────────────────────────────
 # Shared infrastructure for the six Tier 1 subcommands below
 # (write-checkpoint, new-task, set-task-status, bump-backlog-header,
@@ -5214,6 +5236,7 @@ case "$SUBCMD" in
   review-sync)         do_review_sync "${@:2}" ;;
   repo-gh)             do_repo_gh "${@:2}" ;;
   draft-list)          do_draft_list ;;
+  draft-invite-line)   do_draft_invite_line ;;
   write-checkpoint)        do_write_checkpoint "${@:2}" ;;
   new-task)                do_new_task "${@:2}" ;;
   set-task-status)         do_set_task_status "${@:2}" ;;
@@ -5221,7 +5244,7 @@ case "$SUBCMD" in
   add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
     exit 1
     ;;
 esac

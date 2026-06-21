@@ -223,9 +223,12 @@ Git state: {clean / N uncommitted changes}
 Team substrate: {ready / missing — Pattern A would fall back to inline}
 Next interruption: {break in Xmin / meeting "Name" in Xmin / none in sight}
 Weekly wrap: {verbatim output of `weekly-wrap-line` — usually empty, omit the line entirely when so}
+Drafts: {verbatim output of `draft-invite-line` — empty when no drafts waiting, omit the line entirely when so}
 ```
 
 **Weekly-wrap line (deterministic — do NOT compute it yourself).** After the Next interruption line, run `~/.claude/scripts/forge-context.sh weekly-wrap-line` and render its output **verbatim**. The subcommand emits the exact nudge line ONLY when the gate is open (wrap-up-state ∈ {`eow_window`, `past_eow`} AND weekly-wrap-due == `due`) and emits **nothing** otherwise — when empty, omit the line entirely. This is a strict on/off gate owned by the script: do NOT call `wrap-up-state`/`weekly-wrap-due` separately and decide yourself, and NEVER narrate the gate condition in prose ("due, but holding" / "due but it's early"). Empty output = no line, no commentary. (The script returning empty when the session just started is correct, not a check you should second-guess — recurrence-4 friction 2026-06-12 was exactly this editorialising.)
+
+**Draft invite line (deterministic — do NOT compute it yourself).** After the Weekly-wrap line, run `~/.claude/scripts/forge-context.sh draft-invite-line` and render its output **verbatim**. It counts captured drafts across all `tasks/drafts/` folders and emits a one-line INVITE only when ≥1 draft is waiting; emits **nothing** when none — omit the line entirely when empty. This surfaces drafts captured away from the desk (e.g. from mobile) so the user can PLAN a triage pass later. It is an **invite, not a trigger**: do NOT start `/forge-weekly` triage at entry — session start is for starting work, and triage is its own deliberate pass. Do not recompute or narrate the count yourself.
 
 If the next interruption is < 30 minutes, Petra notes it: *"Standup in 18 minutes — let's fetch coal, not heat anything up."*
 
