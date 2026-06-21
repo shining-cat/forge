@@ -89,6 +89,102 @@ Drafts live where they landed until the weekly triage. The vault syncs them like
 
 ---
 
+## Mobile capture (Android)
+
+> **Suggestion, not a requirement.** The desktop hotkey above is the primary
+> path. This extends the same draft pipeline to your phone, for when an idea
+> strikes away from the laptop and the real cost is carrying it around in your
+> head instead of putting it down and getting back to your life.
+
+### Why Obsidian on the phone (and not a code-host app)
+
+The draft pipeline is **sync-agnostic by design**: capture drops a `type: draft`
+file into a `tasks/drafts/` folder, and the weekly triage picks it up regardless
+of *how* the file got there. So mobile capture needs **no Forge code** — only
+(1) the vault present on the phone and (2) a fast way to create a draft there.
+
+Obsidian's own Android app is the right tool: it speaks markdown natively,
+browses/searches the whole vault offline, and reuses the **same `draft.md`
+template** as the desktop. A code-host mobile app (e.g. GitHub's) is built for
+PRs/issues/review, not for browsing a knowledge vault or quick capture — it will
+always feel crippled here. The cost (per-device plugin setup) is what keeps
+credentials and config out of the synced repo.
+
+### Rationale recap
+- **Capture must be cheap.** Same asymmetry as desktop — capture in seconds, let
+  the weekly triage do the structured work.
+- **Work/personal separation is preserved.** Gitignored work areas (see
+  `VAULT_PRIVATE_ROOTS` + the vault `.gitignore`) never reach the phone; the
+  clone holds personal projects + `_shared` only.
+- **A mobile-safe vault is required.** No tracked symlinks, no illegal filenames
+  — see "Vault file portability" in [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md).
+  The mobile client deletes anything it can't represent.
+
+### Install — Android, step by step
+
+Two stages: get the vault syncing, then add a capture trigger.
+
+#### Stage A — Sync the vault to the phone (obsidian-git)
+
+> Obsidian's built-in Sync (paid) and iCloud also work; these steps use the free
+> **Git** community plugin against your existing vault repo.
+
+1. **Create a scoped access token** on your git host (GitHub: Settings →
+   Developer settings → fine-grained PAT) limited to the vault repo, with
+   **Contents: read and write**. (A classic token with `repo` scope also works.)
+2. **Install the Obsidian Android app** and create a **new empty vault**.
+3. **Install the Git plugin:** Settings → Community plugins → Browse → *Git* →
+   Install → Enable.
+4. **Set authentication:** Git plugin settings → username = your git-host login,
+   password = the token.
+5. **Clone:** command palette → *"Git: Clone an existing remote repo"* → paste
+   the repo HTTPS URL. Only non-gitignored content arrives.
+6. **Re-install the plugin in the cloned vault if it shows zero plugins.** Because
+   `.obsidian/` is gitignored (by design — keeps the token out of the repo), a
+   fresh clone arrives with no plugins. Re-install + enable *Git* in the now-active
+   vault; it detects the existing `.git` (no re-clone).
+7. **Auto-sync:** Git plugin settings → enable *Pull on startup* + a
+   *Commit-and-sync interval* (e.g. 10 min) and/or *commit-and-sync on app
+   background*. Set the commit author to your identity.
+
+#### Stage B — A capture trigger
+
+Install **Templater** (Community plugins → Browse → *Templater* → Enable) and set
+its **Template folder** to `_templates`. The cloned vault already contains
+`_templates/draft.md`. Then pick one:
+
+**Option 1 — in-app (simplest, no extra apps).** Pin *"Templater: Create new note
+from template"* to the mobile toolbar (Settings → Appearance → Manage mobile
+toolbar), or run it from the command palette. Tap → pick `draft.md` → type the
+idea. The template auto-moves the note to `_shared/tasks/drafts/`. ~3 taps.
+
+**Option 2 — home-screen shortcut (fewest taps; fastest "out of head").**
+1. Install the **Advanced URI** plugin in the vault.
+2. Capture URI (URL-encode the vault name if it has spaces):
+   `obsidian://adv-uri?vault=<YOUR_VAULT_NAME>&commandid=templater-obsidian:create-new-note-from-template`
+3. Place it on the home screen with a free automation app (**Automate** or
+   Tasker): add an *Open URL / Browse URL* action with that URI, then drop its
+   shortcut widget on the home screen. One tap → Obsidian opens straight into a
+   new draft.
+
+#### Android caveats
+- **Default to Editing view on mobile.** If the default new-note view is
+  *Reading*, Templater folder-template code (beyond the title) may not run on
+  Android. Set the default to Editing / Live Preview.
+- **"Untitled" timing.** Obsidian may create the file as *Untitled* before
+  prompting for a name, so `tp.file.title` can briefly be "Untitled". Harmless
+  for idea-drop (the body holds the idea; triage reads the body) — rename only if
+  you care.
+- These are Android-storage quirks, unrelated to the desktop flow.
+
+### Verify
+Capture a throwaway draft on the phone, let it sync, and confirm on the desktop
+that the resulting commit contains **only** the new file under `tasks/drafts/`
+(no deletions — if you see deletions, the vault has a portability violation: run
+`forge-vault-symlinks.sh check`).
+
+---
+
 ## Stage 3 — Weekly triage (Friday, via `/forge-weekly`)
 
 Invoking `/forge-weekly` on a Friday afternoon runs the Quartermaster ceremony. **Step 2 of the ceremony is draft triage**: Petra walks you through each draft file across all draft folders, asking per-draft:
