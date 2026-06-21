@@ -501,13 +501,14 @@ build_pairs() {
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/forge-session-end.sh"         "$CLAUDE_DIR/hooks/forge-session-end.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/hooks/inject-current-time.sh"       "$CLAUDE_DIR/hooks/inject-current-time.sh"
 
-    # Scripts (6)
+    # Scripts (7)
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-context.sh"               "$CLAUDE_DIR/scripts/forge-context.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-permission-lint.sh"       "$CLAUDE_DIR/scripts/forge-permission-lint.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-classify-friction.sh"     "$CLAUDE_DIR/scripts/forge-classify-friction.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-snapshot.sh"         "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-vault-symlinks.sh"        "$CLAUDE_DIR/scripts/forge-vault-symlinks.sh"
 
     # Top-level files under ~/.claude/
     # statusline.sh + forge-tmux.conf are A2 (preserve) — power users tune them.
@@ -660,6 +661,7 @@ expected_perms() {
     "Bash($HOME/.claude/scripts/forge-calendar.sh *)"
     "Bash(~/.claude/scripts/forge-calendar.sh *)"
     "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-vault-symlinks.sh:*)"
     "Bash($HOME/.claude/statusline.sh:*)"
     "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
     "Bash($HOME/.claude/hooks/approval-notifier.sh:*)"

@@ -174,3 +174,26 @@ The vault includes templates for recurring file shapes. Source of truth lives in
 | `draft.md` | 5-second Obsidian capture for half-formed ideas. Lives in `{project}/tasks/drafts/`. Triaged into proper tasks at `/forge-weekly`. |
 | `friction-entry.md` | Snippet for appending a new entry to `_shared/friction-log.md` (no frontmatter — it's a section, not a file). Most users invoke `forge-context.sh append-friction` instead. |
 | `project-index.md` | Starter `INDEX.md` for a new project (about, decisions, tasks links, standing notes) |
+
+## Vault file portability (mobile-safe — a hard rule)
+
+The vault is synced across machines **and mobile** (Obsidian Android via git). Android/SAF storage is more restrictive than macOS/Linux, so two things must **never** be tracked in the vault repo:
+
+1. **Symlinks.** Android can't create them; the mobile client checks them out as "missing" and `obsidian-git` then commits their *deletion* on every backup — silently corrupting the repo for every other clone.
+2. **Non-portable filenames.** No `< > : " | ? *`, no trailing spaces/dots. Colons in particular are illegal on Android/exFAT and break the same way.
+
+**Rule:** vault files use cross-platform-safe names, and **no symlinks are tracked**.
+
+**Machine-local symlinks** (surfacing code repos / `~/.claude` logs into Obsidian — they point *outside* the vault to per-machine paths, so they were never portable anyway) are handled out-of-band:
+
+- gitignored (see the vault `.gitignore`),
+- listed in a portable manifest `_shared/_meta/vault-symlinks.tsv` (`<vault-relative-path><TAB><target, ~ = $HOME>`), which **excludes the configured private roots** (`VAULT_PRIVATE_ROOTS` in `forge.conf`, e.g. gitignored work areas) so no private path leaks into the synced repo or onto mobile,
+- regenerated per machine with `forge-vault-symlinks.sh`:
+
+```bash
+forge-vault-symlinks.sh generate   # recreate symlinks from the manifest (run after a fresh desktop clone)
+forge-vault-symlinks.sh capture    # rebuild the manifest from current symlinks (excludes VAULT_PRIVATE_ROOTS)
+forge-vault-symlinks.sh check      # lint: fail on any tracked symlink or non-portable filename
+```
+
+Run `forge-vault-symlinks.sh check` before a vault commit (or wire it into your pre-commit / session flow) to keep the rule enforced.
