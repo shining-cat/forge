@@ -53,7 +53,7 @@ Requires [Claude Code](https://claude.ai/code) + the [superpowers](https://githu
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — components, where things live, vault structure, friction framework, wellness coach internals
 - **[docs/ROLES.md](docs/ROLES.md)** — per-role specifications (Petra, Keeper, Refiner, Reviewer, Architect, Builder, Debugger, Release Manager, Toolsmith)
 - **[docs/PROJECT-STRUCTURE.md](docs/PROJECT-STRUCTURE.md)** — vault project layout (INDEX vs checkpoint, on-demand folders, template inventory, single-doc task workflow)
-- **[docs/draft-tasks.md](docs/draft-tasks.md)** — quick-capture lifecycle: 5-second Obsidian capture → weekly triage → on-demand refinement with Petra
+- **[docs/DRAFT-TASKS.md](docs/DRAFT-TASKS.md)** — quick-capture lifecycle: 5-second Obsidian capture → weekly triage → on-demand refinement with Petra
 - **[core/references/script-replacement-patterns.md](core/references/script-replacement-patterns.md)** — 5 patterns for converting recurrent friction into script-enforced mitigations
 - **[core/references/friction-classifier.md](core/references/friction-classifier.md)** — decision tree for routing friction shape → pattern slug
 

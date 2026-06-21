@@ -12,7 +12,7 @@ status: draft
 // created inside a tasks/drafts/ folder (e.g. by an Obsidian Folder Template
 // mapping for a per-project drafts folder, or by the user navigating there
 // first). Without this guard, project-scoped captures would be yanked back
-// to _shared. See docs/draft-tasks.md Stage 1 for the setup context.
+// to _shared. See docs/DRAFT-TASKS.md Stage 1 for the setup context.
 const currentFolder = tp.file.folder(true);
 if (!currentFolder.endsWith("tasks/drafts")) {
   await tp.file.move("_shared/tasks/drafts/" + tp.file.title);
