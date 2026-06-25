@@ -439,7 +439,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -5072,6 +5072,68 @@ PY
   echo "[add-recently-shipped] entry prepended to BACKLOG.md Recently shipped block ($size bytes)"
 }
 
+# ── Renderer: backlog cell glyphs ─────────────────────────────────────────
+# Maps (dimension, value) → a two-line table-cell string "<glyphs><br><label>"
+# for BACKLOG Effort/Impact/Status columns. Single source of truth for the
+# 7→4 status collapse. Echoes the cell on stdout (no trailing newline); the
+# subcommand wrapper adds the newline. Exits 2 on unknown dimension/value.
+# Theme constraint: every glyph must render on BOTH light and dark bg.
+# slot helper: one fixed-width centered box-slot (filled emoji or empty dot)
+_render_backlog_slot() {
+  printf '<span style="display:inline-block;width:1.3em;text-align:center">%s</span>' "$1"
+}
+
+render_backlog_cell() {
+  local dim="$1" val="$2" v fill letter n out i
+  case "$dim" in
+    effort|impact)
+      if [ "$dim" = "effort" ]; then fill="🟦"; else fill="🟪"; fi
+      v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
+      case "$dim/$v" in
+        effort/S) n=1; letter=S ;;
+        effort/M) n=2; letter=M ;;
+        effort/L) n=3; letter=L ;;
+        impact/L) n=1; letter=L ;;
+        impact/M) n=2; letter=M ;;
+        impact/H) n=3; letter=H ;;
+        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=S|M|L, impact=L|M|H" >&2; exit 2 ;;
+      esac
+      out='<span style="white-space:nowrap;font-size:0.85em">'
+      for i in 1 2 3; do
+        if [ "$i" -le "$n" ]; then
+          out="$out$(_render_backlog_slot "$fill")"
+        else
+          out="$out$(_render_backlog_slot "·")"
+        fi
+      done
+      out="$out</span><br>$letter"
+      printf '%s' "$out"
+      ;;
+    status)
+      v="$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')"
+      case "$v" in
+        active|underway|partial) printf '🟢<br>active' ;;
+        next)                    printf '🟠<br>next' ;;
+        open|needs-triage)       printf '⚪<br>open' ;;
+        blocked|dormant|low/fuzzy|low-fuzzy|fuzzy) printf '🔴<br>blocked' ;;
+        *) echo "[render-backlog-cell] FAIL: unknown status '$val' (expected active|next|open|blocked or a granular alias)" >&2; exit 2 ;;
+      esac ;;
+    *)
+      echo "[render-backlog-cell] FAIL: dimension must be effort|impact|status (got '$dim')" >&2; exit 2 ;;
+  esac
+}
+
+# ── Subcommand: render-backlog-cell (Tier 1 — pure stdout, no file write) ──
+do_render_backlog_cell() {
+  local dim="${1:-}" val="${2:-}"
+  if [ -z "$dim" ] || [ -z "$val" ]; then
+    echo "[render-backlog-cell] FAIL: usage: render-backlog-cell <effort|impact|status> <value>" >&2
+    exit 2
+  fi
+  render_backlog_cell "$dim" "$val"
+  printf '\n'
+}
+
 # ── Subcommand: update-backlog-row (Tier 1 — table row Status/Notes edit) ──
 # Locates a BACKLOG row whose Task column contains [[<wikilink-slug>]] and
 # replaces its Status and/or Notes column. Preserves Effort and Impact and
@@ -5080,13 +5142,15 @@ PY
 #
 # Required: --task <wikilink-slug>; at least one of --status / --notes.
 do_update_backlog_row() {
-  local slug="" new_status="" new_notes=""
-  local status_set=0 notes_set=0
+  local slug="" new_status="" new_notes="" new_effort="" new_impact=""
+  local status_set=0 notes_set=0 effort_set=0 impact_set=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --task)   slug="$2"; shift 2 ;;
       --status) new_status="$2"; status_set=1; shift 2 ;;
       --notes)  new_notes="$2"; notes_set=1; shift 2 ;;
+      --effort) new_effort="$2"; effort_set=1; shift 2 ;;
+      --impact) new_impact="$2"; impact_set=1; shift 2 ;;
       *) echo "[update-backlog-row] FAIL: unknown arg '$1'" >&2; exit 2 ;;
     esac
   done
@@ -5094,8 +5158,8 @@ do_update_backlog_row() {
   if [ -z "$slug" ]; then
     echo "[update-backlog-row] FAIL: --task required" >&2; exit 2
   fi
-  if [ "$status_set" -eq 0 ] && [ "$notes_set" -eq 0 ]; then
-    echo "[update-backlog-row] FAIL: at least one of --status or --notes required" >&2; exit 2
+  if [ "$status_set" -eq 0 ] && [ "$notes_set" -eq 0 ] && [ "$effort_set" -eq 0 ] && [ "$impact_set" -eq 0 ]; then
+    echo "[update-backlog-row] FAIL: at least one of --status/--notes/--effort/--impact required" >&2; exit 2
   fi
 
   local resolved project vault_dir backlog
@@ -5113,6 +5177,22 @@ do_update_backlog_row() {
     exit 2
   fi
 
+  # Render glyph cells BEFORE the splice. Declare local then assign on the
+  # next simple command so errexit sees render_backlog_cell's exit code
+  # (a `local x=$(cmd)` would mask it).
+  if [ "$status_set" -eq 1 ]; then
+    local status_cell; status_cell="$(render_backlog_cell status "$new_status")" || exit 2
+    new_status="$status_cell"
+  fi
+  if [ "$effort_set" -eq 1 ]; then
+    local effort_cell; effort_cell="$(render_backlog_cell effort "$new_effort")" || exit 2
+    new_effort="$effort_cell"
+  fi
+  if [ "$impact_set" -eq 1 ]; then
+    local impact_cell; impact_cell="$(render_backlog_cell impact "$new_impact")" || exit 2
+    new_impact="$impact_cell"
+  fi
+
   local tmp="$backlog.tmp.$$"
   # `set -e` would abort the whole script if python exits non-zero; capture
   # the exit code via an `if` block (which is allowed under errexit) so we
@@ -5120,6 +5200,8 @@ do_update_backlog_row() {
   local rc=0
   if SLUG="$slug" NEW_STATUS="$new_status" NEW_NOTES="$new_notes" \
        STATUS_SET="$status_set" NOTES_SET="$notes_set" \
+       NEW_EFFORT="$new_effort" NEW_IMPACT="$new_impact" \
+       EFFORT_SET="$effort_set" IMPACT_SET="$impact_set" \
        python3 - "$backlog" > "$tmp" <<'PY'
 import os, sys
 path = sys.argv[1]
@@ -5128,6 +5210,10 @@ new_status = os.environ["NEW_STATUS"]
 new_notes = os.environ["NEW_NOTES"]
 status_set = os.environ["STATUS_SET"] == "1"
 notes_set = os.environ["NOTES_SET"] == "1"
+new_effort = os.environ["NEW_EFFORT"]
+new_impact = os.environ["NEW_IMPACT"]
+effort_set = os.environ["EFFORT_SET"] == "1"
+impact_set = os.environ["IMPACT_SET"] == "1"
 
 needle = f"[[{slug}]]"
 in_details = False
@@ -5157,6 +5243,10 @@ with open(path, 'r', encoding='utf-8') as fh:
                 parts = parts[:-1]
             # Expect 5 columns: Task | Effort | Impact | Status | Notes
             if len(parts) >= 5:
+                if effort_set:
+                    parts[1] = f" {new_effort} "
+                if impact_set:
+                    parts[2] = f" {new_impact} "
                 if status_set:
                     parts[3] = f" {new_status} "
                 if notes_set:
@@ -5242,9 +5332,10 @@ case "$SUBCMD" in
   set-task-status)         do_set_task_status "${@:2}" ;;
   bump-backlog-header)     do_bump_backlog_header "${@:2}" ;;
   add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
+  render-backlog-cell)     do_render_backlog_cell "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row}" >&2
     exit 1
     ;;
 esac

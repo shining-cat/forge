@@ -64,13 +64,13 @@ EOF
 echo "Check 1 — status-only update"
 setup
 plant_backlog
-out=$("$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --status "in-progress" 2>&1)
+out=$("$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --status "underway" 2>&1)
 rc=$?
 [ "$rc" -eq 0 ] && { echo "  ✓ exit 0"; PASS=$((PASS+1)); } \
   || { echo "  ✗ exit $rc (out: $out)"; FAIL=$((FAIL+1)); }
 target_line=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
-echo "$target_line" | grep -q "in-progress" \
-  && { echo "  ✓ status updated to in-progress"; PASS=$((PASS+1)); } \
+echo "$target_line" | grep -q "🟢<br>active" \
+  && { echo "  ✓ status updated to active glyph"; PASS=$((PASS+1)); } \
   || { echo "  ✗ status not updated (got: $target_line)"; FAIL=$((FAIL+1)); }
 echo "$target_line" | grep -q "original notes here" \
   && { echo "  ✓ notes preserved"; PASS=$((PASS+1)); } \
@@ -103,11 +103,11 @@ setup
 plant_backlog
 "$FORGE_CONTEXT" update-backlog-row \
   --task "2026-06-08-target-row" \
-  --status "shipped" \
+  --status "blocked" \
   --notes "PR #99 merged — closes this." >/dev/null 2>&1
 target_line=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
-echo "$target_line" | grep -q "shipped" \
-  && { echo "  ✓ status = shipped"; PASS=$((PASS+1)); } \
+echo "$target_line" | grep -q "🔴<br>blocked" \
+  && { echo "  ✓ status = blocked glyph"; PASS=$((PASS+1)); } \
   || { echo "  ✗ status not updated"; FAIL=$((FAIL+1)); }
 echo "$target_line" | grep -q "PR #99 merged" \
   && { echo "  ✓ notes updated to PR #99 line"; PASS=$((PASS+1)); } \
@@ -125,7 +125,7 @@ echo ""
 echo "Check 4 — row not found → exit 2"
 setup
 plant_backlog
-out=$("$FORGE_CONTEXT" update-backlog-row --task "9999-99-99-nonexistent" --status "shipped" 2>&1)
+out=$("$FORGE_CONTEXT" update-backlog-row --task "9999-99-99-nonexistent" --status "blocked" 2>&1)
 rc=$?
 [ "$rc" -eq 2 ] && { echo "  ✓ exit 2 on missing row"; PASS=$((PASS+1)); } \
   || { echo "  ✗ exit $rc (expected 2)"; FAIL=$((FAIL+1)); }
@@ -139,7 +139,7 @@ echo ""
 echo "Check 5 — historical row inside <details> NOT matched"
 setup
 plant_backlog
-out=$("$FORGE_CONTEXT" update-backlog-row --task "2026-06-04-history-entry" --status "shipped" --notes "no-op" 2>&1)
+out=$("$FORGE_CONTEXT" update-backlog-row --task "2026-06-04-history-entry" --status "blocked" --notes "no-op" 2>&1)
 rc=$?
 [ "$rc" -eq 2 ] && { echo "  ✓ exit 2 (history-block row not matched)"; PASS=$((PASS+1)); } \
   || { echo "  ✗ exit $rc (history-block row was mutated!)"; FAIL=$((FAIL+1)); }
@@ -165,6 +165,33 @@ out=$("$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" 2>&1)
 rc=$?
 [ "$rc" -eq 2 ] && { echo "  ✓ missing both --status and --notes → exit 2"; PASS=$((PASS+1)); } \
   || { echo "  ✗ exit $rc (expected 2 — no fields to change)"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""; echo "Check 7 — effort/impact render via flags"
+setup; plant_backlog
+"$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --effort "L" --impact "L" >/dev/null 2>&1
+tl=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
+echo "$tl" | grep -q 'font-size:0.85em' && echo "$tl" | grep -q '🟦' && echo "$tl" | grep -q '<br>L' \
+  && { echo "  ✓ effort rendered (span + 🟦 + <br>L)"; PASS=$((PASS+1)); } || { echo "  ✗ effort (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q '🟪' && echo "$tl" | grep -q '·' && echo "$tl" | grep -q '<br>L' \
+  && { echo "  ✓ impact rendered (🟪 + dot + <br>L)"; PASS=$((PASS+1)); } || { echo "  ✗ impact (got: $tl)"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""; echo "Check 8 — effort-only update preserves impact"
+setup; plant_backlog
+"$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --effort "L" >/dev/null 2>&1
+tl=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
+echo "$tl" | grep -q '🟦' && echo "$tl" | grep -q '<br>L' \
+  && { echo "  ✓ effort rendered (🟦 + <br>L)"; PASS=$((PASS+1)); } || { echo "  ✗ effort (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q "| H |" && { echo "  ✓ impact preserved (raw H)"; PASS=$((PASS+1)); } || { echo "  ✗ impact not preserved (got: $tl)"; FAIL=$((FAIL+1)); }
+teardown
+echo ""; echo "Check 9 — impact-only update preserves effort"
+setup; plant_backlog
+"$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --impact "H" >/dev/null 2>&1
+tl=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
+echo "$tl" | grep -q '🟪' && echo "$tl" | grep -q '<br>H' \
+  && { echo "  ✓ impact rendered (🟪 + <br>H)"; PASS=$((PASS+1)); } || { echo "  ✗ impact (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q "| M |" && { echo "  ✓ effort preserved (raw M)"; PASS=$((PASS+1)); } || { echo "  ✗ effort not preserved (got: $tl)"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""
