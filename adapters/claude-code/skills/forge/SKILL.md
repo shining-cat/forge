@@ -321,6 +321,8 @@ For workflows that genuinely benefit from parallel collaboration with inter-agen
 
 **Substrate guard.** Team spawning requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Claude Code v2.1.32+) and tmux. If session entry reported "Team substrate: missing", Pattern A still runs — but as inline sequential subagent dispatches, NOT `TeamCreate`. Attempting `TeamCreate` without substrate cancels with "iTerm2 setup required" or equivalent.
 
+**First-use panes notice.** Before the first Pattern A team spawn in a session, the one-time split-panes notice is handled via `~/.claude/scripts/forge-context.sh teammate-notice` (self-gating; surface stdout verbatim, empty = omit) — see `references/agent-teams-mode.md`.
+
 **Before spawning OR running Pattern A inline — load `references/agent-teams-mode.md`.** That file holds:
 - Pattern A trigger heuristic (weighted score, ≥ 3 → ask the user)
 - Tiered dispatch protocol (Tier 1 → Tier 2 header relay → Tier 3, anti-anchoring rationale)

@@ -8,17 +8,25 @@ set -euo pipefail
 HOME_DIR="$HOME"
 
 # Resolve marker path from forge.conf VAULT_PATH
-# Allow tests to override the config path
+# Allow tests to override the config path.
+# teammate-notice is purely HOME-relative (sentinel + ~/.claude/settings.json)
+# and needs neither forge.conf nor VAULT_PATH, so it is exempt from the config
+# gate — it must work in vault-less contexts (and tests override HOME alone).
 FORGE_CONF="${FORGE_CONF_OVERRIDE:-$HOME_DIR/.claude/forge.conf}"
-if [ ! -f "$FORGE_CONF" ]; then
-  echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
-  exit 1
+if [ "${1:-}" != "teammate-notice" ]; then
+  if [ ! -f "$FORGE_CONF" ]; then
+    echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
+    exit 1
+  fi
+  VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
+  if [ -z "$VAULT_PATH" ]; then
+    echo "[forge-context] ERROR: VAULT_PATH not set in $FORGE_CONF" >&2
+    exit 1
+  fi
 fi
-VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
-if [ -z "$VAULT_PATH" ]; then
-  echo "[forge-context] ERROR: VAULT_PATH not set in $FORGE_CONF" >&2
-  exit 1
-fi
+# Empty default keeps the vault-derived paths below valid under `set -u` for the
+# config-exempt teammate-notice path (which never reads any of them).
+VAULT_PATH="${VAULT_PATH:-}"
 MARKER="$VAULT_PATH/_shared/forge-active"
 STOP_COUNT_FILE="$VAULT_PATH/_shared/forge-session-stops"
 FRICTION_LOG="$VAULT_PATH/_shared/friction-log.md"
@@ -439,7 +447,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -2568,6 +2576,29 @@ do_weekly_wrap_line() {
   due="$(do_weekly_wrap_due)"
   [ "$due" = "due" ] || return 0
   echo "Weekly wrap: due — end of the week. Run the weekly wrap before logging off? \`/forge-weekly\`"
+}
+
+# ── Subcommand: teammate-notice (first-use Pattern-A panes notice) ─────────
+# Self-gating, deterministic (Petra surfaces stdout verbatim, like weekly-wrap-line).
+# Prints the one-time notice + creates the sentinel ONLY when all hold:
+#   (1) sentinel ~/.claude/forge-teammate-notice-shown absent
+#   (2) running inside tmux ($TMUX non-empty)
+#   (3) teammateMode resolves to panes (auto|tmux) in ~/.claude/settings.json
+# Otherwise prints nothing (exit 0). HOME-relative so tests can override HOME.
+do_teammate_notice() {
+  local sentinel="$HOME/.claude/forge-teammate-notice-shown"
+  [ -f "$sentinel" ] && return 0
+  [ -z "${TMUX:-}" ] && return 0
+  local settings="$HOME/.claude/settings.json" mode=""
+  if [ -f "$settings" ]; then
+    mode="$(grep -o '"teammateMode"[[:space:]]*:[[:space:]]*"[^"]*"' "$settings" | head -1 | sed -E 's/.*"teammateMode"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+  fi
+  case "$mode" in
+    auto|tmux) ;;            # panes will render — proceed
+    *) return 0 ;;           # in-process / iterm2 / unset → no panes, stay silent
+  esac
+  printf '%s\n' "Petra: First time fanning out parallel agents — they'll open as split-panes in your tmux window, one per agent. Want them tucked into the background list instead? Say so and I'll flip a single setting with you (\`teammateMode\` → \`in-process\`)."
+  : > "$sentinel" 2>/dev/null || true
 }
 
 # ── Subcommand: mark-weekly-wrap-done ─────────────────────────────────
@@ -5300,6 +5331,7 @@ case "$SUBCMD" in
   wrap-up-state)       do_wrap_up_state ;;
   weekly-wrap-due)     do_weekly_wrap_due ;;
   weekly-wrap-line)    do_weekly_wrap_line ;;
+  teammate-notice)        do_teammate_notice ;;
   mark-weekly-wrap-done) do_mark_weekly_wrap_done ;;
   check-install)       do_check_install ;;
   rollback-install)    do_rollback_install "${@:2}" ;;
@@ -5335,7 +5367,7 @@ case "$SUBCMD" in
   render-backlog-cell)     do_render_backlog_cell "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row}" >&2
     exit 1
     ;;
 esac

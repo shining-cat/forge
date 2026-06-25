@@ -45,7 +45,7 @@ The forge is assembled from Claude Code building blocks, in two layers: **skills
 | `forge-credential-guard.sh` | Hook (PreToolUse on Bash) | Asks before a content-printing verb inspects a credential-bearing file — backstop against secret leaks into the transcript. Always-on (not marker-gated) |
 | `forge-session-end.sh` | Hook (SessionEnd) | Clears the `forge-active` marker on session close |
 | `inject-current-time.sh` | Hook (UserPromptSubmit) | Injects authoritative `[Current local time: ...]` + the expected block-header prefix into every prompt |
-| `forge-context.sh` | Script (multi-subcommand) | The runtime workhorse — `recover`, `gate`, `post-tool`, `stop`, `vault-sync`, `review-sync`, `substrate-check`, `framework-budget`, `next-meeting`, `wrap-up-state`, `append-friction`, `resolve-task`, `render-backlog-cell`, `rollback-install`, etc. ~30 subcommands |
+| `forge-context.sh` | Script (multi-subcommand) | The runtime workhorse — `recover`, `gate`, `post-tool`, `stop`, `vault-sync`, `review-sync`, `substrate-check`, `framework-budget`, `next-meeting`, `wrap-up-state`, `append-friction`, `resolve-task`, `render-backlog-cell`, `teammate-notice`, `rollback-install`, etc. ~30 subcommands |
 | `forge-calendar.sh` | Script | gws-calendar wrapper — `entry-fetch`, `delta-check`, `next-meeting`, `in-meeting`. Underpins Petra meeting-awareness + wellness schedule-aware defer |
 | `forge-classify-friction.sh` | Script | Keyword router: friction shape → pattern slug + action-ref. Powers the Refiner's `append-friction` handoff |
 | `forge-cost-snapshot.sh` | Script | Reads transcript metrics, emits `suggest_compact: true/false` for proactive `/compact` discipline |
@@ -68,7 +68,8 @@ The forge is assembled from Claude Code building blocks, in two layers: **skills
 | `~/.claude/scripts/` | Maintenance + runtime scripts (`forge-context.sh`, `forge-calendar.sh`, `forge-classify-friction.sh`, `forge-cost-snapshot.sh`, `forge-gap-since-last-signal.sh`, `forge-permission-lint.sh`). `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
 | `~/.claude/statusline.sh` | Claude Code statusline component — deploys to `~/.claude/` root (not `scripts/`) to match `settings.json` `statusLine.command` path |
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
-| `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement |
+| `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement. Install defaults `teammateMode` to `"auto"` (Pattern A agent teams open as tmux split-panes) only when the key is absent — a deliberate user value is never clobbered |
+| `~/.claude/forge-teammate-notice-shown` | Sentinel for the one-time Pattern A split-panes notice. Created by `forge-context.sh teammate-notice` the first time the panes notice fires; its presence keeps the notice silent forever after |
 | `${VAULT_PATH}/_shared/wellness-preferences.json` | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |
 | `~/.claude/forge.conf` | Per-install configuration (vault path, repo path, model assignments) |
 | `~/.claude/forge-shell-init.sh` | Shell wrapper sourced by the user's `~/.zshrc` / `~/.bashrc`. Wraps interactive `claude` invocations in tmux so Pattern A agent teams can spawn as panes without user pre-setup. Auto-bypasses when not interactive, already inside tmux, or tmux is missing. Manual bypass: `FORGE_NO_TMUX_WRAP=1` |
