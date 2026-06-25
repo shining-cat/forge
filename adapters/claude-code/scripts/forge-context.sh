@@ -447,7 +447,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -466,6 +466,10 @@ case "$SUBCMD_PEEK" in
     # the marker themselves (via extract_marker_project + get_vault_dir) so
     # they can write through the hook's pre-existing allowlist without
     # double-resolution. Each rejects when no active project is resolvable.
+    # vault-rm — guarded deletion under VAULT_PATH. Needs VAULT_PATH (so it
+    # stays under the config gate above) but NOT a marker / active project: it
+    # operates on an explicit path argument, so it must skip the marker-exit
+    # guards rather than silently `exit 0` when Forge isn't active.
     ;;
   append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
     # No stdin read. Guards still apply — these need a resolved project.
@@ -4775,6 +4779,38 @@ do_new_task() {
   echo "[new-task] $rel created"
 }
 
+# ── Subcommand: vault-rm (guarded under-vault deletion) ─────────────────
+# Deletes a path that resolves to a real location strictly UNDER VAULT_PATH.
+# Routed through the (already-allowlisted) forge-context.sh entrypoint so SAFE
+# vault deletions run without a permission prompt — instead of the assistant
+# wasting turns on cosmetic `rm` permutations after a denial.
+#
+# Guards (each FAIL → exit 2): arg + VAULT_PATH required; path must exist; the
+# target's canonical real path (symlinks resolved) must be strictly under the
+# vault root's canonical real path and never equal to it; and the target must
+# not BE or CONTAIN a `.git` repo. Resolving BOTH sides with realpath before the
+# prefix check is what defeats symlink escape (a vault-internal symlink to an
+# outside path resolves outside → containment rejects it).
+do_vault_rm() {
+  local arg="${1:-}"
+  [ -z "$arg" ] && { echo "[vault-rm] FAIL: usage: vault-rm <path-under-vault>" >&2; exit 2; }
+  [ -z "${VAULT_PATH:-}" ] && { echo "[vault-rm] FAIL: VAULT_PATH unset" >&2; exit 2; }
+  [ -e "$arg" ] || { echo "[vault-rm] FAIL: path does not exist: $arg" >&2; exit 2; }
+  local target vroot
+  target="$(realpath "$arg" 2>/dev/null)" || { echo "[vault-rm] FAIL: cannot resolve target" >&2; exit 2; }
+  vroot="$(realpath "$VAULT_PATH" 2>/dev/null)" || { echo "[vault-rm] FAIL: cannot resolve VAULT_PATH" >&2; exit 2; }
+  [ "$target" = "$vroot" ] && { echo "[vault-rm] FAIL: refusing to delete the vault root" >&2; exit 2; }
+  case "$target/" in
+    "$vroot"/*) ;;
+    *) echo "[vault-rm] FAIL: target not under VAULT_PATH: $target" >&2; exit 2 ;;
+  esac
+  if [ "$(basename "$target")" = ".git" ] || [ -d "$target/.git" ] \
+     || { [ -d "$target" ] && [ -n "$(find "$target" -name .git -type d -print -quit 2>/dev/null)" ]; }; then
+    echo "[vault-rm] FAIL: refusing — target is/contains a .git repo" >&2; exit 2
+  fi
+  rm -rf -- "$target" && echo "[vault-rm] removed: ${target#$vroot/}"
+}
+
 # ── Subcommand: set-task-status (Tier 1 — frontmatter edit) ─────────────
 # Updates `status:` (and refreshes `updated:`) on an existing task. If
 # --add-progress is given, appends a timestamped line to the ## Progress
@@ -5366,8 +5402,9 @@ case "$SUBCMD" in
   add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
   render-backlog-cell)     do_render_backlog_cell "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
+  vault-rm)                do_vault_rm "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm}" >&2
     exit 1
     ;;
 esac

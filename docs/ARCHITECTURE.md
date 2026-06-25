@@ -45,7 +45,7 @@ The forge is assembled from Claude Code building blocks, in two layers: **skills
 | `forge-credential-guard.sh` | Hook (PreToolUse on Bash) | Asks before a content-printing verb inspects a credential-bearing file — backstop against secret leaks into the transcript. Always-on (not marker-gated) |
 | `forge-session-end.sh` | Hook (SessionEnd) | Clears the `forge-active` marker on session close |
 | `inject-current-time.sh` | Hook (UserPromptSubmit) | Injects authoritative `[Current local time: ...]` + the expected block-header prefix into every prompt |
-| `forge-context.sh` | Script (multi-subcommand) | The runtime workhorse — `recover`, `gate`, `post-tool`, `stop`, `vault-sync`, `review-sync`, `substrate-check`, `framework-budget`, `next-meeting`, `wrap-up-state`, `append-friction`, `resolve-task`, `render-backlog-cell`, `teammate-notice`, `rollback-install`, etc. ~30 subcommands |
+| `forge-context.sh` | Script (multi-subcommand) | The runtime workhorse — `recover`, `gate`, `post-tool`, `stop`, `vault-sync`, `review-sync`, `substrate-check`, `framework-budget`, `next-meeting`, `wrap-up-state`, `append-friction`, `resolve-task`, `render-backlog-cell`, `teammate-notice`, `rollback-install`, `vault-rm`, etc. ~30 subcommands |
 | `forge-calendar.sh` | Script | gws-calendar wrapper — `entry-fetch`, `delta-check`, `next-meeting`, `in-meeting`. Underpins Petra meeting-awareness + wellness schedule-aware defer |
 | `forge-classify-friction.sh` | Script | Keyword router: friction shape → pattern slug + action-ref. Powers the Refiner's `append-friction` handoff |
 | `forge-cost-snapshot.sh` | Script | Reads transcript metrics, emits `suggest_compact: true/false` for proactive `/compact` discipline |
