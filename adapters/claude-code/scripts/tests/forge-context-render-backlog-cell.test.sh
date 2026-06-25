@@ -13,9 +13,9 @@ chk "effort M" "${O}$(slot 🟦)$(slot 🟦)$(slot ·)${C}<br>M" "$("$FC" render
 chk "effort L" "${O}$(slot 🟦)$(slot 🟦)$(slot 🟦)${C}<br>L" "$("$FC" render-backlog-cell effort L)"
 chk "effort lc m" "${O}$(slot 🟦)$(slot 🟦)$(slot ·)${C}<br>M" "$("$FC" render-backlog-cell effort m)"
 # impact
-chk "impact L" "${O}$(slot 🟪)$(slot ·)$(slot ·)${C}<br>L" "$("$FC" render-backlog-cell impact L)"
+chk "impact S" "${O}$(slot 🟪)$(slot ·)$(slot ·)${C}<br>S" "$("$FC" render-backlog-cell impact S)"
 chk "impact M" "${O}$(slot 🟪)$(slot 🟪)$(slot ·)${C}<br>M" "$("$FC" render-backlog-cell impact M)"
-chk "impact H" "${O}$(slot 🟪)$(slot 🟪)$(slot 🟪)${C}<br>H" "$("$FC" render-backlog-cell impact H)"
+chk "impact L" "${O}$(slot 🟪)$(slot 🟪)$(slot 🟪)${C}<br>L" "$("$FC" render-backlog-cell impact L)"
 # status (incl 7→4 collapse + new ⚪ open)
 chk "status active"          '🟢<br>active'  "$("$FC" render-backlog-cell status active)"
 chk "status underway→active" '🟢<br>active'  "$("$FC" render-backlog-cell status underway)"
@@ -29,7 +29,7 @@ chk "status low/fuzzy→blocked" '🔴<br>blocked' "$("$FC" render-backlog-cell 
 chk "status fuzzy→blocked"   '🔴<br>blocked' "$("$FC" render-backlog-cell status fuzzy)"
 # error paths
 "$FC" render-backlog-cell effort Q >/dev/null 2>&1; [ $? -eq 2 ] && { echo "  ✓ bad effort exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ bad effort"; FAIL=$((FAIL+1)); }
-"$FC" render-backlog-cell impact S >/dev/null 2>&1; [ $? -eq 2 ] && { echo "  ✓ impact rejects S exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ impact S"; FAIL=$((FAIL+1)); }
+"$FC" render-backlog-cell impact H >/dev/null 2>&1; [ $? -eq 2 ] && { echo "  ✓ impact rejects H exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ impact H"; FAIL=$((FAIL+1)); }
 "$FC" render-backlog-cell status bogus >/dev/null 2>&1; [ $? -eq 2 ] && { echo "  ✓ bad status exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ bad status"; FAIL=$((FAIL+1)); }
 "$FC" render-backlog-cell nope M >/dev/null 2>&1; [ $? -eq 2 ] && { echo "  ✓ bad dim exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ bad dim"; FAIL=$((FAIL+1)); }
 "$FC" render-backlog-cell effort >/dev/null 2>&1; [ $? -eq 2 ] && { echo "  ✓ missing value exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ missing value"; FAIL=$((FAIL+1)); }

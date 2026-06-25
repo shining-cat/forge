@@ -5160,10 +5160,10 @@ render_backlog_cell() {
         effort/S) n=1; letter=S ;;
         effort/M) n=2; letter=M ;;
         effort/L) n=3; letter=L ;;
-        impact/L) n=1; letter=L ;;
+        impact/S) n=1; letter=S ;;
         impact/M) n=2; letter=M ;;
-        impact/H) n=3; letter=H ;;
-        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=S|M|L, impact=L|M|H" >&2; exit 2 ;;
+        impact/L) n=3; letter=L ;;
+        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=S|M|L, impact=S|M|L" >&2; exit 2 ;;
       esac
       out='<span style="white-space:nowrap;font-size:0.85em">'
       for i in 1 2 3; do
