@@ -77,6 +77,8 @@ Use Obsidian wikilinks for task references: `[[YYYY-MM-DD-task-name]]`. Reuse th
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) are Keeper's call — don't auto-generate.
 
+**Effort/Impact/Status cells are rendered glyph cells — never hand-type emoji.** Use `forge-context.sh render-backlog-cell <effort|impact|status> <value>` (or pass `--effort`/`--impact`/`--status` to `update-backlog-row`); the renderer is the single source of truth for the glyph scheme and the 7→4 status collapse. See core/roles/keeper.md Duty 5 for the full scheme.
+
 ### Duty 6 — Auto-archive resolved tasks (session entry)
 
 `forge-context.sh do_recover` runs `do_auto_archive` automatically at every session entry. The function scans `tasks/open/**/*.md` (under both the active project's vault dir and `_shared/`) and routes any file with frontmatter `status: resolved` to `tasks/resolved/`:

@@ -82,6 +82,8 @@ Refresh at: task add (new file anywhere under `tasks/open/`, including umbrella 
 
 Not a kanban — single table per cluster section, no swim lanes. The judgment columns (Effort, Impact, Status) require curation — this duty is genuinely Keeper work, not an auto-generated artifact.
 
+**Color-coded judgment columns.** Effort/Impact/Status cells are rendered glyph cells — never hand-typed emoji. Use `forge-context.sh render-backlog-cell <effort|impact|status> <value>`, or pass `--effort`/`--impact`/`--status` to `update-backlog-row`; the renderer is the single source of truth for the glyph scheme and the 7→4 status collapse. Scheme: Effort 🟦 (S/M/L by block count), Impact 🟪 (L/M/H by block count), Status 🟢 active · 🟠 next · open (no dot) · 🔴 blocked. The Status glance column collapses granular task statuses (underway/partial→active; needs-triage→open; dormant·low/fuzzy→blocked); the precise status stays in each task's frontmatter. Cells are two-line via `<br>` (glyph over label) and the column is center-aligned. Theme constraint: every glyph must render on both light and dark backgrounds — this is why `open` has no dot and the bars carry no empty track.
+
 ### Duty 6 — Auto-archive resolved tasks (session entry)
 
 At every session entry, batch-move task files with frontmatter `status: resolved` from `tasks/open/` to `tasks/resolved/`. Routing by file shape:
