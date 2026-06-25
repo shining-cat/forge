@@ -107,7 +107,7 @@ Three coexisting shapes, each fitting a different work pattern:
 - Filenames carry the **creation date** as a `YYYY-MM-DD-<slug>.md` prefix.
 - **Filenames are never renamed** — recency lives in the `updated:` frontmatter field, not the filename.
 - BACKLOG sorts rows within each cluster by `updated:` (most recent first); the Keeper bumps `updated:` when adding a `## Progress` entry to a task.
-- BACKLOG Effort/Impact/Status cells are rendered glyph cells (`<glyph><br><label>`, center-aligned), never hand-typed: Effort 🟦 (S/M/L by block count), Impact 🟪 (L/M/H by block count), Status 🟢 active · 🟠 next · open (no dot) · 🔴 blocked. `forge-context.sh render-backlog-cell` is the single source of truth for the scheme and the 7→4 status collapse; every glyph must render on both light and dark backgrounds. See keeper.md Duty 5 for the full rule.
+- BACKLOG Effort/Impact/Status cells are rendered glyph cells, never hand-typed: Effort 🟦 / Impact 🟪 as a three-slot lane (filled boxes left, empty = centered dot `·`, letter beneath); Status 🟢 active · 🟠 next · ⚪ open · 🔴 blocked. `forge-context.sh render-backlog-cell` is the single source of truth (+ the 7→4 status collapse). The lane uses small inline-HTML spans (Obsidian polish; emoji content degrades gracefully off-Obsidian); every glyph works on light + dark. See keeper.md Duty 5.
 - Wikilinks resolve by basename across the vault — keep filenames unique vault-wide. Inside an umbrella subfolder, sub-task files stay descriptive (e.g. `A-wrap-up-timing.md`, not `A.md`) for the same reason.
 
 ### Umbrella subfolder layout
