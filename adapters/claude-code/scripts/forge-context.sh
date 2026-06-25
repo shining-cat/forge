@@ -5130,13 +5130,15 @@ do_render_backlog_cell() {
 #
 # Required: --task <wikilink-slug>; at least one of --status / --notes.
 do_update_backlog_row() {
-  local slug="" new_status="" new_notes=""
-  local status_set=0 notes_set=0
+  local slug="" new_status="" new_notes="" new_effort="" new_impact=""
+  local status_set=0 notes_set=0 effort_set=0 impact_set=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --task)   slug="$2"; shift 2 ;;
       --status) new_status="$2"; status_set=1; shift 2 ;;
       --notes)  new_notes="$2"; notes_set=1; shift 2 ;;
+      --effort) new_effort="$2"; effort_set=1; shift 2 ;;
+      --impact) new_impact="$2"; impact_set=1; shift 2 ;;
       *) echo "[update-backlog-row] FAIL: unknown arg '$1'" >&2; exit 2 ;;
     esac
   done
@@ -5144,8 +5146,8 @@ do_update_backlog_row() {
   if [ -z "$slug" ]; then
     echo "[update-backlog-row] FAIL: --task required" >&2; exit 2
   fi
-  if [ "$status_set" -eq 0 ] && [ "$notes_set" -eq 0 ]; then
-    echo "[update-backlog-row] FAIL: at least one of --status or --notes required" >&2; exit 2
+  if [ "$status_set" -eq 0 ] && [ "$notes_set" -eq 0 ] && [ "$effort_set" -eq 0 ] && [ "$impact_set" -eq 0 ]; then
+    echo "[update-backlog-row] FAIL: at least one of --status/--notes/--effort/--impact required" >&2; exit 2
   fi
 
   local resolved project vault_dir backlog
@@ -5163,6 +5165,22 @@ do_update_backlog_row() {
     exit 2
   fi
 
+  # Render glyph cells BEFORE the splice. Declare local then assign on the
+  # next simple command so errexit sees render_backlog_cell's exit code
+  # (a `local x=$(cmd)` would mask it).
+  if [ "$status_set" -eq 1 ]; then
+    local status_cell; status_cell="$(render_backlog_cell status "$new_status")" || exit 2
+    new_status="$status_cell"
+  fi
+  if [ "$effort_set" -eq 1 ]; then
+    local effort_cell; effort_cell="$(render_backlog_cell effort "$new_effort")" || exit 2
+    new_effort="$effort_cell"
+  fi
+  if [ "$impact_set" -eq 1 ]; then
+    local impact_cell; impact_cell="$(render_backlog_cell impact "$new_impact")" || exit 2
+    new_impact="$impact_cell"
+  fi
+
   local tmp="$backlog.tmp.$$"
   # `set -e` would abort the whole script if python exits non-zero; capture
   # the exit code via an `if` block (which is allowed under errexit) so we
@@ -5170,6 +5188,8 @@ do_update_backlog_row() {
   local rc=0
   if SLUG="$slug" NEW_STATUS="$new_status" NEW_NOTES="$new_notes" \
        STATUS_SET="$status_set" NOTES_SET="$notes_set" \
+       NEW_EFFORT="$new_effort" NEW_IMPACT="$new_impact" \
+       EFFORT_SET="$effort_set" IMPACT_SET="$impact_set" \
        python3 - "$backlog" > "$tmp" <<'PY'
 import os, sys
 path = sys.argv[1]
@@ -5178,6 +5198,10 @@ new_status = os.environ["NEW_STATUS"]
 new_notes = os.environ["NEW_NOTES"]
 status_set = os.environ["STATUS_SET"] == "1"
 notes_set = os.environ["NOTES_SET"] == "1"
+new_effort = os.environ["NEW_EFFORT"]
+new_impact = os.environ["NEW_IMPACT"]
+effort_set = os.environ["EFFORT_SET"] == "1"
+impact_set = os.environ["IMPACT_SET"] == "1"
 
 needle = f"[[{slug}]]"
 in_details = False
@@ -5207,6 +5231,10 @@ with open(path, 'r', encoding='utf-8') as fh:
                 parts = parts[:-1]
             # Expect 5 columns: Task | Effort | Impact | Status | Notes
             if len(parts) >= 5:
+                if effort_set:
+                    parts[1] = f" {new_effort} "
+                if impact_set:
+                    parts[2] = f" {new_impact} "
                 if status_set:
                     parts[3] = f" {new_status} "
                 if notes_set:
