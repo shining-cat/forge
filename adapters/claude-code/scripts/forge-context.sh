@@ -5078,31 +5078,43 @@ PY
 # 7→4 status collapse. Echoes the cell on stdout (no trailing newline); the
 # subcommand wrapper adds the newline. Exits 2 on unknown dimension/value.
 # Theme constraint: every glyph must render on BOTH light and dark bg.
+# slot helper: one fixed-width centered box-slot (filled emoji or empty dot)
+_render_backlog_slot() {
+  printf '<span style="display:inline-block;width:1.3em;text-align:center">%s</span>' "$1"
+}
+
 render_backlog_cell() {
-  local dim="$1" val="$2" v
+  local dim="$1" val="$2" v fill letter n out i
   case "$dim" in
-    effort)
+    effort|impact)
+      if [ "$dim" = "effort" ]; then fill="🟦"; else fill="🟪"; fi
       v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
-      case "$v" in
-        S) printf '🟦<br>S' ;;
-        M) printf '🟦🟦<br>M' ;;
-        L) printf '🟦🟦🟦<br>L' ;;
-        *) echo "[render-backlog-cell] FAIL: effort must be S|M|L (got '$val')" >&2; exit 2 ;;
-      esac ;;
-    impact)
-      v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
-      case "$v" in
-        L) printf '🟪<br>L' ;;
-        M) printf '🟪🟪<br>M' ;;
-        H) printf '🟪🟪🟪<br>H' ;;
-        *) echo "[render-backlog-cell] FAIL: impact must be L|M|H (got '$val')" >&2; exit 2 ;;
-      esac ;;
+      case "$dim/$v" in
+        effort/S) n=1; letter=S ;;
+        effort/M) n=2; letter=M ;;
+        effort/L) n=3; letter=L ;;
+        impact/L) n=1; letter=L ;;
+        impact/M) n=2; letter=M ;;
+        impact/H) n=3; letter=H ;;
+        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=S|M|L, impact=L|M|H" >&2; exit 2 ;;
+      esac
+      out='<span style="white-space:nowrap;font-size:0.85em">'
+      for i in 1 2 3; do
+        if [ "$i" -le "$n" ]; then
+          out="$out$(_render_backlog_slot "$fill")"
+        else
+          out="$out$(_render_backlog_slot "·")"
+        fi
+      done
+      out="$out</span><br>$letter"
+      printf '%s' "$out"
+      ;;
     status)
       v="$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')"
       case "$v" in
         active|underway|partial) printf '🟢<br>active' ;;
         next)                    printf '🟠<br>next' ;;
-        open|needs-triage)       printf '<br>open' ;;
+        open|needs-triage)       printf '⚪<br>open' ;;
         blocked|dormant|low/fuzzy|low-fuzzy|fuzzy) printf '🔴<br>blocked' ;;
         *) echo "[render-backlog-cell] FAIL: unknown status '$val' (expected active|next|open|blocked or a granular alias)" >&2; exit 2 ;;
       esac ;;

@@ -171,22 +171,26 @@ echo ""; echo "Check 7 — effort/impact render via flags"
 setup; plant_backlog
 "$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --effort "L" --impact "L" >/dev/null 2>&1
 tl=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
-echo "$tl" | grep -q "🟦🟦🟦<br>L" && { echo "  ✓ effort rendered"; PASS=$((PASS+1)); } || { echo "  ✗ effort (got: $tl)"; FAIL=$((FAIL+1)); }
-echo "$tl" | grep -q "🟪<br>L" && { echo "  ✓ impact rendered"; PASS=$((PASS+1)); } || { echo "  ✗ impact (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q 'font-size:0.85em' && echo "$tl" | grep -q '🟦' && echo "$tl" | grep -q '<br>L' \
+  && { echo "  ✓ effort rendered (span + 🟦 + <br>L)"; PASS=$((PASS+1)); } || { echo "  ✗ effort (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q '🟪' && echo "$tl" | grep -q '·' && echo "$tl" | grep -q '<br>L' \
+  && { echo "  ✓ impact rendered (🟪 + dot + <br>L)"; PASS=$((PASS+1)); } || { echo "  ✗ impact (got: $tl)"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""; echo "Check 8 — effort-only update preserves impact"
 setup; plant_backlog
 "$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --effort "L" >/dev/null 2>&1
 tl=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
-echo "$tl" | grep -q "🟦🟦🟦<br>L" && { echo "  ✓ effort rendered"; PASS=$((PASS+1)); } || { echo "  ✗ effort (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q '🟦' && echo "$tl" | grep -q '<br>L' \
+  && { echo "  ✓ effort rendered (🟦 + <br>L)"; PASS=$((PASS+1)); } || { echo "  ✗ effort (got: $tl)"; FAIL=$((FAIL+1)); }
 echo "$tl" | grep -q "| H |" && { echo "  ✓ impact preserved (raw H)"; PASS=$((PASS+1)); } || { echo "  ✗ impact not preserved (got: $tl)"; FAIL=$((FAIL+1)); }
 teardown
 echo ""; echo "Check 9 — impact-only update preserves effort"
 setup; plant_backlog
 "$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-target-row" --impact "H" >/dev/null 2>&1
 tl=$(grep '\[\[2026-06-08-target-row\]\]' "$TMP/PERSO/demo/BACKLOG.md")
-echo "$tl" | grep -q "🟪🟪🟪<br>H" && { echo "  ✓ impact rendered"; PASS=$((PASS+1)); } || { echo "  ✗ impact (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q '🟪' && echo "$tl" | grep -q '<br>H' \
+  && { echo "  ✓ impact rendered (🟪 + <br>H)"; PASS=$((PASS+1)); } || { echo "  ✗ impact (got: $tl)"; FAIL=$((FAIL+1)); }
 echo "$tl" | grep -q "| M |" && { echo "  ✓ effort preserved (raw M)"; PASS=$((PASS+1)); } || { echo "  ✗ effort not preserved (got: $tl)"; FAIL=$((FAIL+1)); }
 teardown
 
