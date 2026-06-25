@@ -37,6 +37,9 @@ The list is meant to evolve. Starting a PR review is a quiet enough moment to ab
 
 When dispatching a Pattern A pair (e.g. forge-reviewer + forge-refiner on the same artifact), follow this protocol. Validated 2026-05-05 — see `forge-agent-teams-evaluation` task for the supporting findings.
 
+**0. First-use panes notice (before the first Pattern A team spawn in a session).**
+Before the first Pattern A *team* spawn of a session, run `~/.claude/scripts/forge-context.sh teammate-notice` and surface its stdout **verbatim** to the user. The subcommand self-gates — it prints the one-time notice and creates a sentinel **only** when all three hold: (1) the sentinel `~/.claude/forge-teammate-notice-shown` is absent, (2) the session is inside tmux (`$TMUX` set), and (3) `teammateMode` resolves to a panes mode (`auto` or `tmux`) in `~/.claude/settings.json`. In every other case it prints nothing — so **empty output means say nothing; omit it entirely** (do not narrate "no notice"). The notice explains that parallel agents will open as tmux split-panes (one per agent) and offers the opt-out. **Opt-out:** if the user declines panes, set `teammateMode` to `in-process` in `~/.claude/settings.json` via the `update-config` skill; that switches teams to the background-list behavior. Install defaults `teammateMode` to `auto` (see SETUP.md), which is why panes are the out-of-the-box behavior.
+
 **1. Sequence the dispatch — don't run truly parallel.**
 Roles with overlapping concerns need to know what each other found, or the back half of the team duplicates effort *or* leaves gaps in the don't-overlap zone. Run them in tiers:
 

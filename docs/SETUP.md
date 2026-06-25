@@ -66,6 +66,17 @@ Every installed file has one of two upgrade policies, declared in `build_pairs()
 
 If you want a preserved file restored to upstream wholesale, `rm` it and re-run `./install.sh` — the missing-file branch installs from upstream cleanly.
 
+## Agent-team panes (`teammateMode`)
+
+Install sets `teammateMode: "auto"` in `~/.claude/settings.json` so Pattern A agent teams open as tmux split-panes (one pane per agent) — only when the key is absent, so a value you set yourself is never overwritten. The first time a session fans out a Pattern A team, Forge surfaces a one-time notice explaining the panes and offering the opt-out.
+
+To change it, edit `~/.claude/settings.json`:
+
+- `"auto"` (install default) — tmux split-panes when inside a tmux session.
+- `"tmux"` — force tmux panes.
+- `"in-process"` — no panes; teammates run in the background list instead. Pick this if you prefer the panes tucked away.
+- `"iterm2"` — iTerm2 panes; requires the `it2` CLI (Shell Integration utilities) on your `PATH`.
+
 ## Rollback
 
 Every `install.sh` run leaves backup artifacts under `~/.claude/`:

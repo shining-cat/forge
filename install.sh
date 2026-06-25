@@ -1649,6 +1649,18 @@ ok "Hooks (7 core hooks)"
 SETTINGS=$(echo "$SETTINGS" | jq '.env = ((.env // {}) + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})')
 ok "Env: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
 
+# ── teammateMode default ──
+# Claude Code v2.1.179 flipped the default to "in-process", so Pattern A agent
+# teams stopped opening as tmux split-panes. Forge restores panes by defaulting
+# teammateMode to "auto" — but ONLY when the key is absent. If the user already
+# set it (any value), leave their deliberate choice untouched (idempotent).
+if echo "$SETTINGS" | jq -e 'has("teammateMode")' &>/dev/null; then
+  ok "teammateMode (already set — left untouched)"
+else
+  SETTINGS=$(echo "$SETTINGS" | jq '.teammateMode = "auto"')
+  ok "teammateMode: auto (Pattern A teams open as tmux panes)"
+fi
+
 # ── Statusline ──
 SETTINGS=$(echo "$SETTINGS" | jq '.statusLine = {type: "command", command: "~/.claude/statusline.sh", padding: 0}')
 ok "Statusline"
