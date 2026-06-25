@@ -439,7 +439,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row)
+  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -5072,6 +5072,56 @@ PY
   echo "[add-recently-shipped] entry prepended to BACKLOG.md Recently shipped block ($size bytes)"
 }
 
+# ── Renderer: backlog cell glyphs ─────────────────────────────────────────
+# Maps (dimension, value) → a two-line table-cell string "<glyphs><br><label>"
+# for BACKLOG Effort/Impact/Status columns. Single source of truth for the
+# 7→4 status collapse. Echoes the cell on stdout (no trailing newline); the
+# subcommand wrapper adds the newline. Exits 2 on unknown dimension/value.
+# Theme constraint: every glyph must render on BOTH light and dark bg.
+render_backlog_cell() {
+  local dim="$1" val="$2" v
+  case "$dim" in
+    effort)
+      v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
+      case "$v" in
+        S) printf '🟦<br>S' ;;
+        M) printf '🟦🟦<br>M' ;;
+        L) printf '🟦🟦🟦<br>L' ;;
+        *) echo "[render-backlog-cell] FAIL: effort must be S|M|L (got '$val')" >&2; exit 2 ;;
+      esac ;;
+    impact)
+      v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
+      case "$v" in
+        L) printf '🟪<br>L' ;;
+        M) printf '🟪🟪<br>M' ;;
+        H) printf '🟪🟪🟪<br>H' ;;
+        *) echo "[render-backlog-cell] FAIL: impact must be L|M|H (got '$val')" >&2; exit 2 ;;
+      esac ;;
+    status)
+      v="$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')"
+      case "$v" in
+        active|underway|partial) printf '🟢<br>active' ;;
+        next)                    printf '🟠<br>next' ;;
+        open|needs-triage)       printf '<br>open' ;;
+        blocked|dormant|low/fuzzy|low-fuzzy|fuzzy) printf '🔴<br>blocked' ;;
+        *) echo "[render-backlog-cell] FAIL: unknown status '$val' (expected active|next|open|blocked or a granular alias)" >&2; exit 2 ;;
+      esac ;;
+    *)
+      echo "[render-backlog-cell] FAIL: dimension must be effort|impact|status (got '$dim')" >&2; exit 2 ;;
+  esac
+}
+
+# ── Subcommand: render-backlog-cell (Tier 1 — pure stdout, no file write) ──
+do_render_backlog_cell() {
+  local dim="${1:-}" val="${2:-}"
+  if [ -z "$dim" ] || [ -z "$val" ]; then
+    echo "[render-backlog-cell] FAIL: usage: render-backlog-cell <effort|impact|status> <value>" >&2
+    exit 2
+  fi
+  render_backlog_cell "$dim" "$val"
+  printf '\n'
+}
+
 # ── Subcommand: update-backlog-row (Tier 1 — table row Status/Notes edit) ──
 # Locates a BACKLOG row whose Task column contains [[<wikilink-slug>]] and
 # replaces its Status and/or Notes column. Preserves Effort and Impact and
@@ -5242,9 +5292,10 @@ case "$SUBCMD" in
   set-task-status)         do_set_task_status "${@:2}" ;;
   bump-backlog-header)     do_bump_backlog_header "${@:2}" ;;
   add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
+  render-backlog-cell)     do_render_backlog_cell "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|update-backlog-row}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row}" >&2
     exit 1
     ;;
 esac
