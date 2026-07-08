@@ -168,6 +168,14 @@ idea. The template auto-moves the note to `_shared/tasks/drafts/`. ~3 taps.
    new draft.
 
 #### Android caveats
+- **"Commit-and-sync" may not push.** Depending on the Git plugin's
+  configuration, *commit-and-sync* can commit + **pull** without pushing — so a
+  captured draft is committed locally on the phone but never reaches the remote,
+  and never appears on the desktop after a pull. If a mobile draft doesn't show
+  up on the desktop, run the plugin's explicit **"Git: push"** on the phone (it
+  may take a while, then reports the pushed file). To avoid it, confirm push is
+  enabled in the commit-and-sync settings. **Symptom:** the draft is visible in
+  the phone's Obsidian but absent from the synced repo.
 - **Default to Editing view on mobile.** If the default new-note view is
   *Reading*, Templater folder-template code (beyond the title) may not run on
   Android. Set the default to Editing / Live Preview.
@@ -182,6 +190,10 @@ Capture a throwaway draft on the phone, let it sync, and confirm on the desktop
 that the resulting commit contains **only** the new file under `tasks/drafts/`
 (no deletions — if you see deletions, the vault has a portability violation: run
 `forge-vault-symlinks.sh check`).
+
+If the draft never appears on the desktop at all (no new commit after a pull),
+the phone likely committed but didn't push — see the *"Commit-and-sync may not
+push"* caveat above. Run an explicit **"Git: push"** on the phone.
 
 ---
 
