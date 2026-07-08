@@ -1,0 +1,4 @@
+{
+  "name": "google-workspace",
+  "description": "Google Workspace integration via the gws CLI: Drive, Calendar, Docs, Sheets, Tasks. Bring your own Google OAuth client."
+}

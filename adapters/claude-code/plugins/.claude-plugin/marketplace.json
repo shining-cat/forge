@@ -1,0 +1,19 @@
+{
+  "name": "forge-plugins",
+  "owner": {
+    "name": "shining-cat"
+  },
+  "metadata": {
+    "description": "Optional, neutral service-integration plugins for Forge (Claude Code adapter). Each wraps a public CLI or API — configure to your own instance; nothing is pre-wired to any organisation.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "jira",
+      "source": "./jira",
+      "description": "Interact with Jira issues using the Atlassian CLI (acli). Instance-agnostic — authenticate to your own Atlassian site.",
+      "version": "1.0.0",
+      "strict": true
+    }
+  ]
+}

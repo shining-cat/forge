@@ -1,0 +1,4 @@
+{
+  "name": "jira",
+  "description": "Interact with Jira issues using the Atlassian CLI (acli)"
+}
