@@ -5142,7 +5142,8 @@ PY
 # ── Renderer: backlog cell glyphs ─────────────────────────────────────────
 # Maps (dimension, value) → a two-line table-cell string "<glyphs><br><label>"
 # for BACKLOG Effort/Impact/Status columns. Single source of truth for the
-# 7→4 status collapse. Echoes the cell on stdout (no trailing newline); the
+# Status aliases collapse to 6 buckets (🟢 active · 🟠 next · ⚪ open · 🔴 blocked ·
+# ⏳ parked · 💡 shaping); effort=XS|S|M|L, impact=S|M|L|?. Echoes the cell on stdout (no trailing newline); the
 # subcommand wrapper adds the newline. Exits 2 on unknown dimension/value.
 # Theme constraint: every glyph must render on BOTH light and dark bg.
 # slot helper: one fixed-width centered box-slot (filled emoji or empty dot)
@@ -5157,13 +5158,15 @@ render_backlog_cell() {
       if [ "$dim" = "effort" ]; then fill="🟦"; else fill="🟪"; fi
       v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
       case "$dim/$v" in
-        effort/S) n=1; letter=S ;;
-        effort/M) n=2; letter=M ;;
-        effort/L) n=3; letter=L ;;
-        impact/S) n=1; letter=S ;;
-        impact/M) n=2; letter=M ;;
-        impact/L) n=3; letter=L ;;
-        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=S|M|L, impact=S|M|L" >&2; exit 2 ;;
+        effort/XS) n=1; letter=XS; fill="🔹" ;;
+        effort/S)  n=1; letter=S ;;
+        effort/M)  n=2; letter=M ;;
+        effort/L)  n=3; letter=L ;;
+        impact/S)  n=1; letter=S ;;
+        impact/M)  n=2; letter=M ;;
+        impact/L)  n=3; letter=L ;;
+        impact/\?) n=0; letter="?" ;;
+        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=XS|S|M|L, impact=S|M|L|?" >&2; exit 2 ;;
       esac
       out='<span style="white-space:nowrap;font-size:0.85em">'
       for i in 1 2 3; do
@@ -5179,11 +5182,13 @@ render_backlog_cell() {
     status)
       v="$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')"
       case "$v" in
-        active|underway|partial) printf '🟢<br>active' ;;
+        active|underway|partial|in-progress|phase-*-only-remaining) printf '🟢<br>active' ;;
         next)                    printf '🟠<br>next' ;;
         open|needs-triage)       printf '⚪<br>open' ;;
         blocked|dormant|low/fuzzy|low-fuzzy|fuzzy) printf '🔴<br>blocked' ;;
-        *) echo "[render-backlog-cell] FAIL: unknown status '$val' (expected active|next|open|blocked or a granular alias)" >&2; exit 2 ;;
+        parked|deferred|scheduled|parked-indefinitely|parked-until-*) printf '⏳<br>parked' ;;
+        shaping|idea|refine|needs-refinement) printf '💡<br>shaping' ;;
+        *) echo "[render-backlog-cell] FAIL: unknown status '$val' (expected active|next|open|blocked|parked|shaping or a granular alias)" >&2; exit 2 ;;
       esac ;;
     *)
       echo "[render-backlog-cell] FAIL: dimension must be effort|impact|status (got '$dim')" >&2; exit 2 ;;
