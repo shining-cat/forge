@@ -2635,36 +2635,55 @@ do_mark_weekly_wrap_done() {
 }
 
 # ── Subcommand: vault-sync ────────────────────────────────────────────
-# Walk the vault git status, group dirty files by top-level directory, suggest a
-# commit message per group. Default mode prints a report and exits. `--commit`
-# runs an interactive walkthrough: Y/N per group, runs git add+commit, then asks
-# to push. Skipped groups stay unstaged for the user to handle later.
+# Walk each vault git repo's status, group dirty files by top-level directory,
+# suggest a commit message per group. Default mode prints a report and exits.
+# `--commit` runs an interactive walkthrough: Y/N per group, runs git add+commit,
+# then asks to push. Skipped groups stay unstaged for the user to handle later.
+#
+# do_vault_sync drives the OUTER repo ($VAULT_PATH) plus every nested private repo
+# listed in VAULT_PRIVATE_ROOTS — each gitignored by the outer repo and carrying
+# its own remote (e.g. PRO → Schibsted GHEC). The per-repo walk lives in
+# _vault_sync_repo, so every repo pushes to its own configured origin.
 #
 # Bash-3.2 compatible (no associative arrays). Designed to be safe to re-run.
-do_vault_sync() {
-  local commit_mode=false
-  if [ "${1:-}" = "--commit" ]; then
-    commit_mode=true
-  fi
 
-  if [ ! -d "$VAULT_PATH/.git" ]; then
-    echo "Vault not under git ($VAULT_PATH). Run \`git -C $VAULT_PATH init\` to enable vault-sync."
+# Prompt on the controlling terminal, returning $2 (the default) when there is no
+# TTY — e.g. when Claude invokes vault-sync via the Bash tool, where stdin is
+# empty non-TTY — or when FORGE_ASSUME_DEFAULTS=1 (tests / unattended automation).
+# Mirrors the printf>/dev/tty; read</dev/tty idiom used by the backup-restore paths.
+prompt_or_default() {
+  local prompt_str="$1" default_val="$2" answer=""
+  if [ "${FORGE_ASSUME_DEFAULTS:-}" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    printf "%s" "$prompt_str" >/dev/tty
+    read -r answer </dev/tty || answer=""
+  fi
+  printf '%s' "${answer:-$default_val}"
+}
+
+# Sync a single git repo ($1 = repo root): report grouped dirty files, and in
+# commit mode ($2 = true) interactively commit each group then push to origin.
+_vault_sync_repo() {
+  local repo="$1" commit_mode="$2"
+
+  if [ ! -d "$repo/.git" ]; then
+    echo "Not a git repo ($repo). Run \`git -C $repo init\` to enable sync."
     return 0
   fi
 
   # Refuse if anything is already staged — vault-sync owns the staging area.
   local pre_staged
-  pre_staged=$(git -C "$VAULT_PATH" diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
+  pre_staged=$(git -C "$repo" diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
   if [ "$pre_staged" -gt 0 ]; then
-    echo "[!] $pre_staged file(s) already staged in the vault. vault-sync won't touch them."
+    echo "[!] $pre_staged file(s) already staged in $repo. vault-sync won't touch them."
     echo "    Commit or unstage them first, then re-run."
     return 1
   fi
 
   local dirty_short
-  dirty_short=$(git -C "$VAULT_PATH" status --short 2>/dev/null)
+  dirty_short=$(git -C "$repo" status --short 2>/dev/null)
   if [ -z "$dirty_short" ]; then
-    echo "Vault clean. Nothing to sync."
+    echo "=== Vault sync: $repo ==="
+    echo "Clean. Nothing to sync."
     return 0
   fi
 
@@ -2681,6 +2700,19 @@ do_vault_sync() {
     print
   }')
 
+  # Drop transient install artifacts (e.g. _templates/*.upstream.*) — regenerated
+  # by install.sh and never meant to be committed.
+  local skipped_upstream
+  skipped_upstream=$(echo "$dirty_paths" | grep -c '\.upstream\.' || true)
+  dirty_paths=$(echo "$dirty_paths" | grep -v '\.upstream\.' || true)
+
+  if [ -z "$dirty_paths" ]; then
+    echo "=== Vault sync: $repo ==="
+    [ "${skipped_upstream:-0}" -gt 0 ] && echo "  (skipped $skipped_upstream transient *.upstream.* artifact(s))"
+    echo "Clean. Nothing to sync."
+    return 0
+  fi
+
   # Compute unique top-level dirs in first-seen order.
   local toplevels
   toplevels=$(echo "$dirty_paths" | awk -F/ '
@@ -2689,10 +2721,11 @@ do_vault_sync() {
     !seen[key]++ { print key }
   ')
 
-  echo "=== Vault sync ==="
+  echo "=== Vault sync: $repo ==="
   if [ "$commit_mode" = false ]; then
     echo "Report mode. Re-run with --commit to interactively commit + push."
   fi
+  [ "${skipped_upstream:-0}" -gt 0 ] && echo "  (skipped $skipped_upstream transient *.upstream.* artifact(s))"
 
   local total_committed=0
 
@@ -2737,9 +2770,9 @@ do_vault_sync() {
         [Yy]*|"")
           while IFS= read -r f; do
             [ -z "$f" ] && continue
-            git -C "$VAULT_PATH" add "$f" 2>/dev/null
+            git -C "$repo" add "$f" 2>/dev/null
           done <<< "$files"
-          if git -C "$VAULT_PATH" commit -m "$suggested_msg" >/dev/null 2>&1; then
+          if git -C "$repo" commit -m "$suggested_msg" >/dev/null 2>&1; then
             echo "  ✓ committed"
             total_committed=$((total_committed + 1))
           else
@@ -2756,13 +2789,13 @@ do_vault_sync() {
   if [ "$commit_mode" = true ] && [ "$total_committed" -gt 0 ]; then
     echo ""
     local push_answer
-    push_answer=$(prompt_or_default "Push $total_committed commit(s) to origin? [Y/n]: " "Y")
+    push_answer=$(prompt_or_default "Push $total_committed commit(s) from $repo to origin? [Y/n]: " "Y")
     case "${push_answer:-Y}" in
       [Yy]*|"")
-        if git -C "$VAULT_PATH" push 2>&1; then
+        if git -C "$repo" push 2>&1; then
           echo "✓ pushed"
         else
-          echo "✗ push failed — run \`git -C $VAULT_PATH push\` manually"
+          echo "✗ push failed — run \`git -C $repo push\` manually"
         fi
         ;;
       *)
@@ -2773,6 +2806,31 @@ do_vault_sync() {
 
   echo ""
   echo "================="
+}
+
+do_vault_sync() {
+  local commit_mode=false
+  if [ "${1:-}" = "--commit" ]; then
+    commit_mode=true
+  fi
+
+  # Outer repo (personal GitHub). `|| true` so a pre-staged `return 1` reports
+  # but doesn't abort the nested pass under `set -e`.
+  _vault_sync_repo "$VAULT_PATH" "$commit_mode" || true
+
+  # Nested private repos — each gitignored by the outer repo and carrying its own
+  # remote. Data-driven from VAULT_PRIVATE_ROOTS in forge.conf; each entry guarded
+  # by a .git check so roots that aren't git repos (empty/uninitialized) are skipped.
+  local private_roots root
+  private_roots=$(grep '^VAULT_PRIVATE_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)
+  local IFS=','
+  for root in $private_roots; do
+    root=$(echo "$root" | tr -d '[:space:]')
+    [ -n "$root" ] && [ -d "$VAULT_PATH/$root/.git" ] || continue
+    echo ""
+    echo "### Nested repo: $root ###"
+    _vault_sync_repo "$VAULT_PATH/$root" "$commit_mode" || true
+  done
 }
 
 # ── Helper: flip `session: closed` → `session: open` in checkpoint frontmatter ──

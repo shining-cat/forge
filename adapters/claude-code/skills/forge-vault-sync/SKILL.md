@@ -15,19 +15,21 @@ Help the user commit + push the vault when it's accumulated drift. The Keeper al
    bash ~/.claude/scripts/forge-context.sh vault-sync
    ```
 
-   The output is a categorized view of dirty vault files grouped by top-level directory, with a suggested commit message per group.
+   The output is a categorized view of dirty vault files grouped by top-level directory, with a suggested commit message per group. It covers the outer vault repo AND every nested private repo in `VAULT_PRIVATE_ROOTS` (e.g. `PRO/` → its own GHEC remote), each shown under a `### Nested repo: <name> ###` section and pushed to its own origin.
 
 2. **Surface the output verbatim** to the user. Don't paraphrase — the script's formatting is the canonical view.
 
-3. **Offer the interactive next step.** After the report, tell the user:
+3. **Offer the commit next step — two paths, depending on the control the user wants:**
 
-   > To commit + push interactively (Y/N per group, then push prompt), run in your shell:
-   > ```
-   > bash ~/.claude/scripts/forge-context.sh vault-sync --commit
-   > ```
-   > (Run from a real terminal, not via Claude — the interactive prompts read from the tty.)
+   - **Unattended (Claude runs it):** `--commit` has no TTY when invoked via the Bash tool, so it falls back to the defaults (auto-Y): it commits *every* group and pushes each repo to its own origin. Use this when the user just wants the vault banked ("commit it", "sync the vault", "go ahead"). This is the common EOD/EOW path.
 
-4. **If the user says "do it" or "go ahead" or similar** — DON'T run `--commit` via Claude. Reiterate that the interactive flow needs a real terminal, and offer to walk through manually instead (Petra reads each suggested message, user confirms, you run `git add` + `git commit -m "..."` per group via the Bash tool).
+     ```bash
+     bash ~/.claude/scripts/forge-context.sh vault-sync --commit
+     ```
+
+   - **Interactive per-group control (user runs it):** if the user wants to accept/skip individual groups, have them run the same command in their own shell (e.g. `! bash ~/.claude/scripts/forge-context.sh vault-sync --commit`). With a real TTY the script prompts Y/N per group and before pushing.
+
+4. **When the user says "do it" / "go ahead" / "commit it"** — just run `--commit` via the Bash tool. It auto-accepts all groups and pushes. Only steer them to the interactive terminal path if they signal they want to *pick* which groups to commit.
 
 ## Constraints
 
@@ -42,8 +44,8 @@ Help the user commit + push the vault when it's accumulated drift. The Keeper al
 ## Output contract
 
 When the report shows N groups, the user has 4 paths:
-- **Accept all:** run `--commit` in their shell
-- **Accept some:** run `--commit` and answer N to skipped groups
+- **Accept all:** Claude runs `--commit` via the Bash tool (auto-Y, commits + pushes every group in every repo), or the user runs it in their shell
+- **Accept some:** user runs `--commit` in their own terminal and answers N to skipped groups (per-group choice needs a TTY)
 - **Edit a message:** skip via `--commit`, then run `git add` + `git commit -m "their-message"` manually
 - **Defer:** do nothing — vault stays dirty until next session
 
