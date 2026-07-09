@@ -15,6 +15,7 @@ Install, upgrade, customize, roll back, and extend Forge. For the high-level pit
 **Recommended:**
 - [Obsidian](https://obsidian.md) — browse the vault with backlinks and graph view
 - `terminal-notifier` — macOS notifications when Claude needs approval (`brew install terminal-notifier`)
+- [Android CLI](https://developer.android.com/tools/agents/android-cli) — Google's agent-first Android tooling (skills, knowledge base, device management); recommended only if you build for Android
 - Anthropic official plugins: `code-review`, `commit-commands`, `pr-review-toolkit`
 
 ## Install
