@@ -654,6 +654,8 @@ resolve_install_state() {
 expected_perms() {
   local perms=(
     "Bash($HOME/.claude/scripts/forge-context.sh:*)"
+    "Bash(bash $HOME/.claude/scripts/forge-context.sh:*)"
+    "Bash(bash ~/.claude/scripts/forge-context.sh *)"
     "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
     "Bash($HOME/.claude/scripts/forge-classify-friction.sh:*)"
     "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
@@ -1528,6 +1530,8 @@ fi
 PERMS_TO_ADD=(
   # Forge scripts
   "Bash($HOME/.claude/scripts/forge-context.sh:*)"
+  "Bash(bash $HOME/.claude/scripts/forge-context.sh:*)"
+  "Bash(bash ~/.claude/scripts/forge-context.sh *)"
   "Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)"
   "Bash($HOME/.claude/scripts/forge-classify-friction.sh:*)"
   "Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)"
