@@ -51,6 +51,39 @@ def _resolve_shared_dir() -> Path:
     return Path(vault_path) / "_shared"
 
 
+def _read_forge_conf_value(key, conf_path=None):
+    """Read a single ``KEY=value`` line from forge.conf.
+
+    Returns the stripped value string, or None when the file is missing/
+    unreadable or the key is absent. ``conf_path`` is overridable for tests.
+    """
+    conf_path = Path(conf_path) if conf_path else Path.home() / ".claude" / "forge.conf"
+    if not conf_path.is_file():
+        return None
+    try:
+        for raw in conf_path.read_text().splitlines():
+            line = raw.strip()
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        return None
+    return None
+
+
+def is_wellness_enabled(conf_path=None):
+    """True iff ``WELLNESS_ENABLED`` is exactly ``"true"`` in forge.conf.
+
+    Strict, matching wellness-reset.sh's ``[ "$WELLNESS_ENABLED" = "true" ]``
+    gate: any other value — ``false``, empty, an absent key, or a missing
+    forge.conf — reads as disabled. This makes the flag the single source of
+    truth for the whole enforcement path (PreToolUse strike/break, the Stop
+    tick, the precompact suggestion, the idle sampler); when disabled, none of
+    them fire. The absent-key-means-disabled choice is deliberate (aligned with
+    wellness-reset.sh) — a config without the key does not silently enforce.
+    """
+    return _read_forge_conf_value("WELLNESS_ENABLED", conf_path) == "true"
+
+
 _SHARED_DIR = _resolve_shared_dir()
 PREFS_PATH = _SHARED_DIR / "wellness-preferences.json"
 RUNTIME_PATH = _SHARED_DIR / "wellness-runtime.json"
