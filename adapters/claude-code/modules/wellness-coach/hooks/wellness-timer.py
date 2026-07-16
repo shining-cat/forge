@@ -31,7 +31,7 @@ from personas import get_persona_messages, get_welcome_back_lines
 from preferences import (
     read_prefs, read_modify_write, minutes_since, now_iso,
     read_idle_log, find_last_screen_off_break, get_system_wake_time,
-    get_system_boot_time, get_current_screen_state,
+    get_system_boot_time, get_current_screen_state, is_wellness_enabled,
     REAL_BREAK_LOCK_THRESHOLD_MINUTES,
 )
 
@@ -278,6 +278,16 @@ def determine_level(prefs, elapsed_min):
 # ── Main hook logic ───────────────────────────────────────
 
 def main():
+    # Master switch: WELLNESS_ENABLED in forge.conf is the single source of
+    # truth. When not exactly "true", the coach is off — no breaks, no strikes,
+    # no blocking, for both PreToolUse and Stop. Checked FIRST, before prefs
+    # read / auto-break detection / notify, so a disabled coach is a clean
+    # no-op with zero side effects. Fixes the gap where only wellness-reset.sh
+    # honored the flag while enforcement fired regardless (friction 2026-07-08,
+    # 2026-07-10).
+    if not is_wellness_enabled():
+        sys.exit(0)
+
     prefs = read_prefs()
     if prefs is None:
         sys.exit(0)

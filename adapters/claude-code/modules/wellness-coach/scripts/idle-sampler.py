@@ -40,6 +40,26 @@ def get_vault_path():
     return None
 
 
+def is_wellness_enabled():
+    """True iff WELLNESS_ENABLED is exactly "true" in forge.conf.
+
+    Strict — mirrors wellness-reset.sh and preferences.is_wellness_enabled():
+    absent key / missing file => disabled. When the coach is off there's no
+    consumer for the idle log, so don't sample. (This module is standalone —
+    scripts/ can't import the hooks/ preferences module cleanly — so the read
+    is duplicated here; keep the semantics identical.)
+    """
+    if not FORGE_CONF_PATH.is_file():
+        return False
+    try:
+        for line in FORGE_CONF_PATH.read_text().splitlines():
+            if line.strip().startswith("WELLNESS_ENABLED="):
+                return line.split("=", 1)[1].strip() == "true"
+    except OSError:
+        return False
+    return False
+
+
 def is_forge_active():
     """True iff $VAULT_PATH/_shared/forge-active indicates an active session.
 
@@ -107,6 +127,12 @@ def get_screen_state():
 
 
 def main():
+    # Wellness-disabled gate: WELLNESS_ENABLED in forge.conf is the single
+    # source of truth. When the coach is off, don't sample — nothing consumes
+    # the idle log. Checked before the marker + screen_state subprocess.
+    if not is_wellness_enabled():
+        return
+
     # Marker gate (2026-06-05): no-op when no Forge session is active.
     # Saves the screen_state subprocess call too — gate runs first.
     if not is_forge_active():

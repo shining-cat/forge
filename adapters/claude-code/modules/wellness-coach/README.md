@@ -123,6 +123,19 @@ All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. Break tak
 
 ## Configuration
 
+**Master switch — `WELLNESS_ENABLED` in `~/.claude/forge.conf`.** This flag is the single source of truth for the entire coach. It is read strictly: the coach is active **only** when `WELLNESS_ENABLED=true`; any other value — `false`, empty, an absent key, or a missing `forge.conf` — reads as **disabled**, and every enforcement surface becomes a clean no-op (no breaks, no strikes, no blocking, no suggestions, no sampling). Toggle it in conversation ("disable the wellness coach") or by editing `forge.conf`; the change takes effect on the next tool call — no restart needed.
+
+Every consumer honors the flag:
+
+| Consumer | Role | Honors flag |
+|----------|------|:--:|
+| `hooks/wellness-timer.py` | PreToolUse strike/break + Stop tick | ✅ (gated at top of `main()`) |
+| `hooks/wellness-precompact.py` | break suggestion during compaction | ✅ |
+| `scripts/idle-sampler.py` | Tier-2 activity sampler (launchd) | ✅ (also marker-gated) |
+| `scripts/wellness-reset.sh --if-cold-start` | cold-start reset at session entry | ✅ |
+
+The strict `==true` semantics match `wellness-reset.sh` exactly, via `preferences.is_wellness_enabled()` (the sampler duplicates the read since `scripts/` can't import `hooks/`). Before this was unified, only the cold-start reset honored the flag while enforcement fired regardless — a "disabled" coach could still strike (friction 2026-07-08, 2026-07-10).
+
 State is split across two files in `${VAULT_PATH}/_shared/` (legacy: `~/.claude/` if Forge isn't installed):
 
 - **`wellness-preferences.json`** — setup keys you choose during onboarding (persona, intervals, calendar/weather toggles, notes). Tracked in vault git. Edit directly or via conversation ("set break interval to 90 minutes", "change persona to professional").

@@ -17,10 +17,15 @@ import sys
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PLUGIN_DIR)
 
-from preferences import read_prefs, minutes_since
+from preferences import read_prefs, minutes_since, is_wellness_enabled
 
 
 def main():
+    # Honor the WELLNESS_ENABLED master switch (single source of truth) — a
+    # disabled coach makes no break suggestions during compaction either.
+    if not is_wellness_enabled():
+        return
+
     prefs = read_prefs()
     if prefs is None:
         return

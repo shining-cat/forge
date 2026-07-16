@@ -19,6 +19,7 @@
 #   6. marker valid JSON         → SAMPLES
 #   7. marker legacy plain string → SAMPLES (backward-compat)
 #   8. marker unreadable JSON    → no-op (defensive)
+#   9. WELLNESS_ENABLED=false    → no-op (master-switch gate, active marker)
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,8 +66,12 @@ assert_sampled() {
 
 # Build a sandbox HOME with .claude/{bin/screen_state, forge.conf} and an
 # optional VAULT_PATH containing _shared/. Returns the sandbox dir.
+#   $1 with_conf       — "yes" to write forge.conf
+#   $2 with_vault_path — "yes" to set VAULT_PATH (else a dummy FORGE_REPO)
+#   $3 wellness        — "yes" (default) writes WELLNESS_ENABLED=true, "no"
+#                        writes =false. Only meaningful when $2 is "yes".
 mk_sandbox() {
-  local with_conf="$1" with_vault_path="$2"
+  local with_conf="$1" with_vault_path="$2" wellness="${3:-yes}"
   local home; home=$(mktemp -d)
   mkdir -p "$home/.claude/bin"
   # Fake screen_state binary: always reports display=on,locked=0
@@ -80,7 +85,11 @@ EOF
     if [ "$with_vault_path" = "yes" ]; then
       local vault="$home/vault"
       mkdir -p "$vault/_shared"
-      echo "VAULT_PATH=$vault" > "$home/.claude/forge.conf"
+      {
+        echo "VAULT_PATH=$vault"
+        [ "$wellness" = "no" ] && echo "WELLNESS_ENABLED=false" \
+                               || echo "WELLNESS_ENABLED=true"
+      } > "$home/.claude/forge.conf"
     else
       echo "FORGE_REPO=/nope" > "$home/.claude/forge.conf"
     fi
@@ -175,6 +184,17 @@ HOME_DIR=$(mk_sandbox yes yes)
 write_marker "$HOME_DIR" '{"session_id":"abc",'
 run_sampler "$HOME_DIR"
 assert_no_sample "marker malformed JSON" "$(log_path "$HOME_DIR")"
+rm -rf "$HOME_DIR"
+
+# ── 9 — WELLNESS_ENABLED=false → no-op even with an active marker ───────
+# The master-switch gate runs before the marker check: a disabled coach has
+# no consumer for the idle log, so nothing is sampled regardless of session.
+echo ""
+echo "Check 9 — WELLNESS_ENABLED=false → no-op (active marker present)"
+HOME_DIR=$(mk_sandbox yes yes no)
+write_marker "$HOME_DIR" '{"session_id":"abc","project":"demo","started_at":"2026-06-05T10:00:00+0200","tmux_pane":null}'
+run_sampler "$HOME_DIR"
+assert_no_sample "wellness disabled" "$(log_path "$HOME_DIR")"
 rm -rf "$HOME_DIR"
 
 echo ""
