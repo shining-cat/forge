@@ -1067,6 +1067,14 @@ else
   hint "Install: brew install terminal-notifier"
 fi
 
+if command -v android &>/dev/null; then
+  ok "Android CLI (agent-first Android tooling)"
+else
+  hint "Android CLI recommended if you build for Android — Google's agent-first tooling"
+  hint "(Android skills, knowledge base, device management): https://developer.android.com/tools/agents/android-cli"
+  hint "Not required — install only if your projects target Android."
+fi
+
 # iTerm2 setup — required for clean Pattern A team UX on macOS.
 # Idempotent: each setting only writes if not already correct.
 if [ "$(uname)" = "Darwin" ] && [ -d "/Applications/iTerm.app" ]; then
