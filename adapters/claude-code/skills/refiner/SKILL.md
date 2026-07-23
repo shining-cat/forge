@@ -42,15 +42,26 @@ Based on root cause:
 
 **Step 3: Log the Friction Event**
 
-Append to `{{VAULT}}/_shared/friction-log.md`:
+Write the entry via `forge-context.sh append-friction` — **never hand-edit `friction-log.md`**. Direct edits desync the human log from `friction-classified.json` and skip the marker-driven project routing; the subcommand is the only write path.
 
-```markdown
-### YYYY-MM-DD — {brief title}
-- **Project/Environment:** {project} / {env}
-- **What happened:** {one sentence}
-- **Root cause:** {category from table above}
-- **Fix applied:** {what was changed, or "pending user approval"}
+For a fresh, un-triaged one-off, **only `--description` is required** — date, pattern, recurrence, and action-ref default to today / `needs_new_pattern` / `0` / `needs_new_pattern`:
+
+```bash
+~/.claude/scripts/forge-context.sh append-friction --description "{one sentence: what drifted}"
 ```
+
+Once you've classified the friction (via `forge-classify-friction.sh`), pass the full set to record the pattern — and, at recurrence 1 with a real task path, auto-create a stub task:
+
+```bash
+~/.claude/scripts/forge-context.sh append-friction \
+  --date YYYY-MM-DD \
+  --description "{one sentence}" \
+  --pattern {pattern-from-catalog} \
+  --recurrence {N} \
+  --action-ref {tasks/open/<slug>.md | needs_new_pattern}
+```
+
+Add `--pinned` to keep the entry out of the default harvest sweep.
 
 **Step 4: Update Meta (after user approves fix)**
 

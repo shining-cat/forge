@@ -3017,12 +3017,23 @@ do_append_friction() {
     esac
   done
 
-  for v in date_arg desc pattern recurrence action_ref; do
-    if [ -z "${!v}" ]; then
-      echo "[append-friction] missing required arg: --${v//_/-}" >&2
-      exit 2
-    fi
-  done
+  # Only --description is irreducible. The other four have an obvious correct
+  # value for an un-triaged one-off, so default them: a fresh, unclassified
+  # friction event IS date=today, pattern=needs_new_pattern, recurrence=0, and
+  # has no task stub yet (action-ref=needs_new_pattern). This lets the common
+  # case be `append-friction --description "..."` instead of a five-flag
+  # incantation nobody could invoke without grepping the source (2026-07-23).
+  # Callers that HAVE triaged (harvest/promote flow, tests) still pass explicit
+  # flags and override these defaults.
+  [ -n "$date_arg" ]    || date_arg="$(date +%F)"
+  [ -n "$pattern" ]     || pattern="needs_new_pattern"
+  [ -n "$recurrence" ]  || recurrence="0"
+  [ -n "$action_ref" ]  || action_ref="needs_new_pattern"
+
+  if [ -z "$desc" ]; then
+    echo "[append-friction] missing required arg: --description" >&2
+    exit 2
+  fi
 
   # Validate --recurrence is a non-negative integer (stored as JSON number).
   # Catches callers passing labels like "first-observed" or "unknown" which
