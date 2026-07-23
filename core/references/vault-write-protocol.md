@@ -31,7 +31,8 @@ Six operational-state ops have dedicated subcommands in `forge-context.sh`. Use 
 | `set-task-status` | Frontmatter edit + optional progress append | `~/.claude/scripts/forge-context.sh set-task-status --slug <date-slug> --status <new-status> [--add-progress "<prose>"]` |
 | `bump-backlog-header` | `**Updated:**` line refresh + active-count auto-compute | `~/.claude/scripts/forge-context.sh bump-backlog-header --latest "<prose>"` |
 | `add-recently-shipped` | Prepend entry to BACKLOG `<details>` block | `~/.claude/scripts/forge-context.sh add-recently-shipped --date "<YYYY-MM-DD HH:MM>" --title "<prose>" --body - <<'EOF'`<br>`> body lines`<br>`EOF` |
-| `update-backlog-row` | Status/Notes column edit on an active BACKLOG row | `~/.claude/scripts/forge-context.sh update-backlog-row --task <wikilink-slug> [--status <s>] [--notes "<prose>"]` |
+| `update-backlog-row` | Status/Notes/Effort/Impact column edit on an EXISTING active BACKLOG row | `~/.claude/scripts/forge-context.sh update-backlog-row --task <wikilink-slug> [--status <s>] [--notes "<prose>"] [--effort <e>] [--impact <i>]` |
+| `add-backlog-row` | Insert a NEW row under an existing BACKLOG section (dup-guarded) | `~/.claude/scripts/forge-context.sh add-backlog-row --task <slug> --section "<header-substring>" --effort <e> --impact <i> --status <s> [--notes "<prose>"] [--label "<link text>"]` |
 
 Each renders as a single Bash command line in the conversation, not a file diff. Each validates path-prefix inside `$VAULT_PATH`, writes via temp file + atomic rename, prints a one-line `[<subcommand>] ...` success log on stdout, and emits `[<subcommand>] FAIL: <reason>` to stderr + exit 2 on failure.
 
@@ -64,7 +65,7 @@ Foreground `forge-keeper` subagent dispatched to Write a 380-byte test file into
 - **Upstream trust-boundary gate (hypothesis 1, most likely).** `Vault/PRO/` is a nested git repo with its own remote (Schibsted GHEC), distinct from the outer personal-GitHub vault repo. Claude Code appears to gate writes that cross into the nested repo *upstream* of allowlist matching — same **class** of behavior as the `~/.claude/` sensitive zone (permission-patterns pitfall #5), where the chip matches but the request is gated separately. Allowlist patterns can't suppress it.
 
 **Operating guidance (this is the actionable resolution):**
-- **PRO projects → Tier 1 for the six operational-state ops** (`write-checkpoint`, `new-task`, `set-task-status`, `bump-backlog-header`, `add-recently-shipped`, `update-backlog-row`): reliably silent on all projects, PRO included (they're allowlisted Bash, not Edit/Write — no trust-boundary gate).
+- **PRO projects → Tier 1 for the seven operational-state ops** (`write-checkpoint`, `new-task`, `set-task-status`, `bump-backlog-header`, `add-recently-shipped`, `update-backlog-row`, `add-backlog-row`): reliably silent on all projects, PRO included (they're allowlisted Bash, not Edit/Write — no trust-boundary gate).
 - **Arbitrary-content PRO writes** (INDEX rewrites, decision files, multi-file template instantiation) → dispatch the subagent in the **foreground**, never background. A **background** Tier 2 dispatch on PRO **auto-denies** (it can't answer the prompt the trust boundary raises → the Edit/Write silently fails); a **foreground** dispatch surfaces the prompt for one approval and proceeds.
 - **PERSO + `_shared` → Tier 2 is silent** as the 2026-06-08 spike claimed; no change.
 

@@ -5427,6 +5427,143 @@ PY
   echo "[update-backlog-row] $slug: $what"
 }
 
+# ── Subcommand: add-backlog-row (Tier 1 — insert a NEW row) ─────────────
+# Inserts a new row into an existing section's table in the active project's
+# BACKLOG.md. Complements update-backlog-row (which only edits existing rows):
+# before this, filing a task had no silent fast-path for its BACKLOG row, so a
+# one-line append fell all the way to a heavyweight Keeper subagent — seconds of
+# fixed startup for milliseconds of work (2026-07-23). Renders the glyph cells
+# with the same helpers update-backlog-row uses, then splices the row in below
+# the target section's table separator. Refuses to insert if [[slug]] already
+# appears anywhere in the file (dup guard). Header counts are NOT touched here —
+# run `bump-backlog-header --latest "..."` afterward to refresh them.
+#
+# Required: --task <slug> --section <header-substring> --effort <XS|S|M|L>
+#           --impact <S|M|L|?> --status <state>
+# Optional: --notes <text> --label <visible link text (default: bare [[slug]])>
+do_add_backlog_row() {
+  local slug="" section="" effort="" impact="" status="" notes="" label=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --task)    slug="$2"; shift 2 ;;
+      --section) section="$2"; shift 2 ;;
+      --effort)  effort="$2"; shift 2 ;;
+      --impact)  impact="$2"; shift 2 ;;
+      --status)  status="$2"; shift 2 ;;
+      --notes)   notes="$2"; shift 2 ;;
+      --label)   label="$2"; shift 2 ;;
+      *) echo "[add-backlog-row] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  for req in slug section effort impact status; do
+    if [ -z "${!req}" ]; then
+      echo "[add-backlog-row] FAIL: --${req/slug/task} required" >&2; exit 2
+    fi
+  done
+
+  local resolved project vault_dir backlog
+  resolved="$(resolve_active_project_or_die "add-backlog-row")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  backlog="$vault_dir/BACKLOG.md"
+
+  if [ ! -f "$backlog" ]; then
+    echo "[add-backlog-row] FAIL: BACKLOG.md not found at '$backlog'" >&2; exit 2
+  fi
+  if ! vault_path_inside "$backlog" "$VAULT_PATH"; then
+    echo "[add-backlog-row] FAIL: '$backlog' is not inside VAULT_PATH" >&2; exit 2
+  fi
+
+  # Render glyph cells (same helper update-backlog-row uses). Assign on a
+  # separate line so errexit sees render_backlog_cell's exit code.
+  local effort_cell impact_cell status_cell
+  effort_cell="$(render_backlog_cell effort "$effort")" || exit 2
+  impact_cell="$(render_backlog_cell impact "$impact")" || exit 2
+  status_cell="$(render_backlog_cell status "$status")" || exit 2
+
+  local link
+  if [ -n "$label" ]; then link="[[$slug|$label]]"; else link="[[$slug]]"; fi
+  local new_row="| $link | $effort_cell | $impact_cell | $status_cell | $notes |"
+
+  local tmp="$backlog.tmp.$$"
+  local rc=0
+  if SLUG="$slug" SECTION="$section" NEW_ROW="$new_row" \
+       python3 - "$backlog" > "$tmp" <<'PY'
+import os, sys
+path = sys.argv[1]
+slug = os.environ["SLUG"]
+section = os.environ["SECTION"].lower()
+new_row = os.environ["NEW_ROW"]
+
+dup_needle = f"[[{slug}]]"
+lines = open(path, encoding="utf-8").read().splitlines(keepends=True)
+
+# Dup guard: refuse if the slug already appears anywhere (active or shipped).
+if any(dup_needle in ln for ln in lines):
+    sys.exit(5)
+
+def is_sep(s):
+    body = s.strip()
+    if not body.startswith("|"):
+        return False
+    inner = body.replace("|", "").replace(":", "").replace("-", "").strip()
+    return inner == "" and "-" in body
+
+# Locate the section header (outside <details>), then the first table
+# separator after it; insert the new row immediately below that separator.
+in_details = False
+sec_idx = -1
+for idx, ln in enumerate(lines):
+    low = ln.lower()
+    if "<details" in low: in_details = True
+    elif "</details>" in low: in_details = False
+    if (not in_details) and ln.lstrip().startswith("#") and section in low:
+        sec_idx = idx
+        break
+if sec_idx == -1:
+    sys.exit(3)
+
+sep_idx = -1
+for idx in range(sec_idx + 1, len(lines)):
+    ln = lines[idx]
+    if ln.lstrip().startswith("#"):   # next header before any table = malformed
+        break
+    if is_sep(ln):
+        sep_idx = idx
+        break
+if sep_idx == -1:
+    sys.exit(4)
+
+row = new_row if new_row.endswith("\n") else new_row + "\n"
+lines.insert(sep_idx + 1, row)
+sys.stdout.write("".join(lines))
+PY
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$tmp" 2>/dev/null
+    case "$rc" in
+      3) echo "[add-backlog-row] FAIL: section matching '$section' not found in '$backlog'" >&2 ;;
+      4) echo "[add-backlog-row] FAIL: no table separator found under section '$section' in '$backlog'" >&2 ;;
+      5) echo "[add-backlog-row] FAIL: [[$slug]] already present in '$backlog' (refusing to duplicate)" >&2 ;;
+      *) echo "[add-backlog-row] FAIL: row insertion failed (rc=$rc) for '$backlog'" >&2 ;;
+    esac
+    exit 2
+  fi
+
+  mv "$tmp" "$backlog" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[add-backlog-row] FAIL: atomic rename failed for '$backlog'" >&2
+    exit 2
+  }
+  echo "[add-backlog-row] $slug: row added under '$section'"
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -5476,6 +5613,7 @@ case "$SUBCMD" in
   add-recently-shipped)    do_add_recently_shipped "${@:2}" ;;
   render-backlog-cell)     do_render_backlog_cell "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
+  add-backlog-row)         do_add_backlog_row "${@:2}" ;;
   vault-rm)                do_vault_rm "${@:2}" ;;
   *)
     echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm}" >&2
