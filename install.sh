@@ -675,7 +675,6 @@ expected_perms() {
     "Read($HOME/.claude/forge.conf)"
     "Edit($HOME/.claude/forge.conf)"
     "Read($VAULT_PATH/**)"
-    "Write($VAULT_PATH/**)"
     "Edit($VAULT_PATH/**)"
   )
   if [ "$WELLNESS_ENABLED" = "true" ]; then
@@ -1561,7 +1560,6 @@ PERMS_TO_ADD=(
   "Edit($HOME/.claude/forge.conf)"
   # Vault (recursive)
   "Read($VAULT_PATH/**)"
-  "Write($VAULT_PATH/**)"
   "Edit($VAULT_PATH/**)"
 )
 
