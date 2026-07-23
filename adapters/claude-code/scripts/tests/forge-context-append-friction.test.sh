@@ -279,5 +279,28 @@ assert_exit "exit 0 on env-prefixed task path" "0" "$rc"
 teardown
 
 echo ""
+echo "Check 13 — one-shot: --description alone works, four flags default (2026-07-23)"
+setup_tmp_vault
+"$FORGE_CONTEXT" append-friction --description "one-shot untriaged event" >/dev/null 2>&1
+rc=$?
+assert_exit "exit 0 with only --description" "0" "$rc"
+assert_file_contains "friction-log entry written" "$TMP/_shared/friction-log.md" "one-shot untriaged event"
+assert_file_contains "pattern defaulted to needs_new_pattern" "$TMP/_shared/friction-log.md" "needs_new_pattern"
+assert_file_contains "date defaulted to today" "$TMP/_shared/friction-log.md" "### $(date +%F) —"
+assert_file_contains "recurrence defaulted to 0" "$TMP/_shared/friction-classified.json" '"recurrence":0'
+# recurrence=0 + default action-ref means no stub task is created
+[ -z "$(find "$TMP" -path '*tasks/open/*' -type f 2>/dev/null)" ] && { echo "  ✓ no stub created for untriaged one-off"; PASS=$((PASS+1)); } || { echo "  ✗ unexpected stub created"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
+echo "Check 14 — --description still required (only irreducible flag)"
+setup_tmp_vault
+out=$("$FORGE_CONTEXT" append-friction --pattern allowlist-patch 2>&1)
+rc=$?
+assert_exit "exit 2 with no --description" "2" "$rc"
+echo "$out" | grep -qF -- "--description" && { echo "  ✓ error names --description"; PASS=$((PASS+1)); } || { echo "  ✗ error did not name --description"; FAIL=$((FAIL+1)); }
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
