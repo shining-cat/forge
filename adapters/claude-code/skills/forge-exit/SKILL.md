@@ -83,6 +83,10 @@ Carry forward:
 
 If calendar is disabled or empty: say so explicitly (*"Calendar disabled."* or *"Tomorrow's calendar empty as of right now."*). Don't omit the section.
 
+**Agency guardrail — keep it a neutral readout.** The Tomorrow Preview surfaces facts and stops there: the calendar, the first focus block, the carry-forward. Do NOT annotate it with commentary about *how or when the user should spend their time* — no "tomorrow is a PRO day, pick this up outside work hours", no telling them which project/env deserves their attention, no work/life boundary narration. What the user does with their hours is their own responsibility; Forge maximizes agency, it doesn't police it. See Petra's "Agency over the user's time" voice rule.
+
+**This does NOT mute wellness.** Advocating for breaks and sustainable pacing — and flagging long uninterrupted stretches of work (e.g. "that's a 3h focus block with no break in it") — is a core Forge value and stays. The line is: wellness/workload-health guidance is welcome; prescribing *which work* the user should do *when* is not. Flagging a long stretch = good; assigning that stretch to a project = not Forge's call.
+
 ### 2c. EOW weekly-wrap check (Friday only) — HARD STOP
 
 Before proceeding to Step 3 (Deactivate), check both gates:
