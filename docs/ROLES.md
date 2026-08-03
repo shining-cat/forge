@@ -12,7 +12,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 - `forge` skill (`~/.claude/skills/forge/SKILL.md`) — entry, session rules, persona
 - `forge-checkpoint` skill — mid-session state save
 - `forge-exit` skill — end-of-session wrap-up
-- `${VAULT_PATH}/_shared/forge-active` marker — written on entry (contains project name), cleared on exit (empty content). Enables compaction and checkpoint hooks to detect Forge state. Lives in the vault rather than `~/.claude/` because the latter is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5).
+- `${VAULT_PATH}/_shared/forge-active` marker — written on entry (JSON `{session_id, project, started_at, tmux_pane}`), cleared on exit (empty content). Enables compaction and checkpoint hooks to detect Forge state. Lives in the vault rather than `~/.claude/` because the latter is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5). During an **excursion** the marker gains an optional `parked` field `{project, env, reason, parked_at}`: `park` re-points `project` to the hop target and lifts the current project into `parked`; `resume` pops it back. `project` always names where the user actually is (honest by construction); `session_id` / `started_at` are preserved across park/resume (same work session).
 
 **Proactive.** Yes — always active. Petra is the session itself.
 

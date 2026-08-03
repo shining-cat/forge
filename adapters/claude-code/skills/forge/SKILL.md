@@ -111,6 +111,19 @@ Once the project is unambiguously chosen, run `~/.claude/scripts/forge-context.s
 }
 ```
 
+During an **excursion** (see *Excursion parking* below) the marker gains one optional field, `parked`, holding the project the session hopped away from:
+
+```json
+"parked": {
+  "project": "<the parked project>",
+  "env": "<its vault env>",
+  "reason": "<why, e.g. waiting on CI>",
+  "parked_at": "<timestamp>"
+}
+```
+
+The `parked` slot is present only mid-excursion; `session_id` / `started_at` / `tmux_pane` are preserved unchanged across park/resume (same work session).
+
 Same prompt-bypass rationale as step 1b — DO NOT use the Write tool here either.
 
 This format enables session-isolated hooks: only the Claude Code window whose `$CLAUDE_CODE_SESSION_ID` matches `session_id` will receive Forge hook side effects (braindump prompts, commit gates, checkpoint nags). Sibling windows reading the same marker file will see they don't own it and stay silent. (Wellness coach is intentionally exempt — see `wellness-awareness.md` for rationale.)
@@ -121,6 +134,31 @@ This format enables session-isolated hooks: only the Claude Code window whose `$
 - File contains literal `__pending__` → Forge is launching, no project chosen yet (set by step 1b above)
 - File contains valid JSON with `session_id` → Forge active, owned by that session (set by step 1c above)
 - File contains a plain project-name string → **legacy marker** from before the JSON migration; hooks treat as "owned by everyone" for backward compat. Re-invoking `/forge` upgrades it to JSON.
+
+#### Excursion parking
+
+When the active project is **blocked** (waiting on CI, a local build, external input) and the user hops to another project to fill the idle window, park the current project instead of letting the marker lie. Parking keeps the marker honest — `project` always names where the user actually is — so every context-scoped operation targets the right vault. The parked project becomes a **return ticket**, not a leash.
+
+**Triggers (natural language, Petra-recognized):**
+- *"park `<project>`, waiting on `<reason>`"* / *"`<reason>` → hop"* → hop away.
+- *"back to `<project>`"* / *"resume"* → return.
+
+**Park flow:**
+1. Petra writes the current project's **return-ticket checkpoint** FIRST via `~/.claude/scripts/forge-context.sh write-checkpoint` (where it stood + the block reason).
+2. `~/.claude/scripts/forge-context.sh park <target> "<reason>"` — lifts the current project into the `parked` slot and re-points `project` to `<target>`.
+3. **Scoped-load** the target: its `current-checkpoint.md` + `git status` only — oriented, not blind. NOT the full entry ceremony (no PR sync, calendar, friction tail, KB). Full context waits until the target is promoted to a real main project via a proper `/forge` entry.
+
+**Resume flow:**
+1. `~/.claude/scripts/forge-context.sh resume` — pops the `parked` slot back into `project`.
+2. **Scoped-load** the restored project (symmetric: checkpoint + `git status`).
+
+**Invariant — same work session:** `started_at` is preserved across a hop; an excursion is NOT a fresh session. Wellness pacing and the Stop-nag counter keep running as if the work never paused.
+
+**Header hint:** during an excursion the block header carries the parked hint, e.g. `[Forge: PERSO/<other-project> | HH:MM · <parked-project> parked]`. The statusline chip inherits the same suffix (⏸) from `forge-context.sh status`.
+
+**Single-level:** exactly one parked slot. Parking while something is already parked errors — resume first (or the design's "replace the ticket" prompt). No nesting.
+
+**Scope fence — declare-only:** Forge never *prevents* the excursion and never auto-detects blocks. The user declares the block; the declared reason is the return ticket that channels them back. This is distinct from the log-it-and-stay path for a live project (an intrusive B-idea while A is moving is still logged, not chased).
 
 ### 2. Load Vault Context
 
