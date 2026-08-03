@@ -111,6 +111,23 @@ Other weekdays, or when `weekly-wrap-due` returns `not-due`: skip this step sile
 
 Distinct from Step 0's wellness reset (always runs regardless of day). The rule here is "ASK is mandatory; RUN is optional" — invite-don't-auto-run still holds, but the ASK is not the auto-run.
 
+### 2d. Resolve a parked excursion (if any)
+
+Before deactivating, check whether an excursion is still parked:
+
+```bash
+jq -r '.parked.project // empty' "${VAULT_PATH}/_shared/forge-active" 2>/dev/null
+```
+
+If it returns a project name, the session hopped away from it and never returned. **Do NOT silently tear down.** The final checkpoint (Step 1) already covered the *current* (excursion) project. Surface the parked one and ask:
+
+> *"{parked-project} is still parked ({reason}) — resume and close it out, or drop it?"*
+
+- **resume / close it out** → run `~/.claude/scripts/forge-context.sh resume`, scoped-load the restored project (read its `current-checkpoint.md` + `git -C <path> status`), write its final checkpoint, then proceed to Step 3.
+- **drop / leave it** → proceed to Step 3. The parked project's return-ticket checkpoint (written at park time) already records where it stood; nothing is lost.
+
+This is the concrete form of the channel-me-back guarantee: an excursion can never quietly become the abandoned main thread.
+
 ### 3. Deactivate
 
 - Clear the forge-active marker: use the **Edit** tool to replace the project name in `${VAULT_PATH}/_shared/forge-active` with a single newline (the file already exists from the `/forge` entry, so Edit is the right tool — Write would require a prior Read in this session). Do NOT use `rm` — it's denied by the global `Bash(rm:*)` rule. The empty-marker convention is recognized by `forge-context.sh` and `forge-compaction.sh` as "Forge deactivated" (same effect as deletion, no permission friction). Resolve `VAULT_PATH` from `~/.claude/forge.conf`.

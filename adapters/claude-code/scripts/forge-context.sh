@@ -282,19 +282,19 @@ reconcile_marker() {
   if [ -z "$marker_value" ]; then
     return 0
   fi
-  # Most recent checkpoint by mtime (proxy for `date:` frontmatter — good enough)
-  local newest_checkpoint
-  newest_checkpoint=$(find "$VAULT_PATH" -path '*/current-checkpoint.md' -print0 2>/dev/null | \
-    xargs -0 ls -t 2>/dev/null | head -1)
-  if [ -z "$newest_checkpoint" ]; then
-    return 0
-  fi
-  local checkpoint_project
-  checkpoint_project=$(grep '^project:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-  local checkpoint_date
-  checkpoint_date=$(grep '^date:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  # Compare the marker against ITS OWN project's checkpoint — NOT the globally
+  # newest checkpoint by mtime. The global-newest heuristic false-positives during
+  # an excursion (marker=B but A's checkpoint is newest → spurious mismatch). The
+  # honest question is only ever "does the ACTIVE project's checkpoint agree?".
+  local vault_dir; vault_dir="$(get_vault_dir "$marker_value" 2>/dev/null)"
+  [ -z "$vault_dir" ] && return 0
+  local own_checkpoint="$vault_dir/current-checkpoint.md"
+  [ -f "$own_checkpoint" ] || return 0
+  local checkpoint_project checkpoint_date
+  checkpoint_project=$(grep '^project:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
+  checkpoint_date=$(grep '^date:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
   if [ -n "$checkpoint_project" ] && [ "$checkpoint_project" != "$marker_value" ]; then
-    echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but most recent checkpoint is for \"$checkpoint_project\" (${checkpoint_date:-unknown date}). If this is intentional cross-env work, ignore. Otherwise: switch projects or update the marker." >&2
+    echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but that project's checkpoint frontmatter says \"$checkpoint_project\" (${checkpoint_date:-unknown date}). Check the checkpoint's project field." >&2
   fi
 }
 
@@ -447,7 +447,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -1812,6 +1812,15 @@ do_status() {
     project_chip=$(printf "\033[33m⚠ %s (other window)\033[0m" "$PROJECT_NAME")
   fi
 
+  # Excursion chip: if a project is parked, surface it so the return ticket is
+  # never lost. ⏸ = parked. Both the statusline (which delegates here) and Petra's
+  # header inherit this. Reads .parked.project from the marker JSON.
+  local parked_project=""
+  [ -f "$MARKER" ] && parked_project=$(jq -r '.parked.project // empty' "$MARKER" 2>/dev/null)
+  if [ -n "$parked_project" ]; then
+    project_chip="$project_chip ⏸ $parked_project"
+  fi
+
   echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
 }
 
@@ -2914,6 +2923,76 @@ do_set_marker() {
       exit 1
       ;;
   esac
+}
+
+# ── Subcommand: park (excursion — re-point marker to another project) ──
+# Usage: forge-context.sh park <target-project> <reason>
+# Marker-state ONLY. Petra authors the return-ticket checkpoint for the current
+# project via write-checkpoint BEFORE calling this. Preserves session_id /
+# started_at / tmux_pane (same work session → wellness pacing + Stop-nag counter
+# keep running). Lifts the current project into a `parked` slot with the reason.
+# The marker then honestly names <target-project>, so all context-scoping targets
+# where the user actually is. Exit 2 on: bad args, no active marker, already
+# parked, or unknown/ambiguous target.
+do_park() {
+  local target="${1:-}" reason="${2:-}"
+  if [ -z "$target" ] || [ -z "$reason" ]; then
+    echo "[forge-context] park requires <target-project> <reason>" >&2; exit 2
+  fi
+  [ -f "$MARKER" ] || { echo "[forge-context] park: no active Forge marker" >&2; exit 2; }
+  local mt; mt=$(cat "$MARKER" 2>/dev/null)
+  local sid proj started pane parked
+  sid=$(echo "$mt" | jq -r '.session_id // empty' 2>/dev/null)
+  proj=$(echo "$mt" | jq -r '.project // empty' 2>/dev/null)
+  started=$(echo "$mt" | jq -r '.started_at // empty' 2>/dev/null)
+  pane=$(echo "$mt" | jq -c '.tmux_pane // null' 2>/dev/null)
+  parked=$(echo "$mt" | jq -r '.parked // empty' 2>/dev/null)
+  if [ -z "$proj" ]; then
+    echo "[forge-context] park: marker is not an active JSON marker" >&2; exit 2
+  fi
+  if [ -n "$parked" ]; then
+    local pp; pp=$(echo "$mt" | jq -r '.parked.project' 2>/dev/null)
+    echo "[forge-context] park: already parked ($pp). resume first before parking again." >&2; exit 2
+  fi
+  local cur_env target_env
+  cur_env=$(extract_marker_env "$proj")
+  target_env=$(extract_marker_env "$target")
+  if [ -z "$target_env" ]; then
+    echo "[forge-context] park: unknown/ambiguous target project '$target'" >&2; exit 2
+  fi
+  local parked_at; parked_at="$(date +'%Y-%m-%dT%H:%M:%S%z')"
+  # Emit compact single-line (no trailing newline) to match the canonical
+  # printf-based writer in do_set_marker — keeps park/resume byte-neutral.
+  printf '%s' "$(jq -nc \
+    --arg sid "$sid" --arg proj "$target" --arg started "$started" --argjson pane "$pane" \
+    --arg pproj "$proj" --arg penv "$cur_env" --arg preason "$reason" --arg pat "$parked_at" \
+    '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane,
+      parked:{project:$pproj, env:$penv, reason:$preason, parked_at:$pat}}')" > "$MARKER"
+  local tdir; tdir="$(get_vault_dir "$target" 2>/dev/null)"
+  [ -n "$tdir" ] && flip_session_to_open "$tdir/current-checkpoint.md"
+}
+
+# ── Subcommand: resume (excursion return — pop parked project back into marker) ──
+# Usage: forge-context.sh resume
+# Restores project = parked.project, drops the parked slot, preserves
+# session_id / started_at / tmux_pane. Exit 2 if nothing is parked.
+do_resume() {
+  [ -f "$MARKER" ] || { echo "[forge-context] resume: no active Forge marker" >&2; exit 2; }
+  local mt; mt=$(cat "$MARKER" 2>/dev/null)
+  local pproj; pproj=$(echo "$mt" | jq -r '.parked.project // empty' 2>/dev/null)
+  if [ -z "$pproj" ]; then
+    echo "[forge-context] resume: nothing parked" >&2; exit 2
+  fi
+  local sid started pane
+  sid=$(echo "$mt" | jq -r '.session_id // empty' 2>/dev/null)
+  started=$(echo "$mt" | jq -r '.started_at // empty' 2>/dev/null)
+  pane=$(echo "$mt" | jq -c '.tmux_pane // null' 2>/dev/null)
+  # Emit compact single-line (no trailing newline) to match the canonical
+  # printf-based writer in do_set_marker — restores the original marker byte-for-byte.
+  printf '%s' "$(jq -nc --arg sid "$sid" --arg proj "$pproj" --arg started "$started" --argjson pane "$pane" \
+    '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane}')" > "$MARKER"
+  local rdir; rdir="$(get_vault_dir "$pproj" 2>/dev/null)"
+  [ -n "$rdir" ] && flip_session_to_open "$rdir/current-checkpoint.md"
 }
 
 # ── Subcommand: append-braindump (append entry to active braindump) ─────
@@ -5585,6 +5664,8 @@ case "$SUBCMD" in
   open-task-audit)     do_open_task_audit ;;
   backlog-audit)       do_backlog_audit ;;
   set-marker)          do_set_marker "${@:2}" ;;
+  park)                do_park "${@:2}" ;;
+  resume)              do_resume "${@:2}" ;;
   append-braindump)    do_append_braindump "${@:2}" ;;
   append-friction)     do_append_friction "${@:2}" ;;
   friction-tail)       do_friction_tail "${@:2}" ;;
