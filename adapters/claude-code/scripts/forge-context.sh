@@ -447,7 +447,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -2914,6 +2914,51 @@ do_set_marker() {
       exit 1
       ;;
   esac
+}
+
+# ── Subcommand: park (excursion — re-point marker to another project) ──
+# Usage: forge-context.sh park <target-project> <reason>
+# Marker-state ONLY. Petra authors the return-ticket checkpoint for the current
+# project via write-checkpoint BEFORE calling this. Preserves session_id /
+# started_at / tmux_pane (same work session → wellness pacing + Stop-nag counter
+# keep running). Lifts the current project into a `parked` slot with the reason.
+# The marker then honestly names <target-project>, so all context-scoping targets
+# where the user actually is. Exit 2 on: bad args, no active marker, already
+# parked, or unknown/ambiguous target.
+do_park() {
+  local target="${1:-}" reason="${2:-}"
+  if [ -z "$target" ] || [ -z "$reason" ]; then
+    echo "[forge-context] park requires <target-project> <reason>" >&2; exit 2
+  fi
+  [ -f "$MARKER" ] || { echo "[forge-context] park: no active Forge marker" >&2; exit 2; }
+  local mt; mt=$(cat "$MARKER" 2>/dev/null)
+  local sid proj started pane parked
+  sid=$(echo "$mt" | jq -r '.session_id // empty' 2>/dev/null)
+  proj=$(echo "$mt" | jq -r '.project // empty' 2>/dev/null)
+  started=$(echo "$mt" | jq -r '.started_at // empty' 2>/dev/null)
+  pane=$(echo "$mt" | jq -c '.tmux_pane // null' 2>/dev/null)
+  parked=$(echo "$mt" | jq -r '.parked // empty' 2>/dev/null)
+  if [ -z "$proj" ]; then
+    echo "[forge-context] park: marker is not an active JSON marker" >&2; exit 2
+  fi
+  if [ -n "$parked" ]; then
+    local pp; pp=$(echo "$mt" | jq -r '.parked.project' 2>/dev/null)
+    echo "[forge-context] park: already parked ($pp). resume first before parking again." >&2; exit 2
+  fi
+  local cur_env target_env
+  cur_env=$(extract_marker_env "$proj")
+  target_env=$(extract_marker_env "$target")
+  if [ -z "$target_env" ]; then
+    echo "[forge-context] park: unknown/ambiguous target project '$target'" >&2; exit 2
+  fi
+  local parked_at; parked_at="$(date +'%Y-%m-%dT%H:%M:%S%z')"
+  jq -n \
+    --arg sid "$sid" --arg proj "$target" --arg started "$started" --argjson pane "$pane" \
+    --arg pproj "$proj" --arg penv "$cur_env" --arg preason "$reason" --arg pat "$parked_at" \
+    '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane,
+      parked:{project:$pproj, env:$penv, reason:$preason, parked_at:$pat}}' > "$MARKER"
+  local tdir; tdir="$(get_vault_dir "$target" 2>/dev/null)"
+  [ -n "$tdir" ] && flip_session_to_open "$tdir/current-checkpoint.md"
 }
 
 # ── Subcommand: append-braindump (append entry to active braindump) ─────
@@ -5585,6 +5630,8 @@ case "$SUBCMD" in
   open-task-audit)     do_open_task_audit ;;
   backlog-audit)       do_backlog_audit ;;
   set-marker)          do_set_marker "${@:2}" ;;
+  park)                do_park "${@:2}" ;;
+  resume)              do_resume "${@:2}" ;;
   append-braindump)    do_append_braindump "${@:2}" ;;
   append-friction)     do_append_friction "${@:2}" ;;
   friction-tail)       do_friction_tail "${@:2}" ;;
