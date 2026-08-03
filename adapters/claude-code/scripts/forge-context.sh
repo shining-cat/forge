@@ -482,8 +482,12 @@ case "$SUBCMD_PEEK" in
     # operates on an explicit path argument, so it must skip the marker-exit
     # guards rather than silently `exit 0` when Forge isn't active.
     ;;
-  append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
+  append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover|get-active-age|pressure-pulse)
     # No stdin read. Guards still apply — these need a resolved project.
+    # get-active-age / pressure-pulse are TEST-ONLY affordances (delta-aware
+    # checkpoint pressure): they let the test harness drive get_active_age_minutes
+    # and pressure_pulse deterministically. They resolve the project here so
+    # CHECKPOINT_FILE / BRAINDUMP_FILE / VAULT_DIR are available to the pulse.
     if [ ! -f "$MARKER" ]; then exit 0; fi
     PROJECT_NAME="$(extract_marker_project)"
     if [ -z "$PROJECT_NAME" ]; then exit 0; fi
@@ -554,6 +558,87 @@ get_braindump_age_minutes() {
   local mtime
   mtime="$(stat -f %m "$BRAINDUMP_FILE" 2>/dev/null || stat -c %Y "$BRAINDUMP_FILE" 2>/dev/null || echo 0)"
   echo $(( (now - mtime) / 60 ))
+}
+
+# ── Delta-aware checkpoint pressure: state helpers ──────────────────────
+# See spec 2026-08-03-delta-aware-checkpoint-pressure.md. Two state files under
+# $VAULT_PATH/_shared/ (NOT globbed by forge-gap-since-last-signal.sh, so no
+# signal pollution):
+#   .forge-heartbeat       — empty file; mtime = epoch of last tool call.
+#   .forge-pressure-state  — key=value lines: idle_accum / ckpt_seen_mtime /
+#                            ckpt_idle_base / bd_seen_mtime / bd_idle_base.
+# active_age(file) = raw_age - (idle_accum - <file>_idle_base), clamped >= 0.
+# Baselines rebase lazily (in the pulse) when the tracked file's mtime advances,
+# implementing "reset on write" without hooking the keeper's Write.
+# bash-3.2-safe: plain vars + grep/cut only (NO namerefs, NO assoc arrays).
+_pressure_state_file() { echo "$VAULT_PATH/_shared/.forge-pressure-state"; }
+_heartbeat_file()      { echo "$VAULT_PATH/_shared/.forge-heartbeat"; }
+
+_ps_get_key() {  # $1=key ; echoes value or 0
+  local f; f="$(_pressure_state_file)"
+  [ -f "$f" ] || { echo 0; return; }
+  local v; v="$(grep "^$1=" "$f" 2>/dev/null | cut -d= -f2-)"
+  echo "${v:-0}"
+}
+_ps_load() {
+  PS_IDLE_ACCUM="$(_ps_get_key idle_accum)"
+  PS_CKPT_SEEN="$(_ps_get_key ckpt_seen_mtime)"
+  PS_CKPT_BASE="$(_ps_get_key ckpt_idle_base)"
+  PS_BD_SEEN="$(_ps_get_key bd_seen_mtime)"
+  PS_BD_BASE="$(_ps_get_key bd_idle_base)"
+}
+_ps_save() {
+  local f; f="$(_pressure_state_file)"
+  mkdir -p "$(dirname "$f")"
+  printf 'idle_accum=%s\nckpt_seen_mtime=%s\nckpt_idle_base=%s\nbd_seen_mtime=%s\nbd_idle_base=%s\n' \
+    "${PS_IDLE_ACCUM:-0}" "${PS_CKPT_SEEN:-0}" "${PS_CKPT_BASE:-0}" "${PS_BD_SEEN:-0}" "${PS_BD_BASE:-0}" > "$f"
+}
+_file_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+
+# Bank idle since last heartbeat, pulse the heartbeat, lazily rebase per-file baselines.
+pressure_pulse() {
+  [ -n "$VAULT_PATH" ] || return 0
+  local now hb hb_mtime gap idle_gap_sec
+  now="$(date +%s)"
+  hb="$(_heartbeat_file)"
+  _ps_load
+  if [ -f "$hb" ]; then
+    hb_mtime="$(_file_mtime "$hb")"
+    gap=$(( now - hb_mtime ))
+    [ "$gap" -lt 0 ] && gap=0
+    idle_gap_sec=$(( IDLE_GAP_MIN * 60 ))
+    if [ "$gap" -gt "$idle_gap_sec" ]; then
+      PS_IDLE_ACCUM=$(( PS_IDLE_ACCUM + gap ))
+    fi
+  fi
+  mkdir -p "$(dirname "$hb")"; : > "$hb"   # pulse
+  # Lazy per-file baseline rebase (reset-on-write): if the tracked file's mtime
+  # advanced past the last observed value, snapshot the current accumulator.
+  if [ -f "$CHECKPOINT_FILE" ]; then
+    local cm; cm="$(_file_mtime "$CHECKPOINT_FILE")"
+    if [ "$cm" -gt "${PS_CKPT_SEEN:-0}" ]; then PS_CKPT_SEEN="$cm"; PS_CKPT_BASE="$PS_IDLE_ACCUM"; fi
+  fi
+  if [ -f "$BRAINDUMP_FILE" ]; then
+    local bm; bm="$(_file_mtime "$BRAINDUMP_FILE")"
+    if [ "$bm" -gt "${PS_BD_SEEN:-0}" ]; then PS_BD_SEEN="$bm"; PS_BD_BASE="$PS_IDLE_ACCUM"; fi
+  fi
+  _ps_save
+}
+
+# $1 = raw age (minutes), $2 = prefix (ckpt|bd). Echo active age = raw - idle_delta_min, clamped >=0.
+get_active_age_minutes() {
+  local raw="$1" prefix="$2" base idle_delta_min active
+  _ps_load
+  case "$prefix" in
+    ckpt) base="${PS_CKPT_BASE:-0}" ;;
+    bd)   base="${PS_BD_BASE:-0}" ;;
+    *)    base=0 ;;
+  esac
+  idle_delta_min=$(( ( ${PS_IDLE_ACCUM:-0} - base ) / 60 ))
+  [ "$idle_delta_min" -lt 0 ] && idle_delta_min=0
+  active=$(( raw - idle_delta_min ))
+  [ "$active" -lt 0 ] && active=0
+  echo "$active"
 }
 
 # ── Subcommand: post-tool (breadcrumb logging) ─────────────────────────
@@ -5661,6 +5746,9 @@ case "$SUBCMD" in
   post-tool)           do_post_tool ;;
   gate)                do_gate ;;
   stop)                do_stop ;;
+  # TEST-ONLY: drive the delta-aware pressure helpers deterministically.
+  get-active-age)      get_active_age_minutes "${2:-0}" "${3:-}" ;;
+  pressure-pulse)      pressure_pulse ;;
   recover)             do_recover ;;
   reconcile-marker)    reconcile_marker ;;
   status)              do_status ;;
