@@ -90,6 +90,17 @@ V=$(mk); C=$(conf "$V"); marker "$V"
 FORGE_CONF_OVERRIDE="$C" "$SCRIPT" pressure-pulse >/dev/null 2>&1
 assert_eq "future heartbeat: idle_accum stays 0" "0" "$(ps_get "$V" idle_accum)"
 
+# 8. Partial state file (exists, missing keys) must NOT abort _ps_load under
+#    pipefail — grep exits 1 on the absent key, `|| true` keeps the fallback.
+#    Regression guard for the _ps_get_key pipefail bug (reviewer finding, 08-03).
+V=$(mk); C=$(conf "$V"); marker "$V"
+printf 'idle_accum=1234\n' > "$(psfile "$V")"   # only one of five keys present
+: > "$(hbfile "$V")"; touch -t "$(date -r "$(( $(date +%s) - 900 ))" '+%Y%m%d%H%M.%S')" "$(hbfile "$V")"
+FORGE_CONF_OVERRIDE="$C" "$SCRIPT" pressure-pulse >/dev/null 2>&1
+rc=$?
+assert_eq "partial state: pressure-pulse exits 0 (no pipefail abort)" "0" "$rc"
+assert_range "partial state: preserved idle_accum + banked ~900s gap" 2124 2144 "$(ps_get "$V" idle_accum)"
+
 echo
 echo "=== Task 3: braindump nag uses active age (end-to-end post-tool) ==="
 PT='{"session_id":"s","tool_name":"Read","tool_input":{"file_path":"/tmp/x"}}'
@@ -144,5 +155,91 @@ set_mtime_ago "$V/_shared/forge-active" 5400
 printf 'idle_accum=0\nckpt_idle_base=0\n' > "$(psfile "$V")"
 out=$(printf '{"session_id":"s"}' | CLAUDE_CODE_SESSION_ID=s FORGE_CONF_OVERRIDE="$C" "$SCRIPT" stop 2>/dev/null)
 assert_contains "continuous checkpoint: blocks (active age 70)" "Write a checkpoint now" "$out"
+
+echo
+echo "=== Task 5: count-based commit gate (do_gate) ==="
+# A real git repo OUTSIDE the vault → skip_stale=0; commits authored after the
+# checkpoint mtime are counted via `git log --since=@<ckpt_mtime>`.
+gitrepo() { local d="$1"; git -C "$d" init -q >/dev/null 2>&1
+  git -C "$d" config user.email t@t.dev; git -C "$d" config user.name tester; }
+gateconf() { local v="$1" max="$2" c; c=$(mktemp)
+  printf 'VAULT_PATH=%s\nFORGE_REPO=%s\nIDLE_GAP_MIN=10\nCOMMIT_GATE_MAX_UNLOGGED=%s\n' \
+    "$v" "$(cd "$SCRIPT_DIR/../../../.." && pwd)" "$max" > "$c"; echo "$c"; }
+commits() { local d="$1" n="$2" i=0; while [ "$i" -lt "$n" ]; do
+  git -C "$d" commit -q --allow-empty -m "c$i"; i=$((i+1)); done; }
+ckpt() { printf -- '---\ndate: 2026-08-03\nproject: forge\n---\n' > "$1"; }
+DENY="commits since the last checkpoint refresh"
+GATE_JSON='{"tool_input":{"command":"git -C %s commit -m x"}}'
+
+# 12. Under limit: 3 commits, limit 5 → allow (no deny).
+V=$(mk); GR=$(mktemp -d); gitrepo "$GR"
+CK="$V/PERSO/forge/current-checkpoint.md"; ckpt "$CK"; set_mtime_ago "$CK" 3600
+commits "$GR" 3; C=$(gateconf "$V" 5); marker "$V"
+out=$(printf "$GATE_JSON" "$GR" | CLAUDE_CODE_SESSION_ID=s FORGE_CONF_OVERRIDE="$C" "$SCRIPT" gate 2>/dev/null)
+assert_not_contains "gate: 3 commits < limit 5 → allow" "$DENY" "$out"
+
+# 13. At limit: 5 commits, limit 5 → deny with count-based reason.
+V=$(mk); GR=$(mktemp -d); gitrepo "$GR"
+CK="$V/PERSO/forge/current-checkpoint.md"; ckpt "$CK"; set_mtime_ago "$CK" 3600
+commits "$GR" 5; C=$(gateconf "$V" 5); marker "$V"
+out=$(printf "$GATE_JSON" "$GR" | CLAUDE_CODE_SESSION_ID=s FORGE_CONF_OVERRIDE="$C" "$SCRIPT" gate 2>/dev/null)
+assert_contains "gate: 5 commits >= limit 5 → deny" "5 $DENY" "$out"
+
+# 14. Vault repo exempt: repo UNDER VAULT_PATH → skip_stale=1 → allow over limit.
+V=$(mk); VR="$V/vaultrepo"; mkdir -p "$VR"; gitrepo "$VR"
+CK="$V/PERSO/forge/current-checkpoint.md"; ckpt "$CK"; set_mtime_ago "$CK" 3600
+commits "$VR" 8; C=$(gateconf "$V" 5); marker "$V"
+out=$(printf "$GATE_JSON" "$VR" | CLAUDE_CODE_SESSION_ID=s FORGE_CONF_OVERRIDE="$C" "$SCRIPT" gate 2>/dev/null)
+assert_not_contains "gate: vault repo exempt (skip_stale)" "$DENY" "$out"
+
+# 15. Fresh checkpoint: mtime AFTER all commits → 0 unlogged → allow.
+V=$(mk); GR=$(mktemp -d); gitrepo "$GR"
+commits "$GR" 8; sleep 1
+CK="$V/PERSO/forge/current-checkpoint.md"; ckpt "$CK"   # mtime now, after commits
+C=$(gateconf "$V" 5); marker "$V"
+out=$(printf "$GATE_JSON" "$GR" | CLAUDE_CODE_SESSION_ID=s FORGE_CONF_OVERRIDE="$C" "$SCRIPT" gate 2>/dev/null)
+assert_not_contains "gate: fresh checkpoint (0 unlogged) → allow" "$DENY" "$out"
+
+echo
+echo "=== Task 6: touch-checkpoint escape hatch ==="
+
+# 16. Appends review line + bumps mtime to now (raw age ~0).
+V=$(mk); C=$(conf "$V"); marker "$V"
+CK="$V/PERSO/forge/current-checkpoint.md"
+printf -- '---\ndate: 2026-08-03\nproject: forge\n---\nbody\n' > "$CK"; set_mtime_ago "$CK" 3600
+FORGE_CONF_OVERRIDE="$C" "$SCRIPT" touch-checkpoint >/dev/null 2>&1
+assert_contains "touch: review line appended" "— no new state_" "$(cat "$CK")"
+assert_range "touch: mtime bumped to now" 0 5 "$(( $(date +%s) - $(fmtime "$CK") ))"
+
+# 17. Repeated touch does not stack review lines (exactly one). Reuses CK from #16.
+FORGE_CONF_OVERRIDE="$C" "$SCRIPT" touch-checkpoint >/dev/null 2>&1
+assert_eq "touch: review line does not stack" "1" "$(grep -c -- '— no new state_' "$CK")"
+
+# 18. Baseline rebase: ckpt_idle_base := idle_accum, ckpt_seen_mtime := new mtime.
+V=$(mk); C=$(conf "$V"); marker "$V"
+CK="$V/PERSO/forge/current-checkpoint.md"
+printf -- '---\ndate: 2026-08-03\nproject: forge\n---\nbody\n' > "$CK"; set_mtime_ago "$CK" 3600
+printf 'idle_accum=800\nckpt_idle_base=0\n' > "$(psfile "$V")"
+FORGE_CONF_OVERRIDE="$C" "$SCRIPT" touch-checkpoint >/dev/null 2>&1
+assert_eq "touch: ckpt_idle_base rebased to idle_accum" "800" "$(ps_get "$V" ckpt_idle_base)"
+assert_eq "touch: ckpt_seen_mtime == checkpoint mtime" "$(fmtime "$CK")" "$(ps_get "$V" ckpt_seen_mtime)"
+
+# 19. Integration: a checkpoint that WOULD block do_stop no longer blocks post-touch.
+V=$(mk); C=$(nagconf "$V"); marker_started "$V" "$STARTED"
+printf '%s\n20\n' "$STARTED" > "$V/_shared/forge-session-stops"
+CK="$V/PERSO/forge/current-checkpoint.md"
+printf -- '---\ndate: 2026-08-03\nproject: forge\n---\nnote\n' > "$CK"; set_mtime_ago "$CK" 4200
+set_mtime_ago "$V/_shared/forge-active" 5400
+printf 'idle_accum=0\nckpt_idle_base=0\n' > "$(psfile "$V")"
+FORGE_CONF_OVERRIDE="$C" "$SCRIPT" touch-checkpoint >/dev/null 2>&1
+out=$(printf '{"session_id":"s"}' | CLAUDE_CODE_SESSION_ID=s FORGE_CONF_OVERRIDE="$C" "$SCRIPT" stop 2>/dev/null)
+assert_not_contains "touch: post-touch do_stop does not block" "Write a checkpoint now" "$out"
+
+# 20. Only-a-review-line checkpoint: touch does not crash (set -e / grep -v empty), still one line.
+V=$(mk); C=$(conf "$V"); marker "$V"
+CK="$V/PERSO/forge/current-checkpoint.md"; printf '_reviewed 09:00 — no new state_\n' > "$CK"
+FORGE_CONF_OVERRIDE="$C" "$SCRIPT" touch-checkpoint >/dev/null 2>&1; rc=$?
+assert_eq "touch: only-review-line checkpoint → exit 0" "0" "$rc"
+assert_eq "touch: still exactly one review line" "1" "$(grep -c -- '— no new state_' "$CK")"
 
 echo; echo "Pass: $PASS  Fail: $FAIL"; [ "$FAIL" -eq 0 ]
