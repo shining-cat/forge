@@ -649,6 +649,11 @@ do_post_tool() {
   # markers preserve old global behavior (helper returns true).
   session_owns_forge || exit 0
 
+  # Delta-aware pressure: bank idle since the last tool call, pulse the heartbeat,
+  # and lazily rebase per-file baselines. Runs before the no-stdin return because
+  # the pulse needs no stdin — every owned tool call counts as activity.
+  pressure_pulse
+
   if [ -z "$STDIN_JSON" ]; then
     return
   fi
@@ -790,7 +795,7 @@ print(summary)
   # in forge.conf (default 10). Tester item #7.
   # Fixes per-tool-call refire pattern (see vault task keeper-braindump-hook-suppress-in-subagents).
   local dump_age checkpoint_age output session_id agent_id now braindump_mtime cooldown_marker cooldown_age last_braindump_line
-  dump_age="$(get_braindump_age_minutes)"
+  dump_age="$(get_active_age_minutes "$(get_braindump_age_minutes)" bd)"
   checkpoint_age="$(get_checkpoint_age_minutes)"
   output=""
 
@@ -1046,7 +1051,7 @@ do_stop() {
   fi
 
   local age
-  age="$(get_checkpoint_age_minutes)"
+  age="$(get_active_age_minutes "$(get_checkpoint_age_minutes)" ckpt)"
 
   if [ "$age" -ge 60 ]; then
     cat <<EOF
