@@ -282,19 +282,19 @@ reconcile_marker() {
   if [ -z "$marker_value" ]; then
     return 0
   fi
-  # Most recent checkpoint by mtime (proxy for `date:` frontmatter — good enough)
-  local newest_checkpoint
-  newest_checkpoint=$(find "$VAULT_PATH" -path '*/current-checkpoint.md' -print0 2>/dev/null | \
-    xargs -0 ls -t 2>/dev/null | head -1)
-  if [ -z "$newest_checkpoint" ]; then
-    return 0
-  fi
-  local checkpoint_project
-  checkpoint_project=$(grep '^project:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-  local checkpoint_date
-  checkpoint_date=$(grep '^date:' "$newest_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  # Compare the marker against ITS OWN project's checkpoint — NOT the globally
+  # newest checkpoint by mtime. The global-newest heuristic false-positives during
+  # an excursion (marker=B but A's checkpoint is newest → spurious mismatch). The
+  # honest question is only ever "does the ACTIVE project's checkpoint agree?".
+  local vault_dir; vault_dir="$(get_vault_dir "$marker_value" 2>/dev/null)"
+  [ -z "$vault_dir" ] && return 0
+  local own_checkpoint="$vault_dir/current-checkpoint.md"
+  [ -f "$own_checkpoint" ] || return 0
+  local checkpoint_project checkpoint_date
+  checkpoint_project=$(grep '^project:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  checkpoint_date=$(grep '^date:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
   if [ -n "$checkpoint_project" ] && [ "$checkpoint_project" != "$marker_value" ]; then
-    echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but most recent checkpoint is for \"$checkpoint_project\" (${checkpoint_date:-unknown date}). If this is intentional cross-env work, ignore. Otherwise: switch projects or update the marker." >&2
+    echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but that project's checkpoint frontmatter says \"$checkpoint_project\" (${checkpoint_date:-unknown date}). Check the checkpoint's project field." >&2
   fi
 }
 
