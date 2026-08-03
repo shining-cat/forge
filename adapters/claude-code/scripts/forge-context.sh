@@ -121,6 +121,17 @@ audit_one_vault_repo() {
 BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 BRAINDUMP_INTERVAL_MIN="${BRAINDUMP_INTERVAL_MIN:-10}"
 
+# Delta-aware checkpoint pressure (see 2026-08-03-delta-aware-checkpoint-pressure).
+# IDLE_GAP_MIN: gap (minutes) between tool calls above which a pause counts as a
+# step-away and is banked into the idle accumulator (so returning from coffee /
+# lunch / a meeting doesn't force a spurious checkpoint/braindump refresh).
+IDLE_GAP_MIN="$(grep '^IDLE_GAP_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+IDLE_GAP_MIN="${IDLE_GAP_MIN:-10}"
+# COMMIT_GATE_MAX_UNLOGGED: commits stacked since the checkpoint's mtime before
+# the commit gate denies (count-based tolerance, replaces the old 15-min clock).
+COMMIT_GATE_MAX_UNLOGGED="$(grep '^COMMIT_GATE_MAX_UNLOGGED=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+COMMIT_GATE_MAX_UNLOGGED="${COMMIT_GATE_MAX_UNLOGGED:-5}"
+
 # End-of-week day (ISO day-of-week, Mon=1..Sun=7). Default 5 (Friday). On this
 # day, do_wrap_up_state upgrades eod_window→eow_window and past_eod→past_eow.
 EOW_DAY="$(grep '^EOW_DAY=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
