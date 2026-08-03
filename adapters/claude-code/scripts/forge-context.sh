@@ -291,8 +291,8 @@ reconcile_marker() {
   local own_checkpoint="$vault_dir/current-checkpoint.md"
   [ -f "$own_checkpoint" ] || return 0
   local checkpoint_project checkpoint_date
-  checkpoint_project=$(grep '^project:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-  checkpoint_date=$(grep '^date:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  checkpoint_project=$(grep '^project:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/project:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
+  checkpoint_date=$(grep '^date:' "$own_checkpoint" 2>/dev/null | head -1 | sed 's/date:[[:space:]]*//' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
   if [ -n "$checkpoint_project" ] && [ "$checkpoint_project" != "$marker_value" ]; then
     echo "[Keeper] Marker mismatch: forge-active says \"$marker_value\" but that project's checkpoint frontmatter says \"$checkpoint_project\" (${checkpoint_date:-unknown date}). Check the checkpoint's project field." >&2
   fi

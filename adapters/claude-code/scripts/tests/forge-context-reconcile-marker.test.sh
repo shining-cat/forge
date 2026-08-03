@@ -12,6 +12,9 @@ assert_absent() { local n="$1" needle="$2" hay="$3"
 assert_contains() { local n="$1" needle="$2" hay="$3"
   if echo "$hay" | grep -qF "$needle"; then echo "  ✓ $n"; PASS=$((PASS+1))
   else echo "  ✗ $n — missing: $needle"; echo "    Got: $hay"; FAIL=$((FAIL+1)); fi; }
+assert_eq() { local n="$1" exp="$2" act="$3"
+  if [ "$exp" = "$act" ]; then echo "  ✓ $n"; PASS=$((PASS+1))
+  else echo "  ✗ $n — expected [$exp] got [$act]"; FAIL=$((FAIL+1)); fi; }
 
 mk() { local v; v=$(mktemp -d); mkdir -p "$v/_shared" "$v/PERSO/forge" "$v/PERSO/SimpleHIIT"; echo "$v"; }
 conf() { local v="$1" c; c=$(mktemp); printf 'VAULT_PATH=%s\nFORGE_REPO=%s\n' "$v" "$(cd "$SCRIPT_DIR/../../../.." && pwd)" > "$c"; echo "$c"; }
@@ -34,5 +37,13 @@ printf '{"session_id":"s","project":"forge","started_at":"x","tmux_pane":null}' 
 printf -- '---\ndate: 2026-08-03\nproject: SimpleHIIT\n---\n' > "$V2/PERSO/forge/current-checkpoint.md"
 out=$(FORGE_CONF_OVERRIDE="$C2" "$SCRIPT" reconcile-marker 2>&1)
 assert_contains "warns when own checkpoint disagrees" "Marker mismatch" "$out"
+
+# Checkpoint lacks a project: line → must not crash under set -e, and no warning.
+V3=$(mk); C3=$(conf "$V3")
+printf '{"session_id":"s","project":"forge","started_at":"x","tmux_pane":null}' > "$V3/_shared/forge-active"
+printf -- '---\ndate: 2026-08-03\n---\n' > "$V3/PERSO/forge/current-checkpoint.md"
+out=$(FORGE_CONF_OVERRIDE="$C3" "$SCRIPT" reconcile-marker 2>&1); rc=$?
+assert_eq "no project: line -> exit 0 (no crash)" "0" "$rc"
+assert_absent "no spurious warning without project: line" "Marker mismatch" "$out"
 
 echo; echo "Pass: $PASS  Fail: $FAIL"; [ "$FAIL" -eq 0 ]
