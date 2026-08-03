@@ -67,4 +67,11 @@ out=$(FORGE_CONF_OVERRIDE="$C4" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" resume 2
 assert_eq "resume-with-nothing-parked exits 2" "2" "$rc"
 assert_contains "resume explains nothing parked" "nothing parked" "$out"
 
+echo "=== status parked chip ==="
+V5=$(mk_vault); C5=$(mk_conf "$V5"); write_active "$V5" forge
+FORGE_CONF_OVERRIDE="$C5" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" park SimpleHIIT "waiting on CI" >/dev/null 2>&1
+out=$(FORGE_CONF_OVERRIDE="$C5" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" status 2>/dev/null)
+assert_contains "status shows active target" "SimpleHIIT" "$out"
+assert_contains "status shows parked chip" "⏸ forge" "$out"
+
 echo; echo "Pass: $PASS  Fail: $FAIL"; [ "$FAIL" -eq 0 ]

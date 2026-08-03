@@ -1812,6 +1812,15 @@ do_status() {
     project_chip=$(printf "\033[33m⚠ %s (other window)\033[0m" "$PROJECT_NAME")
   fi
 
+  # Excursion chip: if a project is parked, surface it so the return ticket is
+  # never lost. ⏸ = parked. Both the statusline (which delegates here) and Petra's
+  # header inherit this. Reads .parked.project from the marker JSON.
+  local parked_project=""
+  [ -f "$MARKER" ] && parked_project=$(jq -r '.parked.project // empty' "$MARKER" 2>/dev/null)
+  if [ -n "$parked_project" ]; then
+    project_chip="$project_chip ⏸ $parked_project"
+  fi
+
   echo "$project_chip | 🌿 ${branch:-n/a} | $indicator"
 }
 
