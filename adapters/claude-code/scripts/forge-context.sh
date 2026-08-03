@@ -2961,6 +2961,27 @@ do_park() {
   [ -n "$tdir" ] && flip_session_to_open "$tdir/current-checkpoint.md"
 }
 
+# ── Subcommand: resume (excursion return — pop parked project back into marker) ──
+# Usage: forge-context.sh resume
+# Restores project = parked.project, drops the parked slot, preserves
+# session_id / started_at / tmux_pane. Exit 2 if nothing is parked.
+do_resume() {
+  [ -f "$MARKER" ] || { echo "[forge-context] resume: no active Forge marker" >&2; exit 2; }
+  local mt; mt=$(cat "$MARKER" 2>/dev/null)
+  local pproj; pproj=$(echo "$mt" | jq -r '.parked.project // empty' 2>/dev/null)
+  if [ -z "$pproj" ]; then
+    echo "[forge-context] resume: nothing parked" >&2; exit 2
+  fi
+  local sid started pane
+  sid=$(echo "$mt" | jq -r '.session_id // empty' 2>/dev/null)
+  started=$(echo "$mt" | jq -r '.started_at // empty' 2>/dev/null)
+  pane=$(echo "$mt" | jq -c '.tmux_pane // null' 2>/dev/null)
+  jq -n --arg sid "$sid" --arg proj "$pproj" --arg started "$started" --argjson pane "$pane" \
+    '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane}' > "$MARKER"
+  local rdir; rdir="$(get_vault_dir "$pproj" 2>/dev/null)"
+  [ -n "$rdir" ] && flip_session_to_open "$rdir/current-checkpoint.md"
+}
+
 # ── Subcommand: append-braindump (append entry to active braindump) ─────
 # Replaces `cat >> braindump.md <<EOF ... EOF` heredoc patterns from Claude.
 # Same prompt-bypass rationale as set-marker: this script is fully allowlisted;

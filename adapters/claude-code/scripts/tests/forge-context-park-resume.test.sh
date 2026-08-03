@@ -51,4 +51,20 @@ out=$(FORGE_CONF_OVERRIDE="$C2" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" park gho
 assert_eq "unknown target exits 2" "2" "$rc"
 assert_contains "unknown target explained" "unknown" "$out"
 
+echo "=== resume ==="
+V3=$(mk_vault); C3=$(mk_conf "$V3"); write_active "$V3" forge
+FORGE_CONF_OVERRIDE="$C3" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" park SimpleHIIT "waiting on CI" >/dev/null 2>&1
+FORGE_CONF_OVERRIDE="$C3" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" resume >/dev/null 2>&1
+M3=$(cat "$V3/_shared/forge-active")
+assert_eq "resume restores parked project" "forge" "$(echo "$M3" | jq -r '.project')"
+assert_eq "resume drops parked slot" "null" "$(echo "$M3" | jq -r '.parked // "null"')"
+assert_eq "resume preserves started_at" "2026-08-03T07:52:00+0200" "$(echo "$M3" | jq -r '.started_at')"
+assert_eq "resume preserves session_id" "sess-1" "$(echo "$M3" | jq -r '.session_id')"
+
+# nothing parked → error
+V4=$(mk_vault); C4=$(mk_conf "$V4"); write_active "$V4" forge
+out=$(FORGE_CONF_OVERRIDE="$C4" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" resume 2>&1); rc=$?
+assert_eq "resume-with-nothing-parked exits 2" "2" "$rc"
+assert_contains "resume explains nothing parked" "nothing parked" "$out"
+
 echo; echo "Pass: $PASS  Fail: $FAIL"; [ "$FAIL" -eq 0 ]
