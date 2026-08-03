@@ -3,14 +3,21 @@
 #
 # Regression guard for 2026-06-08-commit-failure-unstages-files.md: when a
 # Builder dispatches `git add … && git commit …` as one Bash compound and the
-# Keeper PreToolUse gate denies it (stale checkpoint), the ENTIRE compound is
-# rejected — neither half runs. Pre-fix, the deny reason didn't say so, and
-# subagent Builders retried only `git commit`, which failed silently ("no
-# changes added to commit") because the index was still empty.
+# Keeper PreToolUse gate denies it, the ENTIRE compound is rejected — neither
+# half runs. Pre-fix, the deny reason didn't say so, and subagent Builders
+# retried only `git commit`, which failed silently ("no changes added to
+# commit") because the index was still empty.
 #
 # Fix: when the denied command contains `git add`, the deny reason appends a
 # postscript: "re-run the WHOLE command, not just the trailing `git commit`".
 # Plain `git commit` denies don't get the postscript.
+#
+# NOTE: as of 2026-08-03-delta-aware-checkpoint-pressure the gate denies on a
+# COMMIT COUNT (>= COMMIT_GATE_MAX_UNLOGGED commits since the checkpoint mtime),
+# not on raw checkpoint wall-clock age. So the deny is triggered here by stacking
+# commits in the target repo, and the reason wording is "commits since the last
+# checkpoint refresh" (not "stale"). The postscript + vault-exclusion behaviour
+# under test is unchanged.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,36 +25,53 @@ FORGE_CONTEXT="$SCRIPT_DIR/../forge-context.sh"
 
 PASS=0; FAIL=0
 
-setup_stale_session() {
+# Phrasing the count-based deny reason must contain (see do_gate).
+DENY_PHRASE="commits since the last checkpoint refresh"
+
+setup_gated_session() {
   TMP=$(mktemp -d)
-  # Vault skeleton
-  mkdir -p "$TMP/_shared" "$TMP/PERSO/forge"
+  # Vault is a SUBDIR of $TMP; code repos are siblings under $TMP (= REPO_ROOTS).
+  # This keeps the code repo OUT of VAULT_PATH so the vault-exclusion doesn't
+  # swallow it (a code repo under VAULT_PATH would be treated as bookkeeping).
+  VAULT="$TMP/vault"
+  mkdir -p "$VAULT/_shared" "$VAULT/PERSO/forge"
   # Marker pointing to PERSO/forge with a known session_id
-  cat > "$TMP/_shared/forge-active" <<'EOF'
+  cat > "$VAULT/_shared/forge-active" <<'EOF'
 {"session_id":"test-session-gate","project":"forge","started_at":"2026-05-20T10:00:00+0200","tmux_pane":null}
 EOF
-  # Stale checkpoint — backdate mtime to 2h ago so age > 15min threshold.
-  # NOTE: get_checkpoint_age_minutes returns min(raw_age, gap-since-last-signal)
-  # where the gap script reads mtimes of the marker AND any checkpoint/braindump.
-  # If we leave the marker mtime "now", gap=0 and the age is clamped to 0,
-  # bypassing the deny. So backdate every file that contributes a signal.
-  echo "stale" > "$TMP/PERSO/forge/current-checkpoint.md"
-  local stale_stamp
-  stale_stamp="$(date -v-2H '+%Y%m%d%H%M' 2>/dev/null || date -d '2 hours ago' '+%Y%m%d%H%M')"
-  touch -t "$stale_stamp" "$TMP/PERSO/forge/current-checkpoint.md" \
-    "$TMP/_shared/forge-active"
-  # Mock forge.conf
+  # Checkpoint backdated 1h so the code-repo commits made "now" all count as
+  # authored after it (git log --since="@<ckpt_mtime>").
+  echo "ckpt" > "$VAULT/PERSO/forge/current-checkpoint.md"
+  local past
+  past="$(date -v-1H '+%Y%m%d%H%M' 2>/dev/null || date -d '1 hour ago' '+%Y%m%d%H%M')"
+  touch -t "$past" "$VAULT/PERSO/forge/current-checkpoint.md"
+  # Mock forge.conf — REPO_ROOTS=$TMP contains both the vault and code repos
+  # (mirrors reality). COMMIT_GATE_MAX_UNLOGGED left at its built-in default 5.
   TMP_CONF="$TMP/forge.conf"
-  printf 'VAULT_PATH=%s\nREPO_ROOTS=%s\n' "$TMP" "$TMP" > "$TMP_CONF"
+  printf 'VAULT_PATH=%s\nREPO_ROOTS=%s\n' "$VAULT" "$TMP" > "$TMP_CONF"
   export FORGE_CONF_OVERRIDE="$TMP_CONF"
   # Make session_owns_forge pass (helper reads CLAUDE_CODE_SESSION_ID OR the
   # session_id field of the stdin JSON we pipe in).
   export CLAUDE_CODE_SESSION_ID="test-session-gate"
+
+  # Code repo with 6 commits (>= default COMMIT_GATE_MAX_UNLOGGED=5), all
+  # authored after the backdated checkpoint mtime → count-based deny fires.
+  CODE="$TMP/code-repo"
+  mkdir -p "$CODE"
+  git -C "$CODE" init -q
+  git -C "$CODE" config user.email t@t.t >/dev/null 2>&1
+  git -C "$CODE" config user.name t >/dev/null 2>&1
+  local i
+  for i in 1 2 3 4 5 6; do
+    echo "$i" > "$CODE/f$i.txt"
+    git -C "$CODE" add "f$i.txt"
+    git -C "$CODE" commit -qm "c$i"
+  done
 }
 
 teardown() {
   rm -rf "$TMP"
-  unset FORGE_CONF_OVERRIDE CLAUDE_CODE_SESSION_ID TMP TMP_CONF
+  unset FORGE_CONF_OVERRIDE CLAUDE_CODE_SESSION_ID TMP VAULT TMP_CONF CODE
 }
 
 # Build a Claude Code PreToolUse JSON envelope for a given Bash command.
@@ -61,8 +85,8 @@ build_hook_input() {
 }
 
 echo "Check 1 — denied compound containing \`git add\` carries the postscript"
-setup_stale_session
-input=$(build_hook_input "git -C /tmp/repo add foo.md && git -C /tmp/repo commit -m 'bar'")
+setup_gated_session
+input=$(build_hook_input "git -C $CODE add foo.md && git -C $CODE commit -m 'bar'")
 out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
 rc=$?
 [ "$rc" = "0" ] && { echo "  ✓ gate exited 0 (deny emitted via JSON, not exit code)"; PASS=$((PASS+1)); } \
@@ -74,10 +98,10 @@ if [ -n "$reason" ]; then
 else
   echo "  ✗ deny JSON missing/invalid (got: $out)"; FAIL=$((FAIL+1))
 fi
-if printf '%s' "$reason" | grep -qF "stale"; then
-  echo "  ✓ existing staleness wording preserved"; PASS=$((PASS+1))
+if printf '%s' "$reason" | grep -qF "$DENY_PHRASE"; then
+  echo "  ✓ count-based deny wording present"; PASS=$((PASS+1))
 else
-  echo "  ✗ staleness phrasing lost (got: $reason)"; FAIL=$((FAIL+1))
+  echo "  ✗ deny phrasing lost (got: $reason)"; FAIL=$((FAIL+1))
 fi
 if printf '%s' "$reason" | grep -qF "re-run the WHOLE command"; then
   echo "  ✓ postscript present when command contains \`git add\`"; PASS=$((PASS+1))
@@ -88,17 +112,17 @@ teardown
 
 echo ""
 echo "Check 2 — denied bare \`git commit\` does NOT carry the postscript"
-setup_stale_session
-input=$(build_hook_input "git -C /tmp/repo commit -m 'bar'")
+setup_gated_session
+input=$(build_hook_input "git -C $CODE commit -m 'bar'")
 out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
 rc=$?
 [ "$rc" = "0" ] && { echo "  ✓ gate exited 0"; PASS=$((PASS+1)); } \
   || { echo "  ✗ gate exited $rc"; FAIL=$((FAIL+1)); }
 reason=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-if printf '%s' "$reason" | grep -qF "stale"; then
-  echo "  ✓ staleness wording present (regression guard)"; PASS=$((PASS+1))
+if printf '%s' "$reason" | grep -qF "$DENY_PHRASE"; then
+  echo "  ✓ count-based deny wording present (regression guard)"; PASS=$((PASS+1))
 else
-  echo "  ✗ staleness wording missing (got: $reason)"; FAIL=$((FAIL+1))
+  echo "  ✗ deny wording missing (got: $reason)"; FAIL=$((FAIL+1))
 fi
 if printf '%s' "$reason" | grep -qvF "re-run the WHOLE command"; then
   echo "  ✓ postscript absent for bare \`git commit\` (no regression of simple case)"; PASS=$((PASS+1))
@@ -108,22 +132,22 @@ fi
 teardown
 
 echo ""
-echo "Check 3 — stale checkpoint + VAULT-targeted commit → NO deny (vault exclusion)"
-setup_stale_session
-# VAULT_PATH is $TMP in this harness; a commit targeting a path under it is
-# vault bookkeeping and must skip the stale-checkpoint deny.
-input=$(build_hook_input "git -C $TMP/PERSO/forge add . && git -C $TMP/PERSO/forge commit -m 'checkpoint bookkeeping'")
+echo "Check 3 — VAULT-targeted commit → NO deny (vault exclusion)"
+setup_gated_session
+# VAULT_PATH is $VAULT here; a commit targeting a path under it is vault
+# bookkeeping and must skip the deny regardless of commit count.
+input=$(build_hook_input "git -C $VAULT/PERSO/forge add . && git -C $VAULT/PERSO/forge commit -m 'checkpoint bookkeeping'")
 out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
 if [ -z "$out" ]; then
-  echo "  ✓ vault-targeted commit not denied despite stale checkpoint"; PASS=$((PASS+1))
+  echo "  ✓ vault-targeted commit not denied"; PASS=$((PASS+1))
 else
   echo "  ✗ vault commit was denied (got: $out)"; FAIL=$((FAIL+1))
 fi
-# Control: a code-repo commit (outside VAULT_PATH) under the same stale state still denies.
-input=$(build_hook_input "git -C /tmp/some-code-repo commit -m 'x'")
+# Control: a code-repo commit (outside VAULT_PATH) with the same stacked commits still denies.
+input=$(build_hook_input "git -C $CODE commit -m 'x'")
 out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
 if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" = "deny" ]; then
-  echo "  ✓ control: non-vault code-repo commit still denied (stale guard intact)"; PASS=$((PASS+1))
+  echo "  ✓ control: non-vault code-repo commit still denied (count guard intact)"; PASS=$((PASS+1))
 else
   echo "  ✗ control: non-vault commit should still deny (got: $out)"; FAIL=$((FAIL+1))
 fi

@@ -18,7 +18,10 @@ if [ "${1:-}" != "teammate-notice" ]; then
     echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
     exit 1
   fi
-  VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
+  # `|| true`: without it, a forge.conf missing the VAULT_PATH line makes grep
+  # exit 1 and abort under `set -euo pipefail` — before the friendly empty-check
+  # below can emit its message. Swallow so the explicit error path governs.
+  VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2- || true)
   if [ -z "$VAULT_PATH" ]; then
     echo "[forge-context] ERROR: VAULT_PATH not set in $FORGE_CONF" >&2
     exit 1
@@ -120,6 +123,17 @@ audit_one_vault_repo() {
 # by setting `BRAINDUMP_INTERVAL_MIN=<int>`. Default 10. Tester item #7.
 BRAINDUMP_INTERVAL_MIN="$(grep '^BRAINDUMP_INTERVAL_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
 BRAINDUMP_INTERVAL_MIN="${BRAINDUMP_INTERVAL_MIN:-10}"
+
+# Delta-aware checkpoint pressure (see 2026-08-03-delta-aware-checkpoint-pressure).
+# IDLE_GAP_MIN: gap (minutes) between tool calls above which a pause counts as a
+# step-away and is banked into the idle accumulator (so returning from coffee /
+# lunch / a meeting doesn't force a spurious checkpoint/braindump refresh).
+IDLE_GAP_MIN="$(grep '^IDLE_GAP_MIN=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+IDLE_GAP_MIN="${IDLE_GAP_MIN:-10}"
+# COMMIT_GATE_MAX_UNLOGGED: commits stacked since the checkpoint's mtime before
+# the commit gate denies (count-based tolerance, replaces the old 15-min clock).
+COMMIT_GATE_MAX_UNLOGGED="$(grep '^COMMIT_GATE_MAX_UNLOGGED=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+COMMIT_GATE_MAX_UNLOGGED="${COMMIT_GATE_MAX_UNLOGGED:-5}"
 
 # End-of-week day (ISO day-of-week, Mon=1..Sun=7). Default 5 (Friday). On this
 # day, do_wrap_up_state upgrades eod_window→eow_window and past_eod→past_eow.
@@ -471,8 +485,15 @@ case "$SUBCMD_PEEK" in
     # operates on an explicit path argument, so it must skip the marker-exit
     # guards rather than silently `exit 0` when Forge isn't active.
     ;;
-  append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover)
+  append-braindump|vault-sync|wrap-up-state|check-install|reconcile-marker|recover|get-active-age|pressure-pulse|touch-checkpoint)
     # No stdin read. Guards still apply — these need a resolved project.
+    # get-active-age / pressure-pulse are TEST-ONLY affordances (delta-aware
+    # checkpoint pressure): they let the test harness drive get_active_age_minutes
+    # and pressure_pulse deterministically. They resolve the project here so
+    # CHECKPOINT_FILE / BRAINDUMP_FILE / VAULT_DIR are available to the pulse.
+    # touch-checkpoint is the user-facing "reviewed, no new state" affirm — it
+    # needs CHECKPOINT_FILE resolved and writes it, so it belongs in this
+    # project-resolved branch (not the no-guard marker/shared-state branch).
     if [ ! -f "$MARKER" ]; then exit 0; fi
     PROJECT_NAME="$(extract_marker_project)"
     if [ -z "$PROJECT_NAME" ]; then exit 0; fi
@@ -545,6 +566,124 @@ get_braindump_age_minutes() {
   echo $(( (now - mtime) / 60 ))
 }
 
+# ── Delta-aware checkpoint pressure: state helpers ──────────────────────
+# See spec 2026-08-03-delta-aware-checkpoint-pressure.md. Two state files under
+# $VAULT_PATH/_shared/ (NOT globbed by forge-gap-since-last-signal.sh, so no
+# signal pollution):
+#   .forge-heartbeat       — empty file; mtime = epoch of last tool call.
+#   .forge-pressure-state  — key=value lines: idle_accum / ckpt_seen_mtime /
+#                            ckpt_idle_base / bd_seen_mtime / bd_idle_base.
+# active_age(file) = raw_age - (idle_accum - <file>_idle_base), clamped >= 0.
+# Baselines rebase lazily (in the pulse) when the tracked file's mtime advances,
+# implementing "reset on write" without hooking the keeper's Write.
+# bash-3.2-safe: plain vars + grep/cut only (NO namerefs, NO assoc arrays).
+_pressure_state_file() { echo "$VAULT_PATH/_shared/.forge-pressure-state"; }
+_heartbeat_file()      { echo "$VAULT_PATH/_shared/.forge-heartbeat"; }
+
+_ps_get_key() {  # $1=key ; echoes value or 0
+  local f; f="$(_pressure_state_file)"
+  [ -f "$f" ] || { echo 0; return; }
+  # `|| true`: grep exits 1 when the key is absent (partial write / manual edit
+  # / cross-version state file). Under `set -euo pipefail` that 1 propagates
+  # through `| cut` and would abort _ps_load → pressure_pulse → do_post_tool
+  # mid-flight. Swallow it so the `${v:-0}` fallback governs instead.
+  local v; v="$(grep "^$1=" "$f" 2>/dev/null | cut -d= -f2- || true)"
+  echo "${v:-0}"
+}
+_ps_load() {
+  PS_IDLE_ACCUM="$(_ps_get_key idle_accum)"
+  PS_CKPT_SEEN="$(_ps_get_key ckpt_seen_mtime)"
+  PS_CKPT_BASE="$(_ps_get_key ckpt_idle_base)"
+  PS_BD_SEEN="$(_ps_get_key bd_seen_mtime)"
+  PS_BD_BASE="$(_ps_get_key bd_idle_base)"
+}
+_ps_save() {
+  local f; f="$(_pressure_state_file)"
+  mkdir -p "$(dirname "$f")"
+  printf 'idle_accum=%s\nckpt_seen_mtime=%s\nckpt_idle_base=%s\nbd_seen_mtime=%s\nbd_idle_base=%s\n' \
+    "${PS_IDLE_ACCUM:-0}" "${PS_CKPT_SEEN:-0}" "${PS_CKPT_BASE:-0}" "${PS_BD_SEEN:-0}" "${PS_BD_BASE:-0}" > "$f"
+}
+_file_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+
+# Bank idle since last heartbeat, pulse the heartbeat, lazily rebase per-file baselines.
+pressure_pulse() {
+  [ -n "$VAULT_PATH" ] || return 0
+  local now hb hb_mtime gap idle_gap_sec
+  now="$(date +%s)"
+  hb="$(_heartbeat_file)"
+  _ps_load
+  if [ -f "$hb" ]; then
+    hb_mtime="$(_file_mtime "$hb")"
+    gap=$(( now - hb_mtime ))
+    [ "$gap" -lt 0 ] && gap=0
+    idle_gap_sec=$(( IDLE_GAP_MIN * 60 ))
+    if [ "$gap" -gt "$idle_gap_sec" ]; then
+      PS_IDLE_ACCUM=$(( PS_IDLE_ACCUM + gap ))
+    fi
+  fi
+  mkdir -p "$(dirname "$hb")"; : > "$hb"   # pulse
+  # Lazy per-file baseline rebase (reset-on-write): if the tracked file's mtime
+  # advanced past the last observed value, snapshot the current accumulator.
+  if [ -f "$CHECKPOINT_FILE" ]; then
+    local cm; cm="$(_file_mtime "$CHECKPOINT_FILE")"
+    if [ "$cm" -gt "${PS_CKPT_SEEN:-0}" ]; then PS_CKPT_SEEN="$cm"; PS_CKPT_BASE="$PS_IDLE_ACCUM"; fi
+  fi
+  if [ -f "$BRAINDUMP_FILE" ]; then
+    local bm; bm="$(_file_mtime "$BRAINDUMP_FILE")"
+    if [ "$bm" -gt "${PS_BD_SEEN:-0}" ]; then PS_BD_SEEN="$bm"; PS_BD_BASE="$PS_IDLE_ACCUM"; fi
+  fi
+  _ps_save
+}
+
+# $1 = raw age (minutes), $2 = prefix (ckpt|bd). Echo active age = raw - idle_delta_min, clamped >=0.
+get_active_age_minutes() {
+  local raw="$1" prefix="$2" base idle_delta_min active
+  _ps_load
+  case "$prefix" in
+    ckpt) base="${PS_CKPT_BASE:-0}" ;;
+    bd)   base="${PS_BD_BASE:-0}" ;;
+    *)    base=0 ;;
+  esac
+  idle_delta_min=$(( ( ${PS_IDLE_ACCUM:-0} - base ) / 60 ))
+  [ "$idle_delta_min" -lt 0 ] && idle_delta_min=0
+  active=$(( raw - idle_delta_min ))
+  [ "$active" -lt 0 ] && active=0
+  echo "$active"
+}
+
+# ── Subcommand: touch-checkpoint (delta-aware "reviewed, no new state") ──
+# Approach C escape hatch: the user comes back from a step-away, glances at the
+# checkpoint, and there is genuinely nothing new to log. Append a single
+# `_reviewed HH:MM — no new state_` line (stripping any prior one so repeated
+# touches never stack), which bumps the checkpoint mtime → resets the checkpoint
+# nag clock to zero WITHOUT a full checkpoint rewrite or a Keeper dispatch. Then
+# rebase the checkpoint baseline so only idle banked AFTER this touch is ever
+# subtracted again. Resets the CHECKPOINT clock only (not the braindump).
+# See 2026-08-03-delta-aware-checkpoint-pressure.
+do_touch_checkpoint() {
+  if [ -z "${CHECKPOINT_FILE:-}" ] || [ ! -f "$CHECKPOINT_FILE" ]; then
+    echo "[touch-checkpoint] no checkpoint for project '${PROJECT_NAME:-?}' — write one first (/forge-checkpoint)." >&2
+    exit 1
+  fi
+  local hhmm tmp
+  hhmm="$(date +%H:%M)"
+  tmp="$(mktemp)"
+  # Strip any prior review line so repeated touches don't stack. `|| true` keeps
+  # set -e happy when grep -v emits nothing (checkpoint was only a review line).
+  grep -v '^_reviewed .* — no new state_$' "$CHECKPOINT_FILE" > "$tmp" || true
+  printf '_reviewed %s — no new state_\n' "$hhmm" >> "$tmp"
+  # Rewrite in place (cat > preserves the original file's perms/inode); the
+  # truncate+write bumps mtime to now, which is what resets the raw checkpoint age.
+  cat "$tmp" > "$CHECKPOINT_FILE"
+  rm -f "$tmp"
+  # Rebase the checkpoint baseline to the current accumulator + new mtime.
+  _ps_load
+  PS_CKPT_SEEN="$(_file_mtime "$CHECKPOINT_FILE")"
+  PS_CKPT_BASE="${PS_IDLE_ACCUM:-0}"
+  _ps_save
+  echo "[touch-checkpoint] reviewed at $hhmm — checkpoint nag reset (no new state)."
+}
+
 # ── Subcommand: post-tool (breadcrumb logging) ─────────────────────────
 do_post_tool() {
   # Session-isolation gate: only fire in the window that owns Forge.
@@ -552,6 +691,11 @@ do_post_tool() {
   # so they don't leak braindump prompts / push nudges. Legacy plain-string
   # markers preserve old global behavior (helper returns true).
   session_owns_forge || exit 0
+
+  # Delta-aware pressure: bank idle since the last tool call, pulse the heartbeat,
+  # and lazily rebase per-file baselines. Runs before the no-stdin return because
+  # the pulse needs no stdin — every owned tool call counts as activity.
+  pressure_pulse
 
   if [ -z "$STDIN_JSON" ]; then
     return
@@ -694,7 +838,7 @@ print(summary)
   # in forge.conf (default 10). Tester item #7.
   # Fixes per-tool-call refire pattern (see vault task keeper-braindump-hook-suppress-in-subagents).
   local dump_age checkpoint_age output session_id agent_id now braindump_mtime cooldown_marker cooldown_age last_braindump_line
-  dump_age="$(get_braindump_age_minutes)"
+  dump_age="$(get_active_age_minutes "$(get_braindump_age_minutes)" bd)"
   checkpoint_age="$(get_checkpoint_age_minutes)"
   output=""
 
@@ -874,11 +1018,27 @@ do_gate() {
     case "$commit_repo_dir/" in "$VAULT_PATH"/*) skip_stale=1 ;; esac
   fi
 
-  local age
-  age="$(get_checkpoint_age_minutes)"
+  # Count-based tolerance: deny once enough commits have accumulated since the
+  # last checkpoint refresh, rather than on raw wall-clock age. Anchor on the
+  # checkpoint file's mtime and count commits authored after it in the target
+  # repo. Fails LENIENT by design: an Obsidian-sync mtime bump on the checkpoint
+  # only shrinks the --since window → under-counts → never a spurious deny.
+  # See 2026-08-03-delta-aware-checkpoint-pressure.
+  # HEAD must resolve: an unborn branch (repo with zero commits) makes `git log`
+  # exit 128, which under `set -euo pipefail` would abort do_gate mid-flight
+  # (pipefail propagates the 128 through `| wc -l`) — silently skipping the
+  # branch-discipline check below. Guard on HEAD, and keep `|| unlogged=0` as a
+  # belt-and-suspenders against any other git-log failure mode.
+  local ckpt_mtime unlogged=0
+  if [ -f "$CHECKPOINT_FILE" ] && [ -n "$commit_repo_dir" ] && [ -d "$commit_repo_dir/.git" ] \
+     && git -C "$commit_repo_dir" rev-parse --verify -q HEAD >/dev/null 2>&1; then
+    ckpt_mtime="$(stat -f %m "$CHECKPOINT_FILE" 2>/dev/null || stat -c %Y "$CHECKPOINT_FILE" 2>/dev/null || echo 0)"
+    unlogged="$(git -C "$commit_repo_dir" log --oneline --since="@$ckpt_mtime" 2>/dev/null | wc -l | tr -d ' ')" || unlogged=0
+    [ -z "$unlogged" ] && unlogged=0
+  fi
 
-  if [ "$skip_stale" -eq 0 ] && [ "$age" -gt 15 ]; then
-    local reason="[Keeper] Checkpoint is ${age}min stale (project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."
+  if [ "$skip_stale" -eq 0 ] && [ "$unlogged" -ge "$COMMIT_GATE_MAX_UNLOGGED" ]; then
+    local reason="[Keeper] ${unlogged} commits since the last checkpoint refresh (limit ${COMMIT_GATE_MAX_UNLOGGED}, project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."
 
     # Compound-rejection postscript: PreToolUse deny rejects the ENTIRE Bash
     # command as one unit — neither half of `git add … && git commit …` runs.
@@ -950,7 +1110,7 @@ do_stop() {
   fi
 
   local age
-  age="$(get_checkpoint_age_minutes)"
+  age="$(get_active_age_minutes "$(get_checkpoint_age_minutes)" ckpt)"
 
   if [ "$age" -ge 60 ]; then
     cat <<EOF
@@ -5650,6 +5810,10 @@ case "$SUBCMD" in
   post-tool)           do_post_tool ;;
   gate)                do_gate ;;
   stop)                do_stop ;;
+  # TEST-ONLY: drive the delta-aware pressure helpers deterministically.
+  get-active-age)      get_active_age_minutes "${2:-0}" "${3:-}" ;;
+  pressure-pulse)      pressure_pulse ;;
+  touch-checkpoint)    do_touch_checkpoint ;;
   recover)             do_recover ;;
   reconcile-marker)    reconcile_marker ;;
   status)              do_status ;;
