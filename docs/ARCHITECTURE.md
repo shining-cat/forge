@@ -183,6 +183,58 @@ Converts recurrent friction events (permission prompts, prose-discipline failure
 
 **Spec & rationale:** the full design, decision history, and rollout walkthrough live in the maintainer's vault; the pattern catalog (`core/references/script-replacement-patterns.md`) and classifier tree (`core/references/friction-classifier.md`) are the parts shipped to users.
 
+## Delta-aware checkpoint pressure
+
+Three surfaces nudge the user to refresh state: the **braindump nag** (`do_post_tool`), the **checkpoint nag** (`do_stop`), and the **commit gate** (`do_gate`). Historically all three measured staleness by raw wall-clock elapsed time, so stepping away from the keyboard (coffee, meeting, lunch) advanced the clock with zero work done — returning triggered a spurious refresh nag or commit denial. Delta-aware pressure makes them track *work done since the last capture* rather than *time elapsed*.
+
+### Heartbeat + idle accumulator
+
+Tool-call activity is the cheap, honest pulse — `do_post_tool` already fires on every tool call, so it is the heartbeat site. Two state files live under `${VAULT_PATH}/_shared/` (neither is matched by `forge-gap-since-last-signal.sh`, so there is no signal pollution):
+
+| File | Role |
+|------|------|
+| `.forge-heartbeat` | Empty file; its **mtime = epoch of the last tool call**. |
+| `.forge-pressure-state` | `key=value` store, one per line: `idle_accum` (monotonic banked idle seconds), `ckpt_seen_mtime` / `ckpt_idle_base` and `bd_seen_mtime` / `bd_idle_base` (per-file last-observed mtime + the accumulator snapshot taken at that observation). |
+
+On each post-tool pulse (`pressure_pulse`, gated behind `session_owns_forge` so sibling windows never pulse): the gap between now and the heartbeat mtime is measured, and if it exceeds `IDLE_GAP_MIN` (default 10 min) the gap is **banked** into `idle_accum`. Then the heartbeat is pulsed to now. Gaps are clamped `≥ 0`, so a future/skewed mtime never banks negative idle. A missing heartbeat (fresh session) skips the gap logic entirely — behaviour is identical to the pre-feature runtime.
+
+### Active age + lazy per-file baseline rebase
+
+The nags fire on **active age**, not raw age:
+
+```
+active_age(file) = raw_age − (idle_accum − <file>_idle_base)     # clamped ≥ 0
+```
+
+Because the checkpoint and braindump are written by the Keeper through the Write tool (not through `forge-context.sh`), the accumulator can't be reset by the writer. Instead `pressure_pulse` detects when a tracked file's mtime has advanced past its last-seen value and snapshots the current accumulator as that file's new baseline (`<file>_idle_base`). This is a lazy "reset on write" — after a capture, the active-age window for that surface counts only idle banked *since* the file was last written.
+
+- **Braindump nag** (`do_post_tool`) fires on `get_active_age_minutes(raw, bd) ≥ BRAINDUMP_INTERVAL_MIN`.
+- **Checkpoint nag** (`do_stop`) fires on `get_active_age_minutes(raw, ckpt) ≥` the existing checkpoint threshold, with entry-grace and stop-count suppression untouched.
+
+### Count-based commit gate
+
+`do_gate` stops using time. It counts commits made since the checkpoint's recorded point and denies only past a threshold:
+
+```
+unlogged = git -C <repo> log --oneline --since=@<checkpoint_mtime> | wc -l
+if unlogged >= COMMIT_GATE_MAX_UNLOGGED:  deny
+```
+
+A commit is a discrete unit of done-work, so "N commits stacked without refreshing the checkpoint" is a truer signal than any clock — one/two-commit excursions pass, a real burst still gets gated (`COMMIT_GATE_MAX_UNLOGGED` default 5). Vault-targeted commits stay exempt via the existing `skip_stale` logic. The mechanism fails lenient: `--since=@<checkpoint_mtime>` reads a single-machine clock, and an Obsidian-sync mtime bump only moves the window start forward → under-counts → never falsely denies.
+
+### Escape hatch — `touch-checkpoint`
+
+The `forge-context.sh touch-checkpoint` subcommand is the "I came back, glanced around, genuinely nothing to log" affirm. It appends a single `_reviewed HH:MM — no new state_` line to the checkpoint (stripping any prior review line so they never stack), which bumps the checkpoint mtime, then rebases the checkpoint baseline (`ckpt_idle_base ← idle_accum`, `ckpt_seen_mtime ← new mtime`) so the checkpoint nag clock resets to zero without a full checkpoint rewrite or a Keeper dispatch. The review line is always-on. It resets the checkpoint clock only (not the braindump); it is covered by the existing `forge-context.sh *` allowlist glob.
+
+### Config
+
+Both keys are user-tunable in `~/.claude/forge.conf` (defaults apply when absent):
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `IDLE_GAP_MIN` | 10 | Gap in minutes above which a pause counts as step-away and is banked as idle. |
+| `COMMIT_GATE_MAX_UNLOGGED` | 5 | Commits since the checkpoint refresh before the commit gate denies. |
+
 ## Petra — The Forge Master
 
 Defined in `~/.claude/skills/forge/SKILL.md`. Persona inspired by Petra Forgewoman (Horizon series, Oseram tribe) — inside joke, not cosplay. Fixed vocabulary of forge metaphors. Surfaces at session entry/exit, checkpoints, friction, milestones. Stays silent during implementation, code output, test results.
