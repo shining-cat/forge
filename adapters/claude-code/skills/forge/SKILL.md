@@ -154,7 +154,7 @@ When the active project is **blocked** (waiting on CI, a local build, external i
 
 **Invariant — same work session:** `started_at` is preserved across a hop; an excursion is NOT a fresh session. Wellness pacing and the Stop-nag counter keep running as if the work never paused.
 
-**Header hint:** during an excursion the block header carries the parked hint, e.g. `[Forge: PERSO/<other-project> | HH:MM · <parked-project> parked]`. The statusline chip inherits the same suffix (⏸) from `forge-context.sh status`.
+**Header hint:** during an excursion the block header carries the parked hint, e.g. `[Forge: PERSO/<other-project> | HH:MM · <parked-project> parked]`. The statusline chip (from `forge-context.sh status`) surfaces the same excursion by appending ` ⏸ <parked-project>` to the project chip.
 
 **Single-level:** exactly one parked slot. Parking while something is already parked errors — resume first (or the design's "replace the ticket" prompt). No nesting.
 

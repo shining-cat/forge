@@ -41,6 +41,10 @@ assert_eq "parked.env resolved" "PERSO" "$(echo "$M" | jq -r '.parked.env')"
 nl=$(wc -l < "$V/_shared/forge-active" | tr -d ' ')
 if [ "$nl" -le 1 ]; then echo "  ✓ park marker is compact (≤1 newline, got $nl)"; PASS=$((PASS+1))
 else echo "  ✗ park marker is compact — expected ≤1 newline, got $nl (pretty multi-line)"; FAIL=$((FAIL+1)); fi
+# park must flip the TARGET project's checkpoint session closed→open (via flip_session_to_open);
+# SimpleHIIT was set up with session: closed, so open here proves the flip fired.
+tgt_sess=$(grep -m1 '^session:' "$V/PERSO/SimpleHIIT/current-checkpoint.md" | sed 's/^session:[[:space:]]*//')
+assert_eq "park flips target checkpoint session to open" "open" "$tgt_sess"
 
 # already-parked → error, marker unchanged
 before=$(cat "$V/_shared/forge-active")
