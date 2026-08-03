@@ -37,6 +37,10 @@ assert_eq "session_id preserved" "sess-1" "$(echo "$M" | jq -r '.session_id')"
 assert_eq "parked.project = former active" "forge" "$(echo "$M" | jq -r '.parked.project')"
 assert_eq "parked.reason stored" "waiting on CI" "$(echo "$M" | jq -r '.parked.reason')"
 assert_eq "parked.env resolved" "PERSO" "$(echo "$M" | jq -r '.parked.env')"
+# marker must stay compact single-line (canonical writer uses printf, not pretty jq)
+nl=$(wc -l < "$V/_shared/forge-active" | tr -d ' ')
+if [ "$nl" -le 1 ]; then echo "  ✓ park marker is compact (≤1 newline, got $nl)"; PASS=$((PASS+1))
+else echo "  ✗ park marker is compact — expected ≤1 newline, got $nl (pretty multi-line)"; FAIL=$((FAIL+1)); fi
 
 # already-parked → error, marker unchanged
 before=$(cat "$V/_shared/forge-active")
@@ -73,5 +77,19 @@ FORGE_CONF_OVERRIDE="$C5" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" park SimpleHII
 out=$(FORGE_CONF_OVERRIDE="$C5" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" status 2>/dev/null)
 assert_contains "status shows active target" "SimpleHIIT" "$out"
 assert_contains "status shows parked chip" "⏸ forge" "$out"
+
+echo "=== round-trip byte identity ==="
+# A park→resume cycle must leave the marker byte-identical to the original compact
+# marker (values AND format). Guards against the marker silently flipping from
+# compact single-line to pretty multi-line on first park.
+V6=$(mk_vault); C6=$(mk_conf "$V6"); write_active "$V6" forge
+SNAP=$(mktemp); cp "$V6/_shared/forge-active" "$SNAP"
+FORGE_CONF_OVERRIDE="$C6" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" park SimpleHIIT "waiting on CI" >/dev/null 2>&1
+FORGE_CONF_OVERRIDE="$C6" CLAUDE_CODE_SESSION_ID=sess-1 "$SCRIPT" resume >/dev/null 2>&1
+if diff "$SNAP" "$V6/_shared/forge-active" >/dev/null 2>&1; then
+  echo "  ✓ park→resume marker is byte-identical to original compact marker"; PASS=$((PASS+1))
+else
+  echo "  ✗ park→resume marker differs from original (raw diff):"; diff "$SNAP" "$V6/_shared/forge-active" | sed 's/^/    /'; FAIL=$((FAIL+1))
+fi
 
 echo; echo "Pass: $PASS  Fail: $FAIL"; [ "$FAIL" -eq 0 ]

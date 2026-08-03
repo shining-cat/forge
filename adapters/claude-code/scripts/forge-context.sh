@@ -2961,11 +2961,13 @@ do_park() {
     echo "[forge-context] park: unknown/ambiguous target project '$target'" >&2; exit 2
   fi
   local parked_at; parked_at="$(date +'%Y-%m-%dT%H:%M:%S%z')"
-  jq -n \
+  # Emit compact single-line (no trailing newline) to match the canonical
+  # printf-based writer in do_set_marker — keeps park/resume byte-neutral.
+  printf '%s' "$(jq -nc \
     --arg sid "$sid" --arg proj "$target" --arg started "$started" --argjson pane "$pane" \
     --arg pproj "$proj" --arg penv "$cur_env" --arg preason "$reason" --arg pat "$parked_at" \
     '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane,
-      parked:{project:$pproj, env:$penv, reason:$preason, parked_at:$pat}}' > "$MARKER"
+      parked:{project:$pproj, env:$penv, reason:$preason, parked_at:$pat}}')" > "$MARKER"
   local tdir; tdir="$(get_vault_dir "$target" 2>/dev/null)"
   [ -n "$tdir" ] && flip_session_to_open "$tdir/current-checkpoint.md"
 }
@@ -2985,8 +2987,10 @@ do_resume() {
   sid=$(echo "$mt" | jq -r '.session_id // empty' 2>/dev/null)
   started=$(echo "$mt" | jq -r '.started_at // empty' 2>/dev/null)
   pane=$(echo "$mt" | jq -c '.tmux_pane // null' 2>/dev/null)
-  jq -n --arg sid "$sid" --arg proj "$pproj" --arg started "$started" --argjson pane "$pane" \
-    '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane}' > "$MARKER"
+  # Emit compact single-line (no trailing newline) to match the canonical
+  # printf-based writer in do_set_marker — restores the original marker byte-for-byte.
+  printf '%s' "$(jq -nc --arg sid "$sid" --arg proj "$pproj" --arg started "$started" --argjson pane "$pane" \
+    '{session_id:$sid, project:$proj, started_at:$started, tmux_pane:$pane}')" > "$MARKER"
   local rdir; rdir="$(get_vault_dir "$pproj" 2>/dev/null)"
   [ -n "$rdir" ] && flip_session_to_open "$rdir/current-checkpoint.md"
 }
