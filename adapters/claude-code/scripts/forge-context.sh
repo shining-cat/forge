@@ -461,7 +461,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
@@ -5803,6 +5803,82 @@ PY
   echo "[add-backlog-row] $slug: row added under '$section'"
 }
 
+# ── run-tests: forge suite runner ─────────────────────────────────────────
+# Discovers every */tests/*.test.sh under FORGE_REPO and runs each in its own
+# bash process (each test self-locates its script-under-test via BASH_SOURCE,
+# so the repo copy is always what's exercised). Aggregates at the file level.
+# Optional first arg is a substring filter on the test path.
+# Exit: 0 all pass · 1 any file failed · 2 nothing to run (no match / none found).
+# Routed through forge-context.sh so `~/.claude/scripts/forge-context.sh
+# run-tests` rides the existing Bash allowlist — no per-invocation prompt, which
+# is the whole point (replaces ad-hoc `bash /tmp/run_suite.sh` dev scripts).
+do_run_tests() {
+  local filter="${1:-}"
+  local forge_repo
+  forge_repo="$(grep '^FORGE_REPO=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)"
+  if [ -z "$forge_repo" ] || [ ! -d "$forge_repo" ]; then
+    echo "[run-tests] FORGE_REPO not configured or not a directory — re-run install.sh" >&2
+    exit 2
+  fi
+
+  local c_green="" c_red="" c_reset=""
+  if [ -t 1 ]; then
+    c_green=$'\033[32m'; c_red=$'\033[31m'; c_reset=$'\033[0m'
+  fi
+
+  # Discover deterministically. `|| true` keeps set -e happy when nothing matches.
+  local all_tests
+  all_tests="$(find "$forge_repo" -type f -path '*/tests/*.test.sh' 2>/dev/null | sort || true)"
+  if [ -z "$all_tests" ]; then
+    echo "[run-tests] no test files found under $forge_repo" >&2
+    exit 2
+  fi
+
+  local tests="$all_tests"
+  if [ -n "$filter" ]; then
+    tests="$(printf '%s\n' "$all_tests" | grep -F -- "$filter" || true)"
+    if [ -z "$tests" ]; then
+      echo "[run-tests] no test files matched filter: $filter" >&2
+      exit 2
+    fi
+  fi
+
+  local passed=0 failed=0 failed_list=""
+  local t rel out rc
+  while IFS= read -r t; do
+    [ -z "$t" ] && continue
+    rel="${t#"$forge_repo"/}"
+    # `if out=$(...)` keeps set -e from aborting the runner on a failing test —
+    # a bare `out=$(false)` assignment would trip errexit.
+    # `</dev/null` is load-bearing: without it the child inherits this loop's
+    # heredoc as stdin, and any test that reads stdin swallows the remaining
+    # test paths, silently ending the run early (only the first N files run).
+    if out="$(bash "$t" </dev/null 2>&1)"; then rc=0; else rc=$?; fi
+    if [ "$rc" -eq 0 ]; then
+      printf '%sPASS%s  %s\n' "$c_green" "$c_reset" "$rel"
+      passed=$((passed+1))
+    else
+      printf '%sFAIL%s  %s\n' "$c_red" "$c_reset" "$rel"
+      printf '%s\n' "$out" | sed 's/^/      /'
+      failed=$((failed+1))
+      failed_list="${failed_list}  - ${rel}"$'\n'
+    fi
+  done <<EOF
+$tests
+EOF
+
+  local total=$((passed+failed))
+  echo ""
+  if [ "$failed" -eq 0 ]; then
+    printf '%s── Suite: %d passed, 0 failed (%d files) ──%s\n' "$c_green" "$passed" "$total" "$c_reset"
+    exit 0
+  fi
+  printf '%s── Suite: %d passed, %d failed (%d files) ──%s\n' "$c_red" "$passed" "$failed" "$total" "$c_reset"
+  printf 'Failed:\n'
+  printf '%s' "$failed_list"
+  exit 1
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -5860,8 +5936,9 @@ case "$SUBCMD" in
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   add-backlog-row)         do_add_backlog_row "${@:2}" ;;
   vault-rm)                do_vault_rm "${@:2}" ;;
+  run-tests)               do_run_tests "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests}" >&2
     exit 1
     ;;
 esac
