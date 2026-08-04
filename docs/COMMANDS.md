@@ -65,6 +65,10 @@ These are taught by the day-walkthrough in the README — they're things the use
 
 # Personal wind-down phrase list
 ~/.claude/scripts/forge-context.sh wind-down-list          # show learned end-of-day phrases
+
+# Development — run the forge test suite (discovers every */tests/*.test.sh under FORGE_REPO)
+~/.claude/scripts/forge-context.sh run-tests               # whole suite; exit 1 on any failure, 2 if none found
+~/.claude/scripts/forge-context.sh run-tests delta-pressure # only files whose path matches the substring filter
 ```
 
 Companion scripts:
