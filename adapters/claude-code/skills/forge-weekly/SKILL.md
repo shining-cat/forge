@@ -71,7 +71,7 @@ Behaviour per choice:
   4. If the moved file's frontmatter `project:` was blank, set it via Edit
   5. Open the project's `BACKLOG.md`. Add a "Drafts pending refinement" cluster (lazy-create after the **Hot** cluster, before **Measurement / audit** — task body suggestion locked) and append a row:
      ```
-     | [[{filename-without-ext}]] | XS | ? | refine | {title} — captured {created date from frontmatter} |
+     | [[{filename-without-ext}]] | S | ? | refine | {title} — captured {created date from frontmatter} |
      ```
      Columns: Task wikilink · Effort · Impact · Status · Notes.
 
