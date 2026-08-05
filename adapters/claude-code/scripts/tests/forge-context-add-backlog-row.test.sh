@@ -145,14 +145,23 @@ setup; plant_backlog
 [ "$?" -eq 2 ] && { echo "  ✓ missing --effort → exit 2"; PASS=$((PASS+1)); } || { echo "  ✗ no exit 2 on missing --effort"; FAIL=$((FAIL+1)); }
 teardown
 
-# ── Check 7 — --label produces [[slug|label]] ───────────────────────────
+# ── Check 7 — --label produces [[slug\|label]] with an ESCAPED pipe ──────
+# The wikilink alias separator '|' must be backslash-escaped so it is not
+# parsed as a markdown table column separator (unescaped pipe spilled the
+# alias into the Effort column, misaligning the whole row — 2026-08-05 fix).
 echo ""
-echo "Check 7 — --label yields [[slug|label]] link"
+echo "Check 7 — --label yields [[slug\\|label]] (escaped pipe, table intact)"
 setup; plant_backlog
 "$FORGE_CONTEXT" add-backlog-row --task "2026-06-08-labelled" --section "Hot" \
   --effort S --impact M --status open --label "Short name" >/dev/null 2>&1
-grep -q '\[\[2026-06-08-labelled|Short name\]\]' "$TMP/PERSO/demo/BACKLOG.md" \
-  && { echo "  ✓ labelled link rendered"; PASS=$((PASS+1)); } || { echo "  ✗ label not applied"; FAIL=$((FAIL+1)); }
+labelled=$(grep '2026-06-08-labelled' "$TMP/PERSO/demo/BACKLOG.md")
+echo "$labelled" | grep -q '\[\[2026-06-08-labelled\\|Short name\]\]' \
+  && { echo "  ✓ labelled link uses escaped pipe"; PASS=$((PASS+1)); } || { echo "  ✗ pipe not escaped (got: $labelled)"; FAIL=$((FAIL+1)); }
+# Table integrity: an escaped-pipe row must still have exactly 5 unescaped
+# column separators (6 pipes: leading, 4 between-cols, trailing).
+unescaped_pipes=$(printf '%s' "$labelled" | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
+[ "$unescaped_pipes" -eq 6 ] \
+  && { echo "  ✓ row has 6 real column pipes (alias pipe not counted)"; PASS=$((PASS+1)); } || { echo "  ✗ column count off ($unescaped_pipes real pipes, expected 6)"; FAIL=$((FAIL+1)); }
 teardown
 
 echo ""

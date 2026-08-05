@@ -5451,7 +5451,7 @@ PY
 # Maps (dimension, value) → a two-line table-cell string "<glyphs><br><label>"
 # for BACKLOG Effort/Impact/Status columns. Single source of truth for the
 # Status aliases collapse to 6 buckets (🟢 active · 🟠 next · ⚪ open · 🔴 blocked ·
-# ⏳ parked · 💡 shaping); effort=XS|S|M|L, impact=S|M|L|?. Echoes the cell on stdout (no trailing newline); the
+# ⏳ parked · 💡 shaping); effort=S|M|L, impact=S|M|L|?. Echoes the cell on stdout (no trailing newline); the
 # subcommand wrapper adds the newline. Exits 2 on unknown dimension/value.
 # Theme constraint: every glyph must render on BOTH light and dark bg.
 # slot helper: one fixed-width centered box-slot (filled emoji or empty dot)
@@ -5466,7 +5466,6 @@ render_backlog_cell() {
       if [ "$dim" = "effort" ]; then fill="🟦"; else fill="🟪"; fi
       v="$(printf '%s' "$val" | tr '[:lower:]' '[:upper:]')"
       case "$dim/$v" in
-        effort/XS) n=1; letter=XS; fill="🔹" ;;
         effort/S)  n=1; letter=S ;;
         effort/M)  n=2; letter=M ;;
         effort/L)  n=3; letter=L ;;
@@ -5474,7 +5473,7 @@ render_backlog_cell() {
         impact/M)  n=2; letter=M ;;
         impact/L)  n=3; letter=L ;;
         impact/\?) n=0; letter="?" ;;
-        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=XS|S|M|L, impact=S|M|L|?" >&2; exit 2 ;;
+        *) echo "[render-backlog-cell] FAIL: $dim level invalid (got '$val'); effort=S|M|L, impact=S|M|L|?" >&2; exit 2 ;;
       esac
       out='<span style="white-space:nowrap;font-size:0.85em">'
       for i in 1 2 3; do
@@ -5677,7 +5676,7 @@ PY
 # appears anywhere in the file (dup guard). Header counts are NOT touched here —
 # run `bump-backlog-header --latest "..."` afterward to refresh them.
 #
-# Required: --task <slug> --section <header-substring> --effort <XS|S|M|L>
+# Required: --task <slug> --section <header-substring> --effort <S|M|L>
 #           --impact <S|M|L|?> --status <state>
 # Optional: --notes <text> --label <visible link text (default: bare [[slug]])>
 do_add_backlog_row() {
@@ -5722,7 +5721,11 @@ do_add_backlog_row() {
   status_cell="$(render_backlog_cell status "$status")" || exit 2
 
   local link
-  if [ -n "$label" ]; then link="[[$slug|$label]]"; else link="[[$slug]]"; fi
+  # Escape the wikilink alias pipe as \| so it is NOT parsed as a markdown
+  # table column separator (unescaped, it spilled the alias into the next
+  # column and misaligned the row — 2026-08-05). Obsidian reads [[t\|a]] as
+  # an aliased link and keeps the table intact.
+  if [ -n "$label" ]; then link="[[$slug\\|$label]]"; else link="[[$slug]]"; fi
   local new_row="| $link | $effort_cell | $impact_cell | $status_cell | $notes |"
 
   local tmp="$backlog.tmp.$$"

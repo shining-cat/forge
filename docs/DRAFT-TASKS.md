@@ -214,7 +214,7 @@ The triage takes ~30 seconds per draft. After the ceremony, surviving drafts are
 You nominate the refine row from the BACKLOG when you have headspace — same way you pick up any other task. The row looks like:
 
 ```
-| [[2026-06-02T15-50-some-draft]] | XS | ? | refine | Some draft title — captured 2026-06-02T15:50 |
+| [[2026-06-02T15-50-some-draft]] | S | ? | refine | Some draft title — captured 2026-06-02T15:50 |
 ```
 
 The wikilink resolves to the draft file in `tasks/drafts/`.
@@ -224,7 +224,7 @@ Petra opens the draft and walks the standard refinement questions:
 1. **What** — restate the idea in 1-2 sentences (the raw draft is often cryptic to future-you)
 2. **Why** — what triggered this? What does shipping it change?
 3. **Scope** — single task, or does it cluster with others (umbrella candidate)?
-4. **Effort** — XS / S / M / L gut estimate
+4. **Effort** — S / M / L gut estimate
 5. **Impact** — L / M / H gut estimate
 6. **Priority** — vs current BACKLOG
 7. **Dependencies / blockers** — anything that must land first?
