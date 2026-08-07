@@ -98,16 +98,16 @@ echo "$out" | grep -q "shining-cat/forge#13" \
   || { echo "  ✗ pr_spec not in stdout"; FAIL=$((FAIL+1)); }
 teardown
 
-# ── Check 3 — no match: warn-only, no movement, exit 0 ──────────────────
+# ── Check 3 — no match: refuse with non-zero exit, no movement ──────────
 echo ""
 echo "Check 3 — no match"
 setup
 plant_open_task "$TMP/PERSO/demo/tasks/open/2026-05-21-real-task.md"
 out=$("$FORGE_CONTEXT" resolve-task "nonexistent-slug" 2>&1)
 rc=$?
-[ "$rc" -eq 0 ] \
-  && { echo "  ✓ exit 0 on no match"; PASS=$((PASS+1)); } \
-  || { echo "  ✗ exit $rc on no match (expected 0)"; FAIL=$((FAIL+1)); }
+[ "$rc" -eq 2 ] \
+  && { echo "  ✓ exit 2 on no match"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc on no match (expected 2)"; FAIL=$((FAIL+1)); }
 echo "$out" | grep -q "no open task matching" \
   && { echo "  ✓ warn message present"; PASS=$((PASS+1)); } \
   || { echo "  ✗ warn message missing"; FAIL=$((FAIL+1)); }
@@ -116,18 +116,26 @@ echo "$out" | grep -q "no open task matching" \
   || { echo "  ✗ unrelated file disappeared"; FAIL=$((FAIL+1)); }
 teardown
 
-# ── Check 4 — ambiguous match: warn, no movement ────────────────────────
+# ── Check 4 — ambiguous exact match: same slug in two projects ──────────
+# Under exact matching, ambiguity means the identical slug exists in more
+# than one project's tasks/open/ — resolve-task must refuse (exit 2) rather
+# than guess which project's task the user meant.
 echo ""
-echo "Check 4 — ambiguous match (>1 file)"
+echo "Check 4 — ambiguous exact match (same slug, two projects)"
 setup
-plant_open_task "$TMP/PERSO/demo/tasks/open/2026-05-21-foo-one.md"
-plant_open_task "$TMP/PERSO/demo/tasks/open/2026-05-22-foo-two.md"
-out=$("$FORGE_CONTEXT" resolve-task "foo" 2>&1)
+mkdir -p "$TMP/PERSO/other/tasks/open" "$TMP/PERSO/other/tasks/resolved"
+plant_open_task "$TMP/PERSO/demo/tasks/open/2026-05-21-dup-task.md"
+plant_open_task "$TMP/PERSO/other/tasks/open/2026-05-21-dup-task.md"
+out=$("$FORGE_CONTEXT" resolve-task "2026-05-21-dup-task" 2>&1)
+rc=$?
+[ "$rc" -eq 2 ] \
+  && { echo "  ✓ exit 2 on ambiguous match"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc on ambiguous (expected 2)"; FAIL=$((FAIL+1)); }
 echo "$out" | grep -q "ambiguous" \
   && { echo "  ✓ ambiguity warn present"; PASS=$((PASS+1)); } \
   || { echo "  ✗ ambiguity warn missing"; FAIL=$((FAIL+1)); }
-[ -f "$TMP/PERSO/demo/tasks/open/2026-05-21-foo-one.md" ] \
-  && [ -f "$TMP/PERSO/demo/tasks/open/2026-05-22-foo-two.md" ] \
+[ -f "$TMP/PERSO/demo/tasks/open/2026-05-21-dup-task.md" ] \
+  && [ -f "$TMP/PERSO/other/tasks/open/2026-05-21-dup-task.md" ] \
   && { echo "  ✓ both files untouched"; PASS=$((PASS+1)); } \
   || { echo "  ✗ ambiguous match moved a file"; FAIL=$((FAIL+1)); }
 teardown
@@ -159,15 +167,26 @@ grep -q "^resolved: 2026-05-15$" "$TMP/PERSO/demo/tasks/resolved/2026-05-21-alre
   || { echo "  ✗ resolved: date rewritten when it shouldn't be"; FAIL=$((FAIL+1)); }
 teardown
 
-# ── Check 6 — slug suffix-only match (no date prefix) ───────────────────
+# ── Check 6 — substring slug is REFUSED, not resolved ───────────────────
+# Substring matching was the footgun: a partial slug must never silently
+# resolve a longer-named task. It should refuse (exit 2) and offer the
+# near-miss as a hint, leaving the file untouched.
 echo ""
-echo "Check 6 — substring slug match (no date prefix)"
+echo "Check 6 — substring slug refused with a did-you-mean hint"
 setup
 plant_open_task "$TMP/PERSO/demo/tasks/open/2026-05-21-uniqueword-feature.md"
 out=$("$FORGE_CONTEXT" resolve-task "uniqueword" 2>&1)
-[ -f "$TMP/PERSO/demo/tasks/resolved/2026-05-21-uniqueword-feature.md" ] \
-  && { echo "  ✓ substring slug match resolves"; PASS=$((PASS+1)); } \
-  || { echo "  ✗ substring match failed"; FAIL=$((FAIL+1)); }
+rc=$?
+[ "$rc" -eq 2 ] \
+  && { echo "  ✓ exit 2 on substring-only match"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc on substring-only (expected 2)"; FAIL=$((FAIL+1)); }
+[ -f "$TMP/PERSO/demo/tasks/open/2026-05-21-uniqueword-feature.md" ] \
+  && { echo "  ✓ substring match left the file untouched"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ substring match moved/resolved the file"; FAIL=$((FAIL+1)); }
+echo "$out" | grep -qi "did you mean" \
+  && echo "$out" | grep -q "2026-05-21-uniqueword-feature" \
+  && { echo "  ✓ near-miss offered as a hint"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ near-miss hint missing"; FAIL=$((FAIL+1)); }
 teardown
 
 # ── Check 7 — across multiple projects: _shared also scanned ────────────
@@ -176,7 +195,7 @@ echo "Check 7 — _shared/tasks/open/ also scanned"
 setup
 mkdir -p "$TMP/_shared/tasks/open" "$TMP/_shared/tasks/resolved"
 plant_open_task "$TMP/_shared/tasks/open/2026-05-21-shared-task.md"
-out=$("$FORGE_CONTEXT" resolve-task "shared-task" 2>&1)
+out=$("$FORGE_CONTEXT" resolve-task "2026-05-21-shared-task" 2>&1)
 [ -f "$TMP/_shared/tasks/resolved/2026-05-21-shared-task.md" ] \
   && { echo "  ✓ _shared task resolves to _shared/tasks/resolved/"; PASS=$((PASS+1)); } \
   || { echo "  ✗ _shared task not moved or moved wrong place"; FAIL=$((FAIL+1)); }
@@ -270,6 +289,44 @@ echo "$STDIN_JSON_PAYLOAD" | "$FORGE_CONTEXT" post-tool >/dev/null 2>&1
 grep -q "^shipped_via: shining-cat/forge#42$" "$TMP/PERSO/demo/tasks/resolved/2026-05-21-pr-test.md" 2>/dev/null \
   && { echo "  ✓ shipped_via extracted from commit body"; PASS=$((PASS+1)); } \
   || { echo "  ✗ shipped_via not extracted"; FAIL=$((FAIL+1)); }
+teardown
+
+# ── Check 11 — regression: the 2026-07-14 footgun ───────────────────────
+# `resolve-task grocy <intended-slug-in-wrong-arg-slot>` once substring-
+# matched an unrelated in-progress `…-grocy-feature.md` and mutated + staged
+# it. Exact matching must refuse: "grocy" is nobody's exact slug.
+echo ""
+echo "Check 11 — regression: bare word must not resolve a longer-named task"
+setup
+cat > "$TMP/PERSO/demo/tasks/open/2026-06-21-grocy-feature-adoption.md" <<'EOF'
+---
+created: 2026-06-21
+updated: 2026-06-21
+project: demo
+type: task
+status: in-progress
+tags: [test]
+---
+
+# Unrelated in-progress task the user never named
+EOF
+git -C "$TMP" add "PERSO/demo/tasks/open/2026-06-21-grocy-feature-adoption.md" 2>/dev/null
+git -C "$TMP" -c user.email=t@e -c user.name=t commit -q -m plant 2>/dev/null
+out=$("$FORGE_CONTEXT" resolve-task "grocy" "2026-06-21-upload-appliance-manuals" 2>&1)
+rc=$?
+[ "$rc" -eq 2 ] \
+  && { echo "  ✓ exit 2 — bare word refused"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc (expected 2)"; FAIL=$((FAIL+1)); }
+[ -f "$TMP/PERSO/demo/tasks/open/2026-06-21-grocy-feature-adoption.md" ] \
+  && { echo "  ✓ in-progress task untouched in tasks/open/"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ in-progress task was moved (the footgun)"; FAIL=$((FAIL+1)); }
+grep -q "^status: in-progress$" "$TMP/PERSO/demo/tasks/open/2026-06-21-grocy-feature-adoption.md" 2>/dev/null \
+  && { echo "  ✓ status not mutated"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ status was mutated"; FAIL=$((FAIL+1)); }
+# nothing left staged for a rename
+git -C "$TMP" diff --cached --name-only | grep -q "grocy-feature-adoption" \
+  && { echo "  ✗ a rename was staged (the footgun)"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ no rename staged"; PASS=$((PASS+1)); }
 teardown
 
 echo ""

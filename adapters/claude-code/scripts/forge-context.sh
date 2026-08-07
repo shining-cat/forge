@@ -1243,19 +1243,36 @@ do_resolve_task() {
     return 1
   fi
 
+  # Exact-match only: a candidate is a tasks/open/ file whose basename minus
+  # .md equals the slug exactly. Substring matching was a data-loss footgun —
+  # `resolve-task grocy` once matched (and mutated + staged) an unrelated
+  # in-progress `…-grocy-feature.md` the user never named. Refuse anything but
+  # an exact hit; on a near-miss, hint but never resolve. Non-zero exit lets
+  # callers detect the no-op (the auto-fire trailer path swallows it via
+  # `|| true`, so idempotent re-fires stay harmless). See task
+  # 2026-07-27-fix-resolve-task-slug-mismatch.
   local matches=() f
   while IFS= read -r -d '' f; do
     matches+=("$f")
-  done < <(find "$VAULT_PATH" -type f -name "*${slug}*.md" -path "*/tasks/open/*" -print0 2>/dev/null)
+  done < <(find "$VAULT_PATH" -type f -name "${slug}.md" -path "*/tasks/open/*" -print0 2>/dev/null)
 
   if [ "${#matches[@]}" -eq 0 ]; then
-    echo "[resolve-task] WARN: no open task matching '$slug' — nothing to do" >&2
-    return 0
+    local hints=() h
+    while IFS= read -r -d '' h; do
+      hints+=("$h")
+    done < <(find "$VAULT_PATH" -type f -name "*${slug}*.md" -path "*/tasks/open/*" -print0 2>/dev/null)
+    if [ "${#hints[@]}" -gt 0 ]; then
+      echo "[resolve-task] ERR: no task exactly named '$slug' in tasks/open/ — pass the exact slug. Did you mean:" >&2
+      printf '  %s\n' "${hints[@]##*/}" >&2
+    else
+      echo "[resolve-task] ERR: no open task matching '$slug' — nothing to resolve" >&2
+    fi
+    return 2
   fi
   if [ "${#matches[@]}" -gt 1 ]; then
-    echo "[resolve-task] WARN: ambiguous '$slug' — ${#matches[@]} matches:" >&2
+    echo "[resolve-task] ERR: ambiguous '$slug' — ${#matches[@]} exact matches across projects:" >&2
     printf '  %s\n' "${matches[@]}" >&2
-    return 0
+    return 2
   fi
 
   local task_file="${matches[0]}"
