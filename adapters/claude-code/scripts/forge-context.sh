@@ -1043,7 +1043,7 @@ do_gate() {
   fi
 
   if [ "$skip_stale" -eq 0 ] && [ "$unlogged" -ge "$COMMIT_GATE_MAX_UNLOGGED" ]; then
-    local reason="[Keeper] ${unlogged} commits since the last checkpoint refresh (limit ${COMMIT_GATE_MAX_UNLOGGED}, project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."
+    local reason="[Keeper] ${unlogged} commits since the last checkpoint refresh (limit ${COMMIT_GATE_MAX_UNLOGGED}, project: $PROJECT_NAME). Write a checkpoint in a SEPARATE Bash call before committing — run /forge-checkpoint (or \`forge-context.sh write-checkpoint\`), then commit in a second call. Chaining the checkpoint write into the same compound as \`git commit\` is rejected before the checkpoint runs, so re-running the same one-liner loops."
 
     # Compound-rejection postscript: PreToolUse deny rejects the ENTIRE Bash
     # command as one unit — neither half of `git add … && git commit …` runs.
