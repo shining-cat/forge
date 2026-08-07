@@ -100,6 +100,8 @@ Check which project directories exist under the vault to determine valid environ
 - If the vault contains exactly one project → use it.
 - Otherwise → ask the user which project to activate.
 
+**Present the choices as a neutral, unordered list — NEVER frame one as "(Recommended)", "last active", "most recent", or otherwise imply recency.** At step 1c the marker, `recover`, and `gap-since-last-signal` have not run yet, so any recency/recommendation claim would be sourced from stale context (e.g. the MEMORY.md "Active:" header) with no evidence behind it. A fabricated default is worse than none — it makes the user wonder what Claude knows that they don't, when the answer is nothing. If a recency-ranked ordering is ever wanted, it must wait until after `gap-since-last-signal` is read (step 2). (Honest-reporting sibling — see step 6.)
+
 Once the project is unambiguously chosen, run `~/.claude/scripts/forge-context.sh set-marker active <project>` via the Bash tool. The script captures the current `$CLAUDE_CODE_SESSION_ID`, current timestamp, and current `$TMUX_PANE` and writes a JSON object to the marker:
 
 ```json
