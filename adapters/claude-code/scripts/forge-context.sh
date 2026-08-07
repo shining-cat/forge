@@ -1331,6 +1331,11 @@ do_resolve_task() {
     if git -C "$VAULT_PATH" ls-files --error-unmatch "$rel_from" >/dev/null 2>&1; then
       if git -C "$VAULT_PATH" mv "$rel_from" "$rel_to" 2>/dev/null; then
         moved=1
+        # Leave the rename UNSTAGED (working tree = D + ??). vault-sync is the
+        # commit mechanism and refuses to run while ANY file is pre-staged, so
+        # a staged rename would block the whole ship→resolve→sync flow. See
+        # task 2026-07-27-resolve-task-vault-sync-staging-collision.
+        git -C "$VAULT_PATH" reset -q -- "$rel_from" "$rel_to" 2>/dev/null || true
       fi
     fi
   fi
