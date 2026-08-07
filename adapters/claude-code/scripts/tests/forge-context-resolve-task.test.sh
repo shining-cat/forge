@@ -329,6 +329,26 @@ git -C "$TMP" diff --cached --name-only | grep -q "grocy-feature-adoption" \
   || { echo "  ✓ no rename staged"; PASS=$((PASS+1)); }
 teardown
 
+# ── Check 12 — resolved rename left UNSTAGED (vault-sync collision) ──────
+# resolve-task must not leave the task-file rename staged: vault-sync (the
+# commit mechanism) refuses to run while ANY file is pre-staged, so a staged
+# rename blocks the whole ship→resolve→sync flow. The move must land in the
+# working tree as D + ?? (unstaged). Task 2026-07-27-resolve-task-vault-sync-staging-collision.
+echo ""
+echo "Check 12 — resolved rename is left unstaged"
+setup
+plant_open_task "$TMP/PERSO/demo/tasks/open/2026-05-21-staging-task.md"
+out=$("$FORGE_CONTEXT" resolve-task "2026-05-21-staging-task" 2>&1)
+[ -f "$TMP/PERSO/demo/tasks/resolved/2026-05-21-staging-task.md" ] \
+  && [ ! -f "$TMP/PERSO/demo/tasks/open/2026-05-21-staging-task.md" ] \
+  && { echo "  ✓ file moved to resolved/"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ file not moved"; FAIL=$((FAIL+1)); }
+staged=$(git -C "$TMP" diff --cached --name-only 2>/dev/null)
+[ -z "$staged" ] \
+  && { echo "  ✓ nothing left staged in the index"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ index left dirty: $staged"; FAIL=$((FAIL+1)); }
+teardown
+
 echo ""
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -461,13 +461,18 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests)
     # No stdin read, no guards. These operate on marker/shared state only.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
     # (e.g. from a post-commit hook in a sibling Claude Code window).
     # friction-tail reads $VAULT_PATH/_shared/friction-log.md directly — no
     # project context needed.
+    # draft-list / draft-invite-line scan every tasks/drafts dir under
+    # $VAULT_PATH (whole-vault, project-independent) and read no stdin, so they
+    # belong here beside each other — NOT in the catch-all, whose spurious
+    # `cat` + marker requirement made draft-list exit silently with no active
+    # project (task 2026-07-27-fix-draft-list-exit1).
     # skill-budgets reads $FORGE_REPO/core/skill-budgets.conf directly and
     # doesn't need marker context — also future-proofs against pre-commit /
     # `gh pr comment` invocations that won't have a tty.
@@ -1038,7 +1043,7 @@ do_gate() {
   fi
 
   if [ "$skip_stale" -eq 0 ] && [ "$unlogged" -ge "$COMMIT_GATE_MAX_UNLOGGED" ]; then
-    local reason="[Keeper] ${unlogged} commits since the last checkpoint refresh (limit ${COMMIT_GATE_MAX_UNLOGGED}, project: $PROJECT_NAME). Write a checkpoint before committing — run /forge-checkpoint."
+    local reason="[Keeper] ${unlogged} commits since the last checkpoint refresh (limit ${COMMIT_GATE_MAX_UNLOGGED}, project: $PROJECT_NAME). Write a checkpoint in a SEPARATE Bash call before committing — run /forge-checkpoint (or \`forge-context.sh write-checkpoint\`), then commit in a second call. Chaining the checkpoint write into the same compound as \`git commit\` is rejected before the checkpoint runs, so re-running the same one-liner loops."
 
     # Compound-rejection postscript: PreToolUse deny rejects the ENTIRE Bash
     # command as one unit — neither half of `git add … && git commit …` runs.
@@ -1331,6 +1336,11 @@ do_resolve_task() {
     if git -C "$VAULT_PATH" ls-files --error-unmatch "$rel_from" >/dev/null 2>&1; then
       if git -C "$VAULT_PATH" mv "$rel_from" "$rel_to" 2>/dev/null; then
         moved=1
+        # Leave the rename UNSTAGED (working tree = D + ??). vault-sync is the
+        # commit mechanism and refuses to run while ANY file is pre-staged, so
+        # a staged rename would block the whole ship→resolve→sync flow. See
+        # task 2026-07-27-resolve-task-vault-sync-staging-collision.
+        git -C "$VAULT_PATH" reset -q -- "$rel_from" "$rel_to" 2>/dev/null || true
       fi
     fi
   fi
@@ -4807,7 +4817,7 @@ do_draft_list() {
       ' "$f")
 
       # First H1 heading; fall back to filename (no .md)
-      title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# //')
+      title=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# //' || true)
       [ -z "$title" ] && title=$(basename "$f" .md)
 
       # Infer project from path when frontmatter is blank

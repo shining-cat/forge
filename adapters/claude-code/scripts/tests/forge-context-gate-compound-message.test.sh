@@ -154,5 +154,24 @@ fi
 teardown
 
 echo ""
+echo "Check 4 — deny reason tells the user to checkpoint in a SEPARATE Bash call"
+# Regression guard for 2026-07-27-commit-gate-message-separate-checkpoint-call:
+# the natural one-liner chains `forge-context.sh write-checkpoint … && git commit`,
+# but PreToolUse deny rejects the WHOLE compound before write-checkpoint runs, so
+# "re-run the WHOLE command" loops forever. The base message must state the
+# checkpoint write has to be a SEPARATE Bash call from the commit. This applies to
+# every count-based deny, so a bare `git commit` deny is enough to assert it.
+setup_gated_session
+input=$(build_hook_input "git -C $CODE commit -m 'bar'")
+out=$(printf '%s' "$input" | "$FORGE_CONTEXT" gate 2>/dev/null)
+reason=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if printf '%s' "$reason" | grep -qiF "separate Bash call"; then
+  echo "  ✓ separate-Bash-call guidance present"; PASS=$((PASS+1))
+else
+  echo "  ✗ separate-call guidance missing (got: $reason)"; FAIL=$((FAIL+1))
+fi
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
