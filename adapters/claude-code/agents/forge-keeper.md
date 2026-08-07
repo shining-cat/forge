@@ -122,7 +122,7 @@ You have no conversation history when dispatched as a subagent. The dispatching 
 - Project name + ENV + concrete vault path
 - Recent commits (`git log --oneline -10`)
 
-When the dispatch is for a routine checkpoint (no decision logging needed), accept background mode (`run_in_background: true`). When the dispatch involves decision logging, run inline so you can check with the user.
+**Dispatch synchronously — `run_in_background: false`.** A lone Keeper has no parallelism to gain from background mode, and background dispatch spawns in a separate pane that hits Claude Code's folder-trust gate (no UI surface to answer → the spawn stalls and you die before writing). Synchronous runs in-process: no pane, no gate. (Decision-logging dispatches run synchronously anyway, so the user can be consulted.) See `vault-write-protocol.md` → "Synchronous is the default for single-agent dispatch".
 
 ## Team-mode notes (when dispatched as an agent-team teammate)
 

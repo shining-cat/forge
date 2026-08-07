@@ -91,21 +91,18 @@ Use inline (no subagent) for:
 
 ### Platform limitation
 
-Claude Code subagents do NOT inherit path-scoped Write permissions from the parent session, and `run_in_background: true` has no UI surface for granting permission prompts mid-run. So a background-dispatched Keeper that needs to Write into the vault will silently fail with a permission denial that the user can't see and can't approve.
+Two independent blockers make **background** dispatch (`run_in_background: true`) unreliable for a lone Keeper:
 
-Only use background dispatch when BOTH of:
-1. The user has explicitly authorized the pattern in the current session
-2. The vault Write path is already covered by the subagent's allowlist for this run
+1. **Folder-trust gate (the dominant one).** A background subagent spawns in a separate tmux/iTerm pane, and a fresh pane hits Claude Code's *"Do you trust the files in this folder?"* gate. A background agent has no UI surface to answer it, so the spawn stalls or the prompt is idle-dropped and the agent dies before writing anything. This affects **all projects**. Observed 2026-08-04 (five background keepers all stalled); the fix is to dispatch **synchronously** (`run_in_background: false`), which runs in-process — no pane, no gate.
+2. **Permission inheritance.** Subagents do NOT inherit path-scoped Write permissions from the parent, and background dispatch has no UI surface for permission prompts mid-run, so a Write into the vault can silently deny.
 
-When in doubt: inline.
+**Default for a single Keeper: synchronous dispatch (`run_in_background: false`).** There's no parallelism to lose on a lone dispatch, and synchronous sidesteps both blockers. Background/pane dispatch is only for genuine parallel fan-out (agent-team reviews, weekly harvest) and requires the user to accept the trust gate interactively per pane — see `vault-write-protocol.md`.
 
 ### If you do dispatch (advanced)
 
-When the conditions above are met:
-
 - **Model:** `sonnet` — checkpoint writes are formulaic, don't need opus
 - **Name:** `Forge-Keeper`
-- **Background:** `run_in_background: true` only if the user has authorized; otherwise foreground
+- **Background:** default `run_in_background: false` (synchronous). Only go background for authorized parallel fan-out, never for a lone Keeper write.
 
 The main session must include all necessary context in the prompt: current branch, completed items, in-progress work, next steps, vault paths. The subagent has no conversation history.
 
