@@ -5692,6 +5692,94 @@ PY
   echo "[update-backlog-row] $slug: $what"
 }
 
+# ── Subcommand: remove-backlog-row (Tier 1 — delete an existing row) ────
+# Deletes the active Hot-table row whose Task cell contains [[slug]] from the
+# active project's BACKLOG.md. Complements update-backlog-row (edit) and
+# add-backlog-row (insert): before this, removing a shipped row from the Hot
+# table (per feedback_backlog_remove_completed_rows) had no silent fast-path, so
+# a one-line deletion fell all the way to a heavyweight Keeper subagent — ~8 min
+# and 16 tool-uses for one line (2026-08-07 friction). Rows inside <details>
+# (the Recently-shipped history block) are NEVER matched — history is preserved.
+# Header counts are NOT touched here — run `bump-backlog-header` afterward.
+#
+# Required: --task <slug>
+do_remove_backlog_row() {
+  local slug=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --task) slug="$2"; shift 2 ;;
+      *) echo "[remove-backlog-row] FAIL: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ -z "$slug" ]; then
+    echo "[remove-backlog-row] FAIL: --task required" >&2; exit 2
+  fi
+
+  local resolved project vault_dir backlog
+  resolved="$(resolve_active_project_or_die "remove-backlog-row")"
+  project="${resolved%%|*}"
+  vault_dir="${resolved##*|}"
+  backlog="$vault_dir/BACKLOG.md"
+
+  if [ ! -f "$backlog" ]; then
+    echo "[remove-backlog-row] FAIL: BACKLOG.md not found at '$backlog'" >&2
+    exit 2
+  fi
+  if ! vault_path_inside "$backlog" "$VAULT_PATH"; then
+    echo "[remove-backlog-row] FAIL: '$backlog' is not inside VAULT_PATH" >&2
+    exit 2
+  fi
+
+  local tmp="$backlog.tmp.$$"
+  local rc=0
+  if SLUG="$slug" python3 - "$backlog" > "$tmp" <<'PY'
+import os, sys
+path = sys.argv[1]
+slug = os.environ["SLUG"]
+
+needle = f"[[{slug}]]"
+in_details = False
+removed = False
+with open(path, 'r', encoding='utf-8') as fh:
+    for line in fh:
+        # Track <details> region (case-insensitive, matching update-backlog-row).
+        # Rows inside the Recently-shipped history block are NEVER removed.
+        lowered = line.lower()
+        if "<details" in lowered:
+            in_details = True
+        elif "</details>" in lowered:
+            in_details = False
+            sys.stdout.write(line)
+            continue
+        if (not in_details) and (not removed) and needle in line and line.lstrip().startswith("|"):
+            # Drop this row: skip writing it, mark done so only the FIRST match
+            # (there should only be one active row per slug) is removed.
+            removed = True
+            continue
+        sys.stdout.write(line)
+if not removed:
+    sys.exit(3)
+PY
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$tmp" 2>/dev/null
+    echo "[remove-backlog-row] FAIL: no active row found containing [[$slug]] in '$backlog' (rows inside <details> are not removed)" >&2
+    exit 2
+  fi
+  mv "$tmp" "$backlog" || {
+    rm -f "$tmp" 2>/dev/null
+    echo "[remove-backlog-row] FAIL: atomic rename failed for '$backlog'" >&2
+    exit 2
+  }
+
+  echo "[remove-backlog-row] $slug: row removed"
+}
+
 # ── Subcommand: add-backlog-row (Tier 1 — insert a NEW row) ─────────────
 # Inserts a new row into an existing section's table in the active project's
 # BACKLOG.md. Complements update-backlog-row (which only edits existing rows):
@@ -5965,10 +6053,11 @@ case "$SUBCMD" in
   render-backlog-cell)     do_render_backlog_cell "${@:2}" ;;
   update-backlog-row)      do_update_backlog_row "${@:2}" ;;
   add-backlog-row)         do_add_backlog_row "${@:2}" ;;
+  remove-backlog-row)      do_remove_backlog_row "${@:2}" ;;
   vault-rm)                do_vault_rm "${@:2}" ;;
   run-tests)               do_run_tests "${@:2}" ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests}" >&2
     exit 1
     ;;
 esac
