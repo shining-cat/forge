@@ -44,7 +44,17 @@ When the write doesn't fit a Tier 1 subcommand (INDEX rewrites, decision files, 
 
 Multiple vault edits in ONE subagent dispatch is strictly better than N Agent calls. When a refresh needs three Edits, dispatch ONE subagent with all three instructions in the prompt.
 
-Background dispatch (`run_in_background: true`) is still opt-in and requires user authorization — its permission flow has no UI surface for prompts, so a background subagent that hits an unprompted permission will silently deny.
+### Synchronous is the default for single-agent dispatch
+
+**A single-agent Tier 2 dispatch (keeper, vault-write, any lone subagent) MUST run synchronously — `run_in_background: false`.** This is not a performance preference; it's the fix for a hard blocker.
+
+Background dispatch (`run_in_background: true`) spawns the subagent in a **separate tmux/iTerm pane**. A fresh pane hits Claude Code's folder-trust gate — *"Do you trust the files in this folder?"* — which has no UI surface a background agent can answer, so the spawn stalls or the prompt is idle-dropped and the subagent dies before doing any work. This bites **all projects**, not just PRO — it is a distinct blocker from the PRO nested-repo permission prompt documented below. Observed 2026-08-04: five background keepers all stalled on the trust gate; corroborated 2026-08-07 (a synchronous keeper ran clean — in-process, no pane, no gate).
+
+A synchronous dispatch runs **in-process** in the main session — no pane, no trust gate, and it inherits the session's already-granted trust. So it's both simpler and strictly more reliable for the single-agent case, where there's no parallelism to lose anyway.
+
+Background/pane dispatch earns its keep only for **genuine parallel fan-out** — agent-team reviews, the weekly friction harvest — where N subagents truly run at once. That path *does* hit the trust gate per pane; making it gate-free needs the folder pre-trusted at install and is tracked separately (`2026-08-07-pretrust-parallel-fanout-folder-gate`). Until then, parallel fan-out requires accepting the trust gate interactively, so it's a foreground-user operation, not a fire-and-forget background one.
+
+Background dispatch also remains subject to the pre-existing permission caveat: even setting the trust gate aside, its permission flow has no UI surface for prompts, so a background subagent that hits an unprompted permission will silently deny.
 
 ## When inline IS OK
 
