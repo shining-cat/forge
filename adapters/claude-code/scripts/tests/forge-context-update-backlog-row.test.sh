@@ -194,6 +194,37 @@ echo "$tl" | grep -q '🟪' && echo "$tl" | grep -q '<br>L' \
 echo "$tl" | grep -q "| M |" && { echo "  ✓ effort preserved (raw M)"; PASS=$((PASS+1)); } || { echo "  ✗ effort not preserved (got: $tl)"; FAIL=$((FAIL+1)); }
 teardown
 
+echo ""; echo "Check 10 — aliased wikilink row (add-backlog-row --label form) is found + updated"
+setup
+# add-backlog-row --label writes the Task cell as [[slug\|Label]] (pipe escaped
+# for the markdown table). update-backlog-row must match this aliased form, not
+# only the bare [[slug]]. Regression for 2026-08-10-update-backlog-row-aliased-wikilink.
+cat > "$TMP/PERSO/demo/BACKLOG.md" <<'EOF'
+# demo — Backlog
+
+## Hot
+
+| Task | Effort | Impact | Status | Notes |
+|------|:--:|:--:|------|-------|
+| [[2026-06-08-aliased-row\|Nice Human Label]] | M | L | open | original aliased notes |
+| [[2026-06-08-plain-row]] | S | M | open | plain sibling |
+EOF
+out=$("$FORGE_CONTEXT" update-backlog-row --task "2026-06-08-aliased-row" --status "active" --notes "shipped via PR" 2>&1)
+rc=$?
+[ "$rc" -eq 0 ] && { echo "  ✓ exit 0 on aliased row"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc (out: $out)"; FAIL=$((FAIL+1)); }
+tl=$(grep 'aliased-row' "$TMP/PERSO/demo/BACKLOG.md")
+echo "$tl" | grep -q "🟢<br>active" \
+  && { echo "  ✓ status updated on aliased row"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ status not updated (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q "shipped via PR" \
+  && { echo "  ✓ notes updated on aliased row"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ notes not updated (got: $tl)"; FAIL=$((FAIL+1)); }
+echo "$tl" | grep -q 'Nice Human Label' \
+  && { echo "  ✓ alias label preserved"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ alias label lost (got: $tl)"; FAIL=$((FAIL+1)); }
+teardown
+
 echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
