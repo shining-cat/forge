@@ -5741,7 +5741,12 @@ new_impact = os.environ["NEW_IMPACT"]
 effort_set = os.environ["EFFORT_SET"] == "1"
 impact_set = os.environ["IMPACT_SET"] == "1"
 
-needle = f"[[{slug}]]"
+# A row references the task as a bare [[slug]] or, when written via
+# add-backlog-row --label, as an aliased link [[slug|Title]] — where the pipe
+# is usually backslash-escaped inside a markdown table cell ([[slug\|Title]]).
+# Match all three openings so aliased rows are updatable too (mirrors
+# do_remove_backlog_row's open_forms). Regression: 2026-08-10-update-backlog-row-aliased-wikilink.
+open_forms = (f"[[{slug}]]", f"[[{slug}|", f"[[{slug}\\|")
 in_details = False
 replaced = False
 with open(path, 'r', encoding='utf-8') as fh:
@@ -5756,7 +5761,7 @@ with open(path, 'r', encoding='utf-8') as fh:
             in_details = False
             sys.stdout.write(line)
             continue
-        if (not in_details) and (not replaced) and needle in line and line.lstrip().startswith("|"):
+        if (not in_details) and (not replaced) and any(f in line for f in open_forms) and line.lstrip().startswith("|"):
             # Split row into cells. A markdown table row looks like:
             #   | a | b | c | d | e |
             # The split yields leading + trailing empty strings; strip them.
