@@ -49,6 +49,7 @@ The forge is assembled from Claude Code building blocks, in two layers: **skills
 | `forge-calendar.sh` | Script | gws-calendar wrapper — `entry-fetch`, `delta-check`, `next-meeting`, `in-meeting`. Underpins Petra meeting-awareness + wellness schedule-aware defer |
 | `forge-classify-friction.sh` | Script | Keyword router: friction shape → pattern slug + action-ref. Powers the Refiner's `append-friction` handoff |
 | `forge-cost-snapshot.sh` | Script | Reads transcript metrics, emits `suggest_compact: true/false` for proactive `/compact` discipline |
+| `forge-cost-audit.py` | Script | Retrospective cross-session cost profile — per-model token/cost breakdown, cost split by type, and `--cache-composition` 1h-cache-TTL break-even. Portable cost-monitoring for the model-tiering posture |
 | `forge-gap-since-last-signal.sh` | Script | Unified gap detection across checkpoints / marker / braindumps / vault git. Underpins cold-start logic |
 | `forge-permission-lint.sh` | Script | Fails install when `settings.json` permissions match known anti-patterns; also surfaced via `/forge-audit-permissions` |
 | `forge-shell-init.sh` | Shell wrapper | Auto-wraps interactive `claude` in tmux for agent-team substrate |
@@ -65,7 +66,7 @@ The forge is assembled from Claude Code building blocks, in two layers: **skills
 | `~/.claude/skills/wellness-coach/references/` | Wellness references — 6 files: `onboarding`, `conflict-resolution`, `window-isolation`, `personas`, `auto-detected-tiers`, `strike-conversation`. Loaded on-demand from wellness `SKILL.md` stubs |
 | `~/.claude/agents/` | Subagent adapter definitions (forge-architect, forge-debugger, forge-impl, forge-keeper, forge-refiner, forge-release, forge-reviewer, forge-toolsmith) — dispatched via the Agent tool with `subagent_type: "forge-{role}"` |
 | `~/.claude/hooks/` | Hook scripts (`approval-notifier.sh`, `forge-compaction.sh`, `forge-vault-plan-guard.sh`, `forge-vault-write-guard.sh`, `forge-credential-guard.sh`, `forge-session-end.sh`, `inject-current-time.sh`) |
-| `~/.claude/scripts/` | Maintenance + runtime scripts (`forge-context.sh`, `forge-calendar.sh`, `forge-classify-friction.sh`, `forge-cost-snapshot.sh`, `forge-gap-since-last-signal.sh`, `forge-permission-lint.sh`). `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
+| `~/.claude/scripts/` | Maintenance + runtime scripts (`forge-context.sh`, `forge-calendar.sh`, `forge-classify-friction.sh`, `forge-cost-snapshot.sh`, `forge-cost-audit.py`, `forge-gap-since-last-signal.sh`, `forge-permission-lint.sh`). `forge-permission-lint.sh` runs at install end (fail-closed) and via the `/forge-audit-permissions` skill |
 | `~/.claude/statusline.sh` | Claude Code statusline component — deploys to `~/.claude/` root (not `scripts/`) to match `settings.json` `statusLine.command` path |
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement. Install defaults `teammateMode` to `"auto"` (Pattern A agent teams open as tmux split-panes) only when the key is absent — a deliberate user value is never clobbered |
