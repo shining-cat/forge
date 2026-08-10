@@ -1264,16 +1264,21 @@ fi
 # The one folder trusted once so parallel agent-team fan-out panes (which inherit
 # the lead session cwd via forge-shell-init.sh) never re-hit Claude Code's
 # folder-trust gate. Derived as the longest common directory prefix of
-# VAULT_PATH + REPO_ROOTS via the just-installed forge-context.sh. Re-run every
-# install so it reconciles rather than accretes (config-generator-staleness):
-# if the vault or repo roots move, the anchor self-corrects; if no safe common
-# parent exists ($HOME / an ancestor / non-existent), the key is cleared and the
-# wrapper falls back to launching from the shell cwd. Runs AFTER the conf write
-# so trust-anchor can read the freshly-written VAULT_PATH + REPO_ROOTS.
+# VAULT_PATH + REPO_ROOTS. Re-run every install so it reconciles rather than
+# accretes (config-generator-staleness): if the vault or repo roots move, the
+# anchor self-corrects; if no safe common parent exists ($HOME / an ancestor /
+# non-existent), the key is cleared and the wrapper falls back to launching from
+# the shell cwd. Runs AFTER the conf write so trust-anchor can read the
+# freshly-written VAULT_PATH + REPO_ROOTS.
+#
+# Invoke the REPO copy of forge-context.sh (the trust-anchor logic being
+# shipped), NOT the installed one: on a first install / upgrade the new binary
+# may not be copied into $CLAUDE_DIR/scripts yet when this runs, so the installed
+# copy could be stale (or absent) and silently yield an empty anchor.
 if [ "$DRY_RUN" = true ]; then
   info "FORGE_TRUST_ANCHOR would be derived from VAULT_PATH + REPO_ROOTS"
 else
-  TRUST_ANCHOR="$(FORGE_CONF_OVERRIDE="$CLAUDE_DIR/forge.conf" "$CLAUDE_DIR/scripts/forge-context.sh" trust-anchor 2>/dev/null || true)"
+  TRUST_ANCHOR="$(FORGE_CONF_OVERRIDE="$CLAUDE_DIR/forge.conf" "$FORGE_ROOT/adapters/claude-code/scripts/forge-context.sh" trust-anchor 2>/dev/null || true)"
   if [ -n "$TRUST_ANCHOR" ]; then
     set_conf_key FORGE_TRUST_ANCHOR "$TRUST_ANCHOR"
     ok "FORGE_TRUST_ANCHOR set: $TRUST_ANCHOR"
