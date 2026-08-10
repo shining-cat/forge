@@ -78,6 +78,16 @@ To change it, edit `~/.claude/settings.json`:
 - `"in-process"` — no panes; teammates run in the background list instead. Pick this if you prefer the panes tucked away.
 - `"iterm2"` — iTerm2 panes; requires the `it2` CLI (Shell Integration utilities) on your `PATH`.
 
+## Folder-trust anchor (`FORGE_TRUST_ANCHOR`)
+
+Each agent-team fan-out pane is a *separate* `claude` instance, so each one independently hits Claude Code's folder-trust gate — *"Do you trust the files in this folder?"* — at startup. Left unmanaged, an unattended team spawn stalls on one prompt per pane.
+
+Forge defuses this by launching the tmux session (and every pane it spawns, which inherits the session's working directory) from a single **trust anchor**: the longest common directory prefix of your `VAULT_PATH` and `REPO_ROOTS`. `install.sh` derives it (`forge-context.sh trust-anchor`) and bakes it into `~/.claude/forge.conf` as `FORGE_TRUST_ANCHOR`, re-deriving on every run so it self-heals if your vault or repos move.
+
+**One-time action:** the first time you launch from a fresh shell, Claude Code prompts once to trust that folder. **Accept it.** The acceptance persists to `~/.claude.json`, and every fan-out pane inherits it — panes read nested-repo files by absolute path, so they never *start* inside a nested repo and never re-gate.
+
+If no safe common parent exists (e.g. your vault and repos share only `$HOME`, which is too broad to trust wholesale), install leaves `FORGE_TRUST_ANCHOR` blank and panes may re-prompt. In that case set `teammateMode: "in-process"` (above) — teammates then run concurrently in the background list with no panes and no trust gate.
+
 ## Rollback
 
 Every `install.sh` run leaves backup artifacts under `~/.claude/`:

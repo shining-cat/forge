@@ -436,6 +436,86 @@ get_project_dir() {
   return 0
 }
 
+# ── Helper: longest common char prefix of two strings ───────────────────
+_lcp() {
+  local a="$1" b="$2" i=0 n=${#1} m=${#2} max
+  max=$(( n < m ? n : m ))
+  while [ "$i" -lt "$max" ] && [ "${a:$i:1}" = "${b:$i:1}" ]; do
+    i=$(( i + 1 ))
+  done
+  printf '%s' "${a:0:$i}"
+}
+
+# ── Helper: longest common *directory* prefix of two absolute paths ──────
+# Component-boundary aware: /a/b/foo and /a/b/foobar share /a/b (NOT the
+# char prefix /a/b/foo). Trailing-slash sentinels turn a full-component match
+# into one that ends in "/", so trimming back to the last slash always lands on
+# a real directory boundary. Emits empty when the only shared prefix is "/".
+_common_dir_prefix() {
+  local a="${1%/}/" b="${2%/}/" p
+  p="$(_lcp "$a" "$b")"
+  printf '%s' "${p%/*}"
+}
+
+# ── Subcommand: trust-anchor ────────────────────────────────────────────
+# Prints the longest common directory prefix of VAULT_PATH + every REPO_ROOTS
+# entry — the folder a Forge user trusts ONCE so parallel agent-team fan-out
+# panes (which inherit the lead session's cwd) never re-hit Claude Code's
+# folder-trust gate. See task 2026-08-07-pretrust-parallel-fanout-folder-gate.
+#
+# Rejects (return 1, empty stdout) an over-broad or bogus anchor — $HOME, an
+# ancestor of $HOME, "/", or a path that doesn't exist — because a too-broad
+# trust anchor is worse than none. Callers fall back to no -c / in-process.
+do_trust_anchor() {
+  local repo_roots
+  repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
+
+  local -a paths=()
+  [ -n "${VAULT_PATH:-}" ] && paths+=("${VAULT_PATH%/}")
+
+  local r oldifs="$IFS"
+  IFS=':'
+  for r in $repo_roots; do
+    case "$r" in "~"*) r="$HOME${r#\~}" ;; esac
+    [ -n "$r" ] && paths+=("${r%/}")
+  done
+  IFS="$oldifs"
+
+  local n=${#paths[@]}
+  if [ "$n" -eq 0 ]; then
+    echo "[forge-context] trust-anchor: no VAULT_PATH / REPO_ROOTS to derive from" >&2
+    return 1
+  fi
+
+  local anchor="${paths[0]}" i
+  for (( i = 1; i < n; i++ )); do
+    anchor="$(_common_dir_prefix "$anchor" "${paths[$i]}")"
+    [ -n "$anchor" ] || break
+  done
+  anchor="${anchor%/}"
+
+  if [ -z "$anchor" ]; then
+    echo "[forge-context] trust-anchor: no common directory prefix" >&2
+    return 1
+  fi
+
+  # Reject $HOME or any ancestor of $HOME (too broad). Boundary-safe via the
+  # trailing-slash form: "/home/u/" starts with "/home/" but NOT "/home/us/".
+  local home_slash="${HOME%/}/" anchor_slash="${anchor%/}/"
+  case "$home_slash" in
+    "$anchor_slash"*)
+      echo "[forge-context] trust-anchor: '$anchor' is \$HOME or an ancestor — too broad" >&2
+      return 1 ;;
+  esac
+
+  if [ ! -d "$anchor" ]; then
+    echo "[forge-context] trust-anchor: '$anchor' is not an existing directory" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$anchor"
+}
+
 # ── Sourceable boundary ─────────────────────────────────────────────────
 # Everything below runs only when this file is executed as a script.
 # When sourced (e.g., from forge-compaction.sh or forge-session-end.sh to
@@ -461,8 +541,11 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
     # No stdin read, no guards. These operate on marker/shared state only.
+    # trust-anchor reads only VAULT_PATH + REPO_ROOTS from forge.conf (no
+    # marker / active project needed) — install.sh and forge-shell-init.sh
+    # call it before any project is chosen.
     # resolve-task scans the whole vault by slug — it doesn't need a resolved
     # active project, and is safe to invoke even when Forge isn't active
     # (e.g. from a post-commit hook in a sibling Claude Code window).
@@ -6098,8 +6181,9 @@ case "$SUBCMD" in
   remove-backlog-row)      do_remove_backlog_row "${@:2}" ;;
   vault-rm)                do_vault_rm "${@:2}" ;;
   run-tests)               do_run_tests "${@:2}" ;;
+  trust-anchor)            do_trust_anchor ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests|trust-anchor}" >&2
     exit 1
     ;;
 esac
