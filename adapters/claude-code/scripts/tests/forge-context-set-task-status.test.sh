@@ -174,6 +174,36 @@ grep -q "^status: resolved$" "$F" \
   || { echo "  ✗ resolved-folder file not updated"; FAIL=$((FAIL+1)); }
 teardown
 
+# ── Check 6 — multi-line --add-progress collapses to one bullet, no crash ─
+# BSD awk (macOS) aborts with "newline in string" when a -v value carries a
+# literal newline — so multi-line progress prose must be collapsed to a single
+# ' · '-joined bullet. And the status flip + progress append must be ONE write:
+# before the fix the status mv happened first, so a crashing append left status
+# flipped but progress skipped (non-atomic). Both applied together, or neither.
+echo ""
+echo "Check 6 — multi-line progress collapses to single bullet, atomically"
+setup
+F="$TMP/PERSO/demo/tasks/open/2026-06-08-multi.md"
+plant_task_with_progress "$F"
+multi=$(printf 'line one\nline two\nline three')
+out=$("$FORGE_CONTEXT" set-task-status --slug "2026-06-08-multi" --status "in-progress" --add-progress "$multi" 2>&1)
+rc=$?
+[ "$rc" -eq 0 ] && { echo "  ✓ exit 0 (no BSD awk newline-in-string abort)"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc (out: $out)"; FAIL=$((FAIL+1)); }
+echo "$out" | grep -qi "newline in string" \
+  && { echo "  ✗ awk newline-in-string error leaked"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ no awk newline error"; PASS=$((PASS+1)); }
+grep -qE "^- $(today) [0-9]{2}:[0-9]{2} — line one · line two · line three$" "$F" \
+  && { echo "  ✓ multi-line prose collapsed to one ' · '-joined bullet"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ collapsed bullet missing (got: $(grep -n 'line one' "$F"))"; FAIL=$((FAIL+1)); }
+grep -qE "^line two$" "$F" \
+  && { echo "  ✗ continuation line leaked as its own line"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ no stray continuation line"; PASS=$((PASS+1)); }
+grep -q "^status: in-progress$" "$F" \
+  && { echo "  ✓ status flipped alongside progress (single write)"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ status not flipped"; FAIL=$((FAIL+1)); }
+teardown
+
 echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

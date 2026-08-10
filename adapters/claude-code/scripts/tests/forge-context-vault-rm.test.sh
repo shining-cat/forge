@@ -138,6 +138,41 @@ echo "$out" | grep -q "not under VAULT_PATH" \
   || { echo "  ✗ message missing (got: $out)"; FAIL=$((FAIL+1)); }
 teardown
 
+# ── Check 8 — vault-relative arg resolves under VAULT_PATH, not CWD ──────
+# Usage says "<path-under-vault>". Invoked from a CWD that is NOT the vault
+# (the common case — Claude runs from $HOME), a vault-relative path must still
+# resolve under VAULT_PATH and delete correctly.
+echo ""
+echo "Check 8 — vault-relative path resolves under VAULT_PATH (CWD elsewhere)"
+setup
+F="$TMP/PERSO/demo/tasks/open/disposable.md"
+echo "junk" > "$F"
+out=$( cd "$OUTSIDE" && "$FORGE_CONTEXT" vault-rm "PERSO/demo/tasks/open/disposable.md" 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && { echo "  ✓ exit 0"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc (out: $out)"; FAIL=$((FAIL+1)); }
+[ ! -e "$F" ] && { echo "  ✓ file removed via vault-relative path"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ file still present"; FAIL=$((FAIL+1)); }
+teardown
+
+# ── Check 9 — vault-relative arg with .. escape still rejected ───────────
+# Prepending VAULT_PATH must not open a hole: a relative arg that climbs out
+# with .. resolves outside the vault → containment guard rejects it.
+echo ""
+echo "Check 9 — vault-relative .. escape rejected, outside target preserved"
+setup
+REAL="$OUTSIDE/keepme.txt"
+echo "important" > "$REAL"
+base="$(basename "$OUTSIDE")"
+out=$( cd "$TMP" && "$FORGE_CONTEXT" vault-rm "../$base/keepme.txt" 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && { echo "  ✓ exit 2"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc (out: $out)"; FAIL=$((FAIL+1)); }
+[ -e "$REAL" ] && { echo "  ✓ outside target untouched"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ outside target was removed!"; FAIL=$((FAIL+1)); }
+echo "$out" | grep -q "not under VAULT_PATH" \
+  && { echo "  ✓ message names containment"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ message missing (got: $out)"; FAIL=$((FAIL+1)); }
+teardown
+
 echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

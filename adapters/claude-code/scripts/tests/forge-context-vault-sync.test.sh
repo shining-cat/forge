@@ -141,6 +141,25 @@ n=$(echo "$out" | grep -c "Clean. Nothing to sync.")
 chk "both repos report clean" "2" "$n"
 teardown
 
+# ── Check 5 — --commit with no TTY: silent default, no /dev/tty noise ─────
+# Without FORGE_ASSUME_DEFAULTS the prompt path runs. Stat perms on /dev/tty
+# ([ -r ]/[ -w ]) can pass on a device node that still ENXIOs ("device not
+# configured") in a non-interactive shell — the guard must be [ -t 0 ], so a
+# non-TTY stdin (</dev/null) skips the prompt and falls back to the default
+# WITHOUT spewing tty errors.
+echo ""
+echo "Check 5 — --commit no-TTY: default fires silently, no /dev/tty noise"
+setup; build_vault; dirty_vault
+outer_before=$(commits "$TMP"); pro_before=$(commits "$TMP/PRO")
+out=$("$FC" vault-sync --commit </dev/null 2>&1)
+hasnt "not configured" "$out" "no ENXIO tty noise"
+hasnt "/dev/tty"              "$out" "no /dev/tty reference leaked"
+chk "outer +2 commits (no-tty default = auto-Y)" "$((outer_before + 2))" "$(commits "$TMP")"
+chk "PRO +1 commit (no-tty default = auto-Y)"    "$((pro_before + 1))"   "$(commits "$TMP/PRO")"
+chk "outer fully pushed" "0" "$(ahead "$TMP")"
+chk "PRO fully pushed"   "0" "$(ahead "$TMP/PRO")"
+teardown
+
 # ── Summary ──────────────────────────────────────────────────────────────
 echo ""
 echo "───────────────────────────"
