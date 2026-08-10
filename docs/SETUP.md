@@ -88,6 +88,43 @@ Forge defuses this by launching the tmux session (and every pane it spawns, whic
 
 If no safe common parent exists (e.g. your vault and repos share only `$HOME`, which is too broad to trust wholesale), install leaves `FORGE_TRUST_ANCHOR` blank and panes may re-prompt. In that case set `teammateMode: "in-process"` (above) — teammates then run concurrently in the background list with no panes and no trust gate.
 
+## Model tiering & cost
+
+Forge treats **Opus as a scalpel, not a substrate.** The single largest cost lever is
+the *main interactive loop's* default model — in a measured 30-day profile it was ~94%
+of total spend when set to Opus, while subagent fan-out was ~5%. The posture that
+follows from that: run a **Sonnet main loop** and reach for Opus deliberately, either
+by launching an Opus session for a hard day or by dispatching the Opus-pinned subagent
+roles (which carry their own model, independent of the main loop).
+
+**Set the main-loop model** in `~/.claude/settings.json` (this is your daily driver;
+Forge does not flip it for you):
+
+```json
+{ "model": "sonnet" }
+```
+
+Switch the main-loop model only at a **session boundary** — changing it mid-session
+invalidates the prompt cache and re-writes the whole resident prefix at the new tier's
+price. To get Opus quality from a running Sonnet session without that penalty, dispatch
+an Opus-pinned subagent (`architect`, `debugger`, `refiner`, `toolsmith`) — see the
+per-role `MODEL_*` keys in `~/.claude/forge.conf` (documented in
+`core/references/subagent-models.md`).
+
+**Measure your own profile before trusting any of these ratios** — they are
+environment- and pricing-specific:
+
+```bash
+~/.claude/scripts/forge-cost-audit.py                     # per-model cost split, all sessions
+~/.claude/scripts/forge-cost-audit.py --days 30           # windowed
+~/.claude/scripts/forge-cost-audit.py --cache-composition # gap-bucket cache-writes + 1h-TTL break-even
+```
+
+The full rationale, the four moves (Sonnet loop / boundary-only Opus / dispatch heavy
+churn / lean resident context), and the ruled-out alternatives (1-hour cache TTL —
+measured net loss; mid-session flipping — cache-bust) live in
+`core/references/model-cost-posture.md`.
+
 ## Rollback
 
 Every `install.sh` run leaves backup artifacts under `~/.claude/`:

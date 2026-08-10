@@ -59,5 +59,6 @@ The user can view or change role models at any time:
 
 ## See also
 
+- `references/model-cost-posture.md` — the main-loop model posture these per-role defaults compose with (Sonnet orchestrates, Opus dispatched as a scalpel; the Opus-pinned roles above are how a cheap main loop still gets Opus quality)
 - `references/agent-teams-mode.md` — Pattern A / B / C team-mode dispatch (separate concern from per-role model)
 - `adapters/claude-code/agents/forge-{role}.md` — per-role spec (source of truth)
