@@ -1237,6 +1237,15 @@ MEETING_WINDOW_MIN=30
 # (e.g. multiple roots: REPO_ROOTS=~/work:~/personal:~/oss).
 REPO_ROOTS=$(dirname "$(dirname "$FORGE_ROOT")")
 
+# FORGE_TRUST_ANCHOR = the single folder you trust ONCE at Claude Code's "Do you
+# trust the files in this folder?" gate, so parallel agent-team fan-out panes —
+# which inherit the lead session's working directory via forge-shell-init.sh —
+# never re-hit that gate. Filled in below by install.sh as the longest common
+# directory prefix of VAULT_PATH + REPO_ROOTS, and re-derived on every install
+# so it self-heals if those move. Leave blank to disable (panes launch from the
+# shell cwd and may each prompt). See docs/SETUP.md (Folder-trust anchor).
+FORGE_TRUST_ANCHOR=
+
 # Model assignments per role — valid values: opus, sonnet, haiku
 # Empty value = inherit from session model
 MODEL_KEEPER=sonnet
@@ -1249,6 +1258,32 @@ MODEL_RELEASE=sonnet
 MODEL_TOOLSMITH=opus
 EOF
   ok "forge.conf written (vault: $VAULT_PATH)"
+fi
+
+# ─── Derive FORGE_TRUST_ANCHOR ───────────────────────────────────────────────
+# The one folder trusted once so parallel agent-team fan-out panes (which inherit
+# the lead session cwd via forge-shell-init.sh) never re-hit Claude Code's
+# folder-trust gate. Derived as the longest common directory prefix of
+# VAULT_PATH + REPO_ROOTS via the just-installed forge-context.sh. Re-run every
+# install so it reconciles rather than accretes (config-generator-staleness):
+# if the vault or repo roots move, the anchor self-corrects; if no safe common
+# parent exists ($HOME / an ancestor / non-existent), the key is cleared and the
+# wrapper falls back to launching from the shell cwd. Runs AFTER the conf write
+# so trust-anchor can read the freshly-written VAULT_PATH + REPO_ROOTS.
+if [ "$DRY_RUN" = true ]; then
+  info "FORGE_TRUST_ANCHOR would be derived from VAULT_PATH + REPO_ROOTS"
+else
+  TRUST_ANCHOR="$(FORGE_CONF_OVERRIDE="$CLAUDE_DIR/forge.conf" "$CLAUDE_DIR/scripts/forge-context.sh" trust-anchor 2>/dev/null || true)"
+  if [ -n "$TRUST_ANCHOR" ]; then
+    set_conf_key FORGE_TRUST_ANCHOR "$TRUST_ANCHOR"
+    ok "FORGE_TRUST_ANCHOR set: $TRUST_ANCHOR"
+    hint "On your next launch from a fresh shell, Claude Code prompts once to trust $TRUST_ANCHOR."
+    hint "Accept it — parallel agent-team fan-out panes then inherit that trust and won't re-prompt."
+  else
+    set_conf_key FORGE_TRUST_ANCHOR ""
+    info "FORGE_TRUST_ANCHOR not set: no safe common parent of VAULT_PATH + REPO_ROOTS."
+    hint "Agent-team fan-out panes may re-prompt for folder trust — see docs/SETUP.md (Folder-trust anchor) for the in-process fallback."
+  fi
 fi
 
 # ─── Create vault structure ──────────────────────────────────────────────────

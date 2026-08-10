@@ -12,6 +12,8 @@ Loaded by the `forge` skill **only** when Petra is considering or actively spawn
 
 **Substrate requirement:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in `~/.claude/settings.json` (env var). Takes effect on session restart. Requires Claude Code v2.1.32+. If session entry reported "Team substrate: missing", see the substrate-missing fallback below — Pattern A still runs inline.
 
+**Folder-trust anchor:** each pane is a *separate* `claude` instance that independently hits Claude Code's folder-trust gate at startup, so an unattended fan-out can stall on N trust prompts. Forge launches the tmux session — and every pane it spawns, which inherits the session cwd — from `FORGE_TRUST_ANCHOR`, the longest common directory prefix of `VAULT_PATH` + `REPO_ROOTS`, baked into `forge.conf` by `install.sh` (`forge-context.sh trust-anchor`). The user trusts that folder **once**; the acceptance persists to `~/.claude.json` and every pane inherits it (panes read nested-repo files by absolute path — they never *start* inside a nested repo, so they never re-gate). If no safe common parent exists (below `$HOME`), the key is left blank and fan-out may re-prompt — fall back to `teammateMode: in-process` (concurrent, no panes, no gate). See SETUP.md → *Folder-trust anchor*.
+
 ## Pattern A — when to spawn (trigger heuristic)
 
 Petra evaluates each candidate PR (or design doc / plan) against the trigger list below. Each trigger that fires adds its weight to a running score. **Score ≥ 3** → Petra surfaces the call: "Score X from triggers [list] — Pattern A territory?" The user confirms or overrides. **Score 0-2** → Reviewer-solo, no friction.
