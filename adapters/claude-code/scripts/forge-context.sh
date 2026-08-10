@@ -2849,7 +2849,12 @@ do_mark_weekly_wrap_done() {
 # Mirrors the printf>/dev/tty; read</dev/tty idiom used by the backup-restore paths.
 prompt_or_default() {
   local prompt_str="$1" default_val="$2" answer=""
-  if [ "${FORGE_ASSUME_DEFAULTS:-}" != "1" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  # Guard on the controlling terminal, not stat perms. [ -r /dev/tty ] &&
+  # [ -w /dev/tty ] can BOTH pass on a device node that still ENXIOs ("device
+  # not configured") when opened in a non-interactive shell (Claude Bash, cron)
+  # — spewing tty errors that read as failure. [ -t 0 ] is false in exactly
+  # those non-TTY contexts, so we fall straight through to the default.
+  if [ "${FORGE_ASSUME_DEFAULTS:-}" != "1" ] && [ -t 0 ]; then
     printf "%s" "$prompt_str" >/dev/tty
     read -r answer </dev/tty || answer=""
   fi
@@ -5130,6 +5135,14 @@ do_vault_rm() {
   local arg="${1:-}"
   [ -z "$arg" ] && { echo "[vault-rm] FAIL: usage: vault-rm <path-under-vault>" >&2; exit 2; }
   [ -z "${VAULT_PATH:-}" ] && { echo "[vault-rm] FAIL: VAULT_PATH unset" >&2; exit 2; }
+  # Usage is "<path-under-vault>": resolve a non-absolute arg relative to
+  # VAULT_PATH, not the CWD (vault-rm is invoked from anywhere, usually $HOME).
+  # A '..' escape here still resolves outside and is caught by the realpath
+  # containment check below, so this doesn't widen what can be deleted.
+  case "$arg" in
+    /*) ;;
+    *) arg="$VAULT_PATH/$arg" ;;
+  esac
   [ -e "$arg" ] || { echo "[vault-rm] FAIL: path does not exist: $arg" >&2; exit 2; }
   local target vroot
   target="$(realpath "$arg" 2>/dev/null)" || { echo "[vault-rm] FAIL: cannot resolve target" >&2; exit 2; }
@@ -5197,6 +5210,17 @@ do_set_task_status() {
   today="$(date +%Y-%m-%d)"
   now_time="$(date +%H:%M)"
 
+  # Validate --add-progress up front, BEFORE touching the file. The status
+  # rewrite and the progress append are promoted with a SINGLE final mv, so
+  # they apply together or not at all — no more "status flipped but progress
+  # skipped" if the append step fails (the old code mv'd the status change
+  # first, then appended separately: non-atomic).
+  if [ "$progress_set" -eq 1 ] && [ -z "$progress" ]; then
+    echo "[set-task-status] FAIL: --add-progress requires a non-empty value" >&2
+    exit 2
+  fi
+
+  # Step 1: frontmatter rewrite → tmp (NOT promoted to $target yet).
   local tmp="$target.tmp.$$"
   awk -v new_status="$new_status" -v today="$today" '
     BEGIN { in_fm=0; fm_count=0; saw_updated=0 }
@@ -5214,22 +5238,25 @@ do_set_task_status() {
     in_fm && /^status:[[:space:]]/ { print "status: " new_status; next }
     in_fm && /^updated:[[:space:]]/ { print "updated: " today; saw_updated=1; next }
     { print }
-  ' "$target" > "$tmp" && mv "$tmp" "$target" || {
+  ' "$target" > "$tmp" || {
     rm -f "$tmp" 2>/dev/null
     echo "[set-task-status] FAIL: could not rewrite frontmatter" >&2
     exit 2
   }
 
+  # Step 2 (optional): progress append transforms tmp → tmp2. `final` names the
+  # file that gets promoted; a single mv at the end keeps status+progress atomic.
+  local final="$tmp"
   local progress_note=""
   if [ "$progress_set" -eq 1 ]; then
-    if [ -z "$progress" ]; then
-      echo "[set-task-status] FAIL: --add-progress requires a non-empty value" >&2
-      exit 2
-    fi
     # Insert under the existing `## Progress` section if present.
-    if grep -q '^## Progress' "$target"; then
+    if grep -q '^## Progress' "$tmp"; then
+      # Collapse newlines in the prose to ' · ': a progress entry is a single
+      # timestamped bullet, and a literal newline in an awk -v value aborts BSD
+      # awk (macOS) with "newline in string".
+      local progress_clean="${progress//$'\n'/ · }"
       local tmp2="$target.tmp2.$$"
-      awk -v line="- $today $now_time — $progress" '
+      awk -v line="- $today $now_time — $progress_clean" '
         BEGIN { inserted=0; in_section=0 }
         /^## Progress[[:space:]]*$/ {
           print
@@ -5249,16 +5276,26 @@ do_set_task_status() {
             print line
           }
         }
-      ' "$target" > "$tmp2" && mv "$tmp2" "$target" || {
-        rm -f "$tmp2" 2>/dev/null
+      ' "$tmp" > "$tmp2" || {
+        rm -f "$tmp" "$tmp2" 2>/dev/null
         echo "[set-task-status] FAIL: could not append progress entry" >&2
         exit 2
       }
+      final="$tmp2"
       progress_note=" (progress appended)"
     else
       echo "[set-task-status] WARN: '## Progress' section not found in '$target'; status updated but progress entry skipped" >&2
     fi
   fi
+
+  # Single promotion — the only point $target is mutated.
+  mv "$final" "$target" || {
+    rm -f "$tmp" "$target.tmp2.$$" 2>/dev/null
+    echo "[set-task-status] FAIL: could not write task file" >&2
+    exit 2
+  }
+  # If a tmp2 was promoted, the intermediate frontmatter tmp is now orphaned.
+  [ "$final" != "$tmp" ] && rm -f "$tmp" 2>/dev/null
 
   local base
   base="$(basename "$target")"
