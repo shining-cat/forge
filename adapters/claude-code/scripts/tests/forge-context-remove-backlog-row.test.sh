@@ -130,6 +130,35 @@ rc=$?
   || { echo "  ✗ exit $rc (expected 2)"; FAIL=$((FAIL+1)); }
 teardown
 
+# ── Check 5 — aliased wikilink row [[slug|Title]] removed by slug ────────
+# add-backlog-row --label writes rows as [[slug\|Visible Title]] (the pipe is
+# backslash-escaped inside markdown tables). The plain [[slug]] needle never
+# matched those, so aliased rows were un-removable via Tier 1.
+echo ""
+echo "Check 5 — aliased wikilink row removed by slug"
+setup
+cat > "$TMP/PERSO/demo/BACKLOG.md" <<'EOF'
+# demo — Backlog
+
+## Hot
+
+| Task | Effort | Impact | Status | Notes |
+|------|:--:|:--:|------|-------|
+| [[2026-08-07-aliased-row\|Nice Title]] | S | S | open | aliased link row |
+| [[2026-06-08-plain-row]] | M | L | open | plain link row |
+EOF
+out=$("$FORGE_CONTEXT" remove-backlog-row --task "2026-08-07-aliased-row" 2>&1)
+rc=$?
+[ "$rc" -eq 0 ] && { echo "  ✓ exit 0"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ exit $rc (out: $out)"; FAIL=$((FAIL+1)); }
+grep -q 'aliased-row' "$TMP/PERSO/demo/BACKLOG.md" \
+  && { echo "  ✗ aliased row still present"; FAIL=$((FAIL+1)); } \
+  || { echo "  ✓ aliased row removed"; PASS=$((PASS+1)); }
+grep -q '2026-06-08-plain-row' "$TMP/PERSO/demo/BACKLOG.md" \
+  && { echo "  ✓ plain sibling untouched"; PASS=$((PASS+1)); } \
+  || { echo "  ✗ plain sibling mutated"; FAIL=$((FAIL+1)); }
+teardown
+
 echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
