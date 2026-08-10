@@ -76,6 +76,9 @@ Companion scripts:
 ```bash
 ~/.claude/scripts/forge-cost-snapshot.sh           # human-readable cost snapshot of current session
 ~/.claude/scripts/forge-cost-snapshot.sh --json    # machine-readable
+~/.claude/scripts/forge-cost-audit.py              # retrospective cost profile across ALL sessions (which model, cost split)
+~/.claude/scripts/forge-cost-audit.py --days 30    # limit to sessions active in the last N days
+~/.claude/scripts/forge-cost-audit.py --cache-composition   # gap-bucket cache-writes + 1h-cache-TTL break-even
 ~/.claude/scripts/forge-calendar.sh entry-fetch    # today's agenda (used by /forge entry)
 ~/.claude/scripts/forge-calendar.sh in-meeting     # presence-only: are you in a meeting right now
 ```

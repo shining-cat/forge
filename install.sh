@@ -508,6 +508,7 @@ build_pairs() {
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-snapshot.sh"         "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-audit.py"            "$CLAUDE_DIR/scripts/forge-cost-audit.py"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-vault-symlinks.sh"        "$CLAUDE_DIR/scripts/forge-vault-symlinks.sh"
 
     # Top-level files under ~/.claude/
@@ -663,6 +664,9 @@ expected_perms() {
     "Bash($HOME/.claude/scripts/forge-calendar.sh *)"
     "Bash(~/.claude/scripts/forge-calendar.sh *)"
     "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-cost-audit.py:*)"
+    "Bash($HOME/.claude/scripts/forge-cost-audit.py *)"
+    "Bash(~/.claude/scripts/forge-cost-audit.py *)"
     "Bash($HOME/.claude/scripts/forge-vault-symlinks.sh:*)"
     "Bash($HOME/.claude/statusline.sh:*)"
     "Bash($HOME/.claude/hooks/forge-compaction.sh:*)"
@@ -1491,6 +1495,7 @@ safe_cp "$ADAPTER/scripts/forge-classify-friction.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-calendar.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-snapshot.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-cost-audit.py" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh" preserve
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
@@ -1506,6 +1511,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh" \
              "$CLAUDE_DIR/scripts/forge-calendar.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh" \
+             "$CLAUDE_DIR/scripts/forge-cost-audit.py" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"
