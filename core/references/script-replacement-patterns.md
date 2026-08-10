@@ -6,6 +6,20 @@ Patterns are referenced by their kebab-case slug (e.g. `hook-injection`) from `f
 
 ---
 
+## config-generator-staleness
+
+**When to use:** The friction recurs no matter how many times you fix it by hand, because a generator (install.sh, a template, a config emitter) re-produces the offending artifact. A permission rule, settings block, or generated file the host has stopped honoring — or that has otherwise gone stale — keeps coming back because the generator's merge is additive: it re-adds the dead entry, and manual removal doesn't stick across the next install/regeneration.
+
+**How it works:** Fix the *generator*, not the artifact. Either stop emitting the dead entry (delete it from the source template / seed list) or make regeneration reconcile rather than accrete — prune-and-replace the managed block so stale entries drop out on the next run instead of piling up. The generator becomes idempotent against the current honored schema, so hand-removal is no longer needed.
+
+**Exemplar:** `install.sh` re-seeding `settings.json` permission rules that Claude Code no longer honors (e.g. a `Write(...)` form the host stopped matching). Each install re-added the dead rule via additive merge, so deleting it by hand never held. Fix: drop the obsolete form from the seed list so regeneration stops re-emitting it.
+
+**Anti-pattern:** Re-deleting the artifact by hand (or documenting "remember to remove X after install") — treats the symptom while the generator keeps re-emitting it. If manual removal doesn't survive the next regeneration, the fix is in the wrong layer.
+
+**Scaffold:** [install.sh](../../install.sh)
+
+---
+
 ## hook-injection
 
 **When to use:** Recurrent prose discipline the agent keeps failing to follow despite explicit rules (header drift, time-guessing, format adherence).

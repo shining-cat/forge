@@ -82,5 +82,29 @@ EOF
 assert_eq "description preserved" "test event" "$(echo "$out" | jq -r '.description')"
 
 echo ""
+echo "Check 9 — JSON input: generator re-emits stale artifact → config-generator-staleness"
+out=$("$CLASSIFIER" --json-input - <<'EOF'
+{"q0_generator_staleness": true}
+EOF
+)
+assert_eq "returns config-generator-staleness" "config-generator-staleness" "$(echo "$out" | jq -r '.pattern')"
+
+echo ""
+echo "Check 10 — Q0 takes precedence over a co-occurring symptom (q1 also true)"
+out=$("$CLASSIFIER" --json-input - <<'EOF'
+{"q0_generator_staleness": true, "q1_perm_prompt": true, "q2_safe_to_allowlist": true, "q3_glob_subtlety": true}
+EOF
+)
+assert_eq "Q0 wins over allowlist-patch symptom" "config-generator-staleness" "$(echo "$out" | jq -r '.pattern')"
+
+echo ""
+echo "Check 11 — catalog_link anchors to the new pattern section"
+out=$("$CLASSIFIER" --json-input - <<'EOF'
+{"q0_generator_staleness": true}
+EOF
+)
+assert_eq "catalog_link has #config-generator-staleness anchor" "core/references/script-replacement-patterns.md#config-generator-staleness" "$(echo "$out" | jq -r '.catalog_link')"
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

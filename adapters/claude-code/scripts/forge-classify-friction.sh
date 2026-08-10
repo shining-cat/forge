@@ -48,6 +48,7 @@ ask_yn() {
 
 # Read inputs (either from JSON file/stdin or interactively).
 # Plain variables (not an associative array) for macOS bash 3.2 compatibility.
+q0_generator_staleness=""
 q1_perm_prompt=""
 q2_safe_to_allowlist=""
 q3_glob_subtlety=""
@@ -63,6 +64,7 @@ if [ "$MODE" = "json" ]; then
   else
     raw=$(cat "$JSON_INPUT")
   fi
+  q0_generator_staleness=$(echo "$raw" | jq -r '.q0_generator_staleness // empty')
   q1_perm_prompt=$(echo "$raw" | jq -r '.q1_perm_prompt // empty')
   q2_safe_to_allowlist=$(echo "$raw" | jq -r '.q2_safe_to_allowlist // empty')
   q3_glob_subtlety=$(echo "$raw" | jq -r '.q3_glob_subtlety // empty')
@@ -72,6 +74,8 @@ if [ "$MODE" = "json" ]; then
   q7_verbatim=$(echo "$raw" | jq -r '.q7_verbatim // empty')
   q8_structured_drift=$(echo "$raw" | jq -r '.q8_structured_drift // empty')
 else
+  q0_generator_staleness=$(ask_yn "Q0. Does the friction recur because a generator (install.sh / template / config emitter) re-produces a stale or no-longer-honored artifact, so manual removal doesn't stick?")
+  if [ "$q0_generator_staleness" = "false" ]; then
   q1_perm_prompt=$(ask_yn "Q1. Was the friction a permission prompt?")
   if [ "$q1_perm_prompt" = "true" ]; then
     q2_safe_to_allowlist=$(ask_yn "Q2. Is the operation safe to allowlist?")
@@ -92,13 +96,17 @@ else
       fi
     fi
   fi
+  fi
 fi
 
 # Walk the tree
 pattern="needs_new_pattern"
 action_sketch=""
 
-if [ "$q1_perm_prompt" = "true" ]; then
+if [ "$q0_generator_staleness" = "true" ]; then
+  pattern="config-generator-staleness"
+  action_sketch="Fix the generator: stop emitting the dead artifact, or make regeneration prune-and-replace so stale entries reconcile away"
+elif [ "$q1_perm_prompt" = "true" ]; then
   if [ "$q2_safe_to_allowlist" = "true" ]; then
     if [ "$q3_glob_subtlety" = "true" ]; then
       pattern="allowlist-patch"
