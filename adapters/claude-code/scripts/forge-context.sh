@@ -5775,7 +5775,12 @@ import os, sys
 path = sys.argv[1]
 slug = os.environ["SLUG"]
 
-needle = f"[[{slug}]]"
+# A row references the task as a bare [[slug]] or, when written via
+# add-backlog-row --label, as an aliased link [[slug|Title]] — where the pipe
+# is usually backslash-escaped inside a markdown table cell ([[slug\|Title]]).
+# Match all three openings so aliased rows are removable too (the plain-[[slug]]
+# needle silently missed them).
+open_forms = (f"[[{slug}]]", f"[[{slug}|", f"[[{slug}\\|")
 in_details = False
 removed = False
 with open(path, 'r', encoding='utf-8') as fh:
@@ -5789,7 +5794,7 @@ with open(path, 'r', encoding='utf-8') as fh:
             in_details = False
             sys.stdout.write(line)
             continue
-        if (not in_details) and (not removed) and needle in line and line.lstrip().startswith("|"):
+        if (not in_details) and (not removed) and line.lstrip().startswith("|") and any(f in line for f in open_forms):
             # Drop this row: skip writing it, mark done so only the FIRST match
             # (there should only be one active row per slug) is removed.
             removed = True
