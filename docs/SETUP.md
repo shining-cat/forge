@@ -109,7 +109,7 @@ invalidates the prompt cache and re-writes the whole resident prefix at the new 
 price. To get Opus quality from a running Sonnet session without that penalty, dispatch
 an Opus-pinned subagent (`architect`, `debugger`, `refiner`, `toolsmith`) — see the
 per-role `MODEL_*` keys in `~/.claude/forge.conf` (documented in
-`core/references/subagent-models.md`).
+`adapters/claude-code/references/subagent-models.md`).
 
 **Measure your own profile before trusting any of these ratios** — they are
 environment- and pricing-specific:
@@ -123,7 +123,8 @@ environment- and pricing-specific:
 The full rationale, the four moves (Sonnet loop / boundary-only Opus / dispatch heavy
 churn / lean resident context), and the ruled-out alternatives (1-hour cache TTL —
 measured net loss; mid-session flipping — cache-bust) live in
-`core/references/model-cost-posture.md`.
+`adapters/claude-code/references/model-cost-posture.md` — the Claude binding of the
+vendor-neutral principle in `core/references/model-cost-posture.md`.
 
 ## Rollback
 

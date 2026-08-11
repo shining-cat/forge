@@ -316,6 +316,23 @@ install_symlink() {
       prune_old_upstream_siblings "$dst" none
       return 0  # already correct
     fi
+    if [ -L "$dst" ]; then
+      # dst is an install-managed symlink whose target moved (e.g. a reference
+      # relocated between core/ and adapters/claude-code/). A symlink is never a
+      # user edit — the A2 customization path is copy-converting to a *real file*
+      # — so a stale symlink target means upstream relocated, not that the user
+      # customized it. Repoint to the current source instead of preserving a link
+      # that now dangles (or points at the wrong file). Real-file customizations
+      # fall through to write_upstream_sibling below, unchanged.
+      if [ "$DRY_RUN" = true ]; then
+        printf "${DIM}    would run: rm -f %s && ln -s %s %s${NC}\n" "$dst" "$src" "$dst"
+      else
+        rm -f "$dst"
+        ln -s "$src" "$dst"
+        prune_old_upstream_siblings "$dst" none
+      fi
+      return 0
+    fi
     write_upstream_sibling "$src" "$dst" "symlink"
     return 0
   fi
@@ -462,8 +479,15 @@ build_pairs() {
     done
 
     # Forge skill references (symlinks to core/references/*) — A2: preserve local edits
-    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md subagent-models.md model-cost-posture.md marker-takeover.md pr-sync.md credential-discipline.md; do
+    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md; do
       printf "%s\t%s\tsymlink\tpreserve\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
+    done
+
+    # Claude-specific references (symlinks to adapters/claude-code/references/*) — A2:
+    # these bind the vendor-neutral core principle to Claude's model line-up / config,
+    # so they live in the adapter, not core. Same flat target namespace as core refs.
+    for ref in model-cost-posture.md subagent-models.md; do
+      printf "%s\t%s\tsymlink\tpreserve\n" "$ADAPTER/references/$ref" "$SKILLS_DIR/forge/references/$ref"
     done
 
     # Quartermaster reference (scoped symlink under forge-weekly skill) — A2
@@ -1430,8 +1454,13 @@ ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit,
 # wellness-cold-start thresholds). install_symlink with preserve leaves
 # those copies alone and writes a `.upstream.<ts>` sibling for diff.
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md subagent-models.md model-cost-posture.md marker-takeover.md pr-sync.md credential-discipline.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md; do
   install_symlink "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref" preserve
+done
+# Claude-specific references live in the adapter (they bind the neutral core
+# principle to Claude models/config), but symlink into the same flat skill refs dir.
+for ref in model-cost-posture.md subagent-models.md; do
+  install_symlink "$ADAPTER/references/$ref" "$SKILLS_DIR/forge/references/$ref" preserve
 done
 ok "References symlinked (updates with git pull; A2-preserve for local edits)"
 

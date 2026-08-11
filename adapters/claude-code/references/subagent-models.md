@@ -1,4 +1,11 @@
-# Subagent definitions + model tuning
+# Subagent definitions + model tuning (Claude Code)
+
+Claude Code binding of the per-role tiering half of the model cost posture. The
+*why* — cheap orchestrator, premium model as a dispatched scalpel, roles pinned to
+the cheapest tier that meets their judgment bar — is the vendor-neutral principle in
+[`core/references/model-cost-posture.md`](../../../core/references/model-cost-posture.md).
+This file binds it to Claude: the role→model table, the agent-definition paths, and
+the `Agent()` dispatch mechanics.
 
 Background for the `**Subagent definitions:**`, `**Model tuning:**`, and `**Conversational model assignment:**` stubs in `forge/SKILL.md` Step 7. The short version is one line — *"each Forge role has an agent definition at `~/.claude/agents/forge-{role}.md` and a configurable model in `~/.claude/forge.conf`"*. Load this file when dispatching a subagent or reasoning about model selection.
 
@@ -59,6 +66,6 @@ The user can view or change role models at any time:
 
 ## See also
 
-- `references/model-cost-posture.md` — the main-loop model posture these per-role defaults compose with (Sonnet orchestrates, Opus dispatched as a scalpel; the Opus-pinned roles above are how a cheap main loop still gets Opus quality)
+- `references/model-cost-posture.md` — the main-loop model posture these per-role defaults compose with (Sonnet orchestrates, Opus dispatched as a scalpel; the Opus-pinned roles above are how a cheap main loop still gets Opus quality). Its vendor-neutral principle is `core/references/model-cost-posture.md`
 - `references/agent-teams-mode.md` — Pattern A / B / C team-mode dispatch (separate concern from per-role model)
 - `adapters/claude-code/agents/forge-{role}.md` — per-role spec (source of truth)
