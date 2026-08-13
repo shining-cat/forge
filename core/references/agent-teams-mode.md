@@ -72,7 +72,7 @@ When dispatching `forge-refiner` in Mode 2 (static-artifact friction prediction)
 These echo the constraints in `core/roles/refiner.md`, but stating them in the brief reinforces the framing for the specific dispatch.
 
 **5. Substrate-missing fallback.**
-If session entry detected "Team substrate: missing" (no tmux, or tmux installed but not in a tmux session), Petra MUST NOT attempt `TeamCreate` + teammate dispatch — the spawn will be cancelled with "iTerm2 setup required" or equivalent. Instead, run Pattern A as **inline subagent dispatches** — same protocol (Tier 1 → Tier 2 header relay → Tier 3), same output quality, no live multi-pane visibility:
+If session entry detected "Team substrate: missing" (no tmux, or tmux installed but not in a tmux session), Petra MUST NOT attempt team dispatch (parallel teammate spawns) — without substrate support it falls back to inline sequential mode. Instead, run Pattern A as **inline subagent dispatches** — same protocol (Tier 1 → Tier 2 header relay → Tier 3), same output quality, no live multi-pane visibility:
 
 1. **Tier 1:** `Agent({subagent_type: "forge-reviewer", ...})` foreground. Read full report.
 2. **Tier 2:** Compose one-line-per-finding header summary from the Tier 1 report.

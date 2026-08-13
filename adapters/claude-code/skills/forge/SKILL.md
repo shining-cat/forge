@@ -379,7 +379,9 @@ For workflows that genuinely benefit from parallel collaboration with inter-agen
 - **Pattern B** — Multiple instances of the same role with competing hypotheses (e.g. 3-5 Debuggers on an unclear root cause).
 - **Pattern C** — Same role, scope-partitioned (e.g. Reviewers split across security / performance / test coverage).
 
-**Substrate guard.** Team spawning requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Claude Code v2.1.32+) and tmux. If session entry reported "Team substrate: missing", Pattern A still runs — but as inline sequential subagent dispatches, NOT `TeamCreate`. Attempting `TeamCreate` without substrate cancels with "iTerm2 setup required" or equivalent.
+**Substrate guard.** Team spawning requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Claude Code v2.1.32+) and tmux. If session entry reported "Team substrate: missing", Pattern A still runs — but as inline sequential subagent dispatches, NOT parallel teammate spawns. Attempting team dispatch without substrate falls back to inline mode automatically.
+
+**Background observability.** For in-session background subagent dispatch (regardless of Pattern A / tmux), use `/tasks` to monitor live status, attach to running subagents, or stop them. This is distinct from Agent View (`claude agents` / left-arrow TUI), which observes background *sessions* (full independent Claude Code sessions started with `--bg`), not in-session subagent dispatch.
 
 **First-use panes notice.** Before the first Pattern A team spawn in a session, the one-time split-panes notice is handled via `~/.claude/scripts/forge-context.sh teammate-notice` (self-gating; surface stdout verbatim, empty = omit) — see `references/agent-teams-mode.md`.
 
@@ -392,7 +394,7 @@ For workflows that genuinely benefit from parallel collaboration with inter-agen
 - TL;DR strongest-sub-justification rule
 - Limitations, pre-shutdown follow-up gate, cleanup
 
-Same content governs both the `TeamCreate` path and the inline-subagent fallback — only the dispatch mechanism differs.
+Same content governs both parallel team dispatch and the inline-subagent fallback — only the dispatch mechanism differs.
 
 When NOT to use teams: sequential tasks tied to specific tool calls, same-file edits (file conflicts), routine work, quick lookups, single-perspective tasks. For ongoing evaluation, see open task `forge-agent-teams-evaluation` (2026-05-04).
 
