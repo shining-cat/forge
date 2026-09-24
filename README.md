@@ -1,6 +1,8 @@
 # Forge
 
-Session orchestration layer for AI-assisted development. One conversation, one orchestrator, all your projects in one vault.
+Session orchestration layer for AI-assisted development. One conversation, one
+orchestrator, all your projects in one vault — available through Claude Code or
+GitHub Copilot CLI.
 
 ---
 
@@ -18,11 +20,15 @@ Focus doesn't mean tunnel vision either — Forge holds all your projects in one
 
 ## What a day looks like
 
-**Morning** — `/forge` in any Claude Code window. Petra wakes the anvil: loads the active project's vault, reconciles your open + reviewed PRs against GitHub, surfaces calendar interruptions for the day, flags merged review docs ripe for cleanup. Cold-start after a long gap gets a special banner (*"Forge was idle for 14h — re-read the checkpoint, don't trust it implicitly"*).
+**Morning** — `/forge` in any supported runtime window. Petra wakes the anvil:
+loads the active project's vault, reconciles your open + reviewed PRs against
+GitHub, surfaces calendar interruptions for the day, flags merged review docs
+ripe for cleanup. Cold-start after a long gap gets a special banner
+(*"Forge was idle for 14h — re-read the checkpoint, don't trust it implicitly"*).
 
 **During work** — you talk to one Petra. She delegates internally: **Keeper** logs decisions and checkpoints, **Refiner** catches corrections as friction events that compound into permanent fixes, **Reviewer** (or a parallel team of 3-5 reviewers) reviews PRs, **Architect** designs, **Builder** implements. Roles show up as `[Role]` tags so you see who's speaking.
 
-**Stray ideas** — when a side-thought lands mid-task (*"oh, project X needs Y"*, *"we should look at Z later"*), you just dump it to Petra: *"log this for later: ..."*. She drops it in the brain-dump or files a quick task stub in the right project — without breaking your current thread. If you're not in a Claude Code session at all, there's an Obsidian hotkey for the same thing — drafts accumulate until the weekly wrap triages them.
+**Stray ideas** — when a side-thought lands mid-task (*"oh, project X needs Y"*, *"we should look at Z later"*), you just dump it to Petra: *"log this for later: ..."*. She drops it in the brain-dump or files a quick task stub in the right project — without breaking your current thread. If you're not in a Forge session at all, there's an Obsidian hotkey for the same thing — drafts accumulate until the weekly wrap triages them.
 
 **Project switching** — your vault holds all your projects. `/forge` in a new project's directory switches the active marker; the previous project's state stays intact, ready when you come back. Cross-project synthesis happens at the weekly wrap, not by accident.
 
@@ -39,16 +45,28 @@ Focus doesn't mean tunnel vision either — Forge holds all your projects in one
 ```bash
 git clone git@github.com:shining-cat/forge.git
 cd forge
-./install.sh
 ```
 
-Requires [Claude Code](https://claude.ai/code) + the [superpowers](https://github.com/obra/superpowers-marketplace) plugin. Full install + customization + rollback + maintainer-mode docs: see [docs/SETUP.md](docs/SETUP.md).
+Choose the runtime adapter explicitly:
+
+```bash
+./install.sh --runtime claude    # Claude Code
+./install.sh --runtime copilot   # GitHub Copilot CLI
+```
+
+The default `./install.sh` remains Claude Code for compatibility. Both
+adapters require `jq`, `git`, and `python3`; Claude additionally uses the
+[superpowers](https://github.com/obra/superpowers-marketplace) plugin.
+Full install, customization, rollback, and runtime differences are documented
+in [docs/SETUP.md](docs/SETUP.md).
 
 ---
 
 ## Learn more
 
 - **[docs/SETUP.md](docs/SETUP.md)** — install, customization, upgrades, rollback, first session, maintainer mode, extending, contributing
+- **[adapters/claude-code/README.md](adapters/claude-code/README.md)** — Claude Code adapter surfaces, installation, and runtime behavior
+- **[adapters/copilot-cli/README.md](adapters/copilot-cli/README.md)** — GitHub Copilot CLI adapter surfaces, installation, and runtime behavior
 - **[docs/COMMANDS.md](docs/COMMANDS.md)** — slash-command reference + conversational triggers (most you'll never type by hand; Petra surfaces them)
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — components, where things live, vault structure, friction framework, wellness coach internals
 - **[docs/ROLES.md](docs/ROLES.md)** — per-role specifications (Petra, Keeper, Refiner, Reviewer, Architect, Builder, Debugger, Release Manager, Toolsmith)

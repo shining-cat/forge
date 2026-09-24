@@ -51,3 +51,4 @@ The Builder activates on demand:
 | Agent | File | Last synced |
 |---|---|---|
 | Claude Code | `adapters/claude-code/agents/forge-impl.md` | 2026-06-01 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-impl.agent.md` | 2026-06-17 |

@@ -13,7 +13,7 @@ HOME_DIR="$HOME"
 # and needs neither forge.conf nor VAULT_PATH, so it is exempt from the config
 # gate — it must work in vault-less contexts (and tests override HOME alone).
 FORGE_CONF="${FORGE_CONF_OVERRIDE:-$HOME_DIR/.claude/forge.conf}"
-if [ "${1:-}" != "teammate-notice" ]; then
+if [[ "${1:-}" != "teammate-notice" && "${1:-}" != "render-backlog-cell" ]]; then
   if [ ! -f "$FORGE_CONF" ]; then
     echo "[forge-context] ERROR: forge.conf not found at $FORGE_CONF" >&2
     exit 1
@@ -28,7 +28,7 @@ if [ "${1:-}" != "teammate-notice" ]; then
   fi
 fi
 # Empty default keeps the vault-derived paths below valid under `set -u` for the
-# config-exempt teammate-notice path (which never reads any of them).
+# config-exempt paths (which never read any of them).
 VAULT_PATH="${VAULT_PATH:-}"
 MARKER="$VAULT_PATH/_shared/forge-active"
 STOP_COUNT_FILE="$VAULT_PATH/_shared/forge-session-stops"

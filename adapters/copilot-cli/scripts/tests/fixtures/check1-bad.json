@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Write(*/.copilot/skills/wellness-coach/scripts/*)",
+      "Edit(*/foo/*)"
+    ],
+    "deny": []
+  },
+  "hooks": {}
+}

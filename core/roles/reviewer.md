@@ -64,3 +64,4 @@ Every review ends with one of three verdicts:
 | Agent | File | Last synced |
 |---|---|---|
 | Claude Code | `adapters/claude-code/agents/forge-reviewer.md` | 2026-05-04 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-reviewer.agent.md` | 2026-06-17 |

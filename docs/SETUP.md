@@ -6,7 +6,7 @@ Install, upgrade, customize, roll back, and extend Forge. For the high-level pit
 
 | Requirement | Why |
 |-------------|-----|
-| [Claude Code](https://claude.ai/code) | Runtime — Forge runs as Claude Code skills and hooks |
+| [Claude Code](https://claude.ai/code) **or** [GitHub Copilot CLI](https://github.com/github/copilot-cli) | Runtime — choose the matching Forge adapter |
 | [superpowers](https://github.com/obra/superpowers-marketplace) | Process discipline — brainstorming, TDD, debugging, plans |
 | `jq` | Used by hooks and scripts for JSON processing |
 | `python3` | Used by wellness coach hooks |
@@ -14,7 +14,7 @@ Install, upgrade, customize, roll back, and extend Forge. For the high-level pit
 
 **Recommended:**
 - [Obsidian](https://obsidian.md) — browse the vault with backlinks and graph view
-- `terminal-notifier` — macOS notifications when Claude needs approval (`brew install terminal-notifier`)
+- `terminal-notifier` — macOS notifications when an agent needs approval (`brew install terminal-notifier`)
 - [Android CLI](https://developer.android.com/tools/agents/android-cli) — Google's agent-first Android tooling (skills, knowledge base, device management); recommended only if you build for Android
 - Anthropic official plugins: `code-review`, `commit-commands`, `pr-review-toolkit`
 
@@ -125,6 +125,40 @@ churn / lean resident context), and the ruled-out alternatives (1-hour cache TTL
 measured net loss; mid-session flipping — cache-bust) live in
 `adapters/claude-code/references/model-cost-posture.md` — the Claude binding of the
 vendor-neutral principle in `core/references/model-cost-posture.md`.
+
+## GitHub Copilot CLI adapter
+
+The Copilot adapter is a separate runtime binding. It leaves the Claude adapter
+and the agent-neutral role specifications unchanged:
+
+```bash
+git clone git@github.com:shining-cat/forge.git
+cd forge
+./install.sh --runtime copilot --vault-path "$HOME/Vault" --dry-run
+./install.sh --runtime copilot --vault-path "$HOME/Vault"
+```
+
+The installer targets `${COPILOT_HOME:-$HOME/.copilot}`. It installs Forge
+custom agents into `agents/`, skills into `skills/`, runtime scripts into
+`scripts/`, hooks into `hooks/`, and creates `forge.conf` only when absent.
+Existing Forge-owned files are backed up before replacement; unrelated Copilot
+configuration is not rewritten.
+
+After installation, restart Copilot CLI and run `/skills reload`. Forge roles
+are available through `/agent` and the Forge entry skill is available in the
+normal Copilot skill picker.
+
+Copilot lifecycle differences are deliberate: session context is injected by
+`sessionStart`, prompt headers by `userPromptTransformed`, and the shared
+vault/credential guards use Copilot's Claude-compatible `PreToolUse` payload.
+Copilot does not expose an equivalent post-compaction event or identical
+tmux-pane team substrate, so those behaviors use the documented fallback to
+inline subagents.
+
+The runtime-specific implementation is kept in
+`adapters/copilot-cli/install.sh`; the root `install.sh` is a neutral dispatcher.
+Claude remains the default for backward compatibility, so existing
+`./install.sh` commands continue to target Claude Code.
 
 ## Rollback
 

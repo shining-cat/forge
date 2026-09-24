@@ -96,3 +96,4 @@ The subcommand validates `--pattern` against the catalog, writes to both `fricti
 | Agent | File | Last synced |
 |---|---|---|
 | Claude Code | `adapters/claude-code/agents/forge-refiner.md` | 2026-05-20 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-refiner.agent.md` | 2026-06-17 |

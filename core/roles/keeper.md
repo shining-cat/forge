@@ -149,3 +149,4 @@ The Keeper does NOT auto-stage, auto-commit, or auto-push the vault. Those decis
 | Agent | File | Last synced |
 |---|---|---|
 | Claude Code | `adapters/claude-code/agents/forge-keeper.md` | 2026-05-06 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-keeper.agent.md` | 2026-06-17 |

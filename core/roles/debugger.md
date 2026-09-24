@@ -53,3 +53,4 @@ The Debugger activates on demand:
 | Agent | File | Last synced |
 |---|---|---|
 | Claude Code | `adapters/claude-code/agents/forge-debugger.md` | 2026-05-04 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-debugger.agent.md` | 2026-06-17 |

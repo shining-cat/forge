@@ -12,7 +12,10 @@ The human is the architect and decision-maker. Agents execute, challenge during 
 
 ## Components
 
-The forge is assembled from Claude Code building blocks, in two layers: **skills** (what Claude invokes — most user-facing) and **hooks + scripts + config** (what the runtime layer wires up around them).
+The forge is assembled from runtime bindings in two layers: **skills** (what the
+active agent runtime invokes — most user-facing) and **hooks + scripts + config**
+(what the runtime layer wires up around them). Claude Code and GitHub Copilot CLI
+are separate adapters over the same role-neutral core.
 
 ### Skills (11 + wellness module)
 
@@ -77,6 +80,23 @@ The forge is assembled from Claude Code building blocks, in two layers: **skills
 | `~/.claude/forge-tmux.conf` | tmux config consumed by `forge-shell-init.sh` via `tmux -f`. Sources the user's own `~/.tmux.conf` first (if any) then forces `set -g mouse on` so wheel/trackpad events scroll tmux's own buffer — without it, xterm-family terminals translate wheel events to arrow keys on the alt-screen, which Claude Code receives as junk input |
 | `${VAULT_PATH}/_shared/forge-active` | Session marker — JSON `{session_id, project, started_at, tmux_pane}` (active, owned by that session); empty (deactivated); `__pending__` (launching). Optional `parked` field `{project, env, reason, parked_at}` during an excursion — `park` re-points `project` to the hop target and lifts the current project into `parked`, `resume` pops it back; `project` stays honest and `started_at` is preserved (same work session). Hooks gate on `session_id` so they only fire in the window that ran `/forge`. Lives in the vault to avoid `~/.claude/` sensitive-zone permission prompts |
 | `{vault}/` | Knowledge vault (see [Vault Structure](#vault-structure)) |
+
+### Runtime adapters
+
+| Runtime | Adapter | Native surfaces |
+|---------|---------|-----------------|
+| Claude Code | `adapters/claude-code/` | Claude agents, skills, hooks, settings, and tool permissions |
+| GitHub Copilot CLI | `adapters/copilot-cli/` | `.agent.md` agents, skills, Copilot hooks, and Copilot tool aliases |
+
+The adapters own runtime-specific paths, frontmatter, lifecycle payloads,
+permissions, session identity, and installation. Core role files remain the
+source of behavioral intent; every role's `## Adapters` table records the
+runtime copies and synchronization date. The Copilot adapter uses
+`sessionStart`/`userPromptTransformed` wrappers where Copilot's payload/output
+shape differs and uses Copilot's Claude-compatible PascalCase tool hooks for
+guards whose semantics are shared. There is no post-compaction equivalent in
+Copilot, so Forge performs the pre-compaction action and relies on the next
+session-start context for recovery.
 
 ### External dependencies
 

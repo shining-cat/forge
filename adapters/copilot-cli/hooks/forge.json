@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/copilot-session-start.sh",
+        "timeoutSec": 10
+      }
+    ],
+    "userPromptTransformed": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/copilot-user-prompt.sh",
+        "timeoutSec": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-credential-guard.sh",
+        "matcher": "Bash",
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-vault-plan-guard.sh",
+        "matcher": "Write|Edit",
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-vault-write-guard.sh",
+        "matcher": "Write|Edit",
+        "timeoutSec": 10
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh post-tool",
+        "timeoutSec": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh stop",
+        "timeoutSec": 10
+      }
+    ],
+    "PreCompact": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-compaction.sh pre",
+        "timeoutSec": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-session-end.sh",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
