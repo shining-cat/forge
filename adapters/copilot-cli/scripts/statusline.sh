@@ -2,10 +2,15 @@
 # Read JSON input once
 input=$(cat)
 
+# The statusline subprocess does not necessarily inherit the Forge shell
+# environment. Resolve the Copilot home from the environment when available,
+# otherwise use the installed default.
+COPILOT_DIR="${COPILOT_DIR:-${COPILOT_HOME:-$HOME/.copilot}}"
+
 # Helper functions for common extractions
 get_model_name() { echo "$input" | jq -r '.model.display_name'; }
-get_current_dir() { echo "$input" | jq -r '.workspace.current_dir'; }
-get_project_dir() { echo "$input" | jq -r '.workspace.project_dir'; }
+get_current_dir() { echo "$input" | jq -r '.workspace.current_dir // empty'; }
+get_project_dir() { echo "$input" | jq -r '.workspace.project_dir // empty'; }
 get_version() { echo "$input" | jq -r '.version'; }
 get_cost() { echo "$input" | jq -r '.cost.total_cost_usd'; }
 get_duration() { echo "$input" | jq -r '.cost.total_duration_ms'; }
@@ -19,6 +24,11 @@ PROJECT_DIR=$(get_project_dir)
 COST=$(get_cost)
 DURATION=$(get_duration)
 GIT_BRANCH=""
+
+# Copilot can emit null for workspace.current_dir while still invoking the
+# statusline from the correct working directory.
+[ -n "$CURRENT_DIR" ] || CURRENT_DIR=$(pwd -P)
+[ -n "$PROJECT_DIR" ] || PROJECT_DIR="$CURRENT_DIR"
 
 if git rev-parse --git-dir > /dev/null 2>&1; then
     BRANCH=$(git branch --show-current 2>/dev/null)
