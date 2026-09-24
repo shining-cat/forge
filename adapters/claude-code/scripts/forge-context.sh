@@ -6127,6 +6127,13 @@ EOF
   exit 1
 }
 
+forge_resolve_model() {
+  "$HOME_DIR/.claude/scripts/forge-model-catalog.sh" resolve "$@"
+}
+forge_migrate_model_config() {
+  "$HOME_DIR/.claude/scripts/forge-model-catalog.sh" migrate --config "$HOME_DIR/.claude/forge.conf"
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────────
 SUBCMD="${1:-}"
 
@@ -6171,6 +6178,8 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   substrate-check)     do_substrate_check ;;
+  resolve-model)       forge_resolve_model "${@:2}" ;;
+  migrate-model-config) forge_migrate_model_config ;;
   review-sync)         do_review_sync "${@:2}" ;;
   repo-gh)             do_repo_gh "${@:2}" ;;
   draft-list)          do_draft_list ;;

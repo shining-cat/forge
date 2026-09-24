@@ -533,6 +533,10 @@ build_pairs() {
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-snapshot.sh"         "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-audit.py"            "$CLAUDE_DIR/scripts/forge-cost-audit.py"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-model-catalog.sh"       "$CLAUDE_DIR/scripts/forge-model-catalog.sh"
+    for catalog_file in __init__.py catalog.py cli.py; do
+      printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/model_catalog/$catalog_file" "$CLAUDE_DIR/scripts/forge_capability/$catalog_file"
+    done
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-vault-symlinks.sh"        "$CLAUDE_DIR/scripts/forge-vault-symlinks.sh"
 
     # Top-level files under ~/.claude/
@@ -1288,6 +1292,13 @@ EOF
   ok "forge.conf written (vault: $VAULT_PATH)"
 fi
 
+# Migrate legacy role model keys non-destructively after forge.conf exists.
+if [ "$DRY_RUN" = true ]; then
+  hint "Would migrate legacy MODEL_* keys to MODEL_TIER_* metadata"
+else
+  python3 "$FORGE_ROOT/core/model_catalog/cli.py" migrate --config "$CLAUDE_DIR/forge.conf" >/dev/null || warn "Model migration skipped; legacy MODEL_* behavior remains available."
+fi
+
 # ─── Derive FORGE_TRUST_ANCHOR ───────────────────────────────────────────────
 # The one folder trusted once so parallel agent-team fan-out panes (which inherit
 # the lead session cwd via forge-shell-init.sh) never re-hit Claude Code's
@@ -1511,6 +1522,12 @@ info "Installing hooks and scripts..."
 
 run mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/scripts"
 
+# Vendor-neutral capability resolver; installed as a self-contained stdlib package.
+run mkdir -p "$CLAUDE_DIR/scripts/forge_capability"
+run cp "$FORGE_ROOT/core/model_catalog/__init__.py" "$CLAUDE_DIR/scripts/forge_capability/__init__.py"
+run cp "$FORGE_ROOT/core/model_catalog/catalog.py" "$CLAUDE_DIR/scripts/forge_capability/catalog.py"
+run cp "$FORGE_ROOT/core/model_catalog/cli.py" "$CLAUDE_DIR/scripts/forge_capability/cli.py"
+
 safe_cp "$ADAPTER/hooks/forge-compaction.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/approval-notifier.sh" "$CLAUDE_DIR/hooks/"
 safe_cp "$ADAPTER/hooks/forge-vault-plan-guard.sh" "$CLAUDE_DIR/hooks/"
@@ -1525,6 +1542,7 @@ safe_cp "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-calendar.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-snapshot.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-audit.py" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-model-catalog.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh" preserve
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
@@ -1541,6 +1559,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/scripts/forge-calendar.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-audit.py" \
+             "$CLAUDE_DIR/scripts/forge-model-catalog.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"

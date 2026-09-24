@@ -284,3 +284,7 @@ Projects can optionally reference an external knowledge base repo in their vault
 - Offers to contribute decisions and specs back, following the KB's git flow
 
 This is project-specific — only affects projects that declare a KB. No impact on projects without one.
+
+## Model capability catalog
+
+Core owns normalized model identity, evidence, neutral tiers, and deterministic resolution. Runtime adapters own snapshots, bindings, and dispatch mechanics; no adapter ranking logic is shared with core. See `core/references/model-catalog.md`.

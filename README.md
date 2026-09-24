@@ -78,3 +78,7 @@ in [docs/SETUP.md](docs/SETUP.md).
 ## License
 
 [GPL-3.0](LICENSE)
+
+### Capability-based model selection
+
+Forge uses a vendor-neutral runtime capability catalog. The catalog is runtime-first, fail-closed when stale or invalid, and resolves exact neutral tiers without cost or mandatory probes. Claude installs it at `~/.claude/scripts/forge_capability/`; the snapshot lives at `${VAULT_PATH}/_shared/capability-snapshot.json`.

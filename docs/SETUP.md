@@ -275,3 +275,19 @@ MAINTAINER_MODE=true
 ```
 
 The change takes effect on the next `/forge` invocation.
+
+## Capability catalog
+
+Claude installation includes the stdlib-only resolver at `~/.claude/scripts/forge_capability/` and the wrapper at `~/.claude/scripts/forge-model-catalog.sh`. A missing, malformed, incompatible, or stale runtime snapshot fails closed; legacy `MODEL_<ROLE>` settings remain readable.
+
+### Capability catalog setup
+
+Claude installs the stdlib-only package at `~/.claude/scripts/forge_capability/`. To publish a manual/runtime catalog without probes, network, or cost data, prepare a JSON record input and run `~/.claude/scripts/forge-model-catalog.sh publish --input catalog.json`. The wrapper also exposes `migrate --config ~/.claude/forge.conf`; installation runs this migration safely, preserving legacy and unrelated keys with one `.pre-model-catalog` backup.
+
+### Catalog tests
+
+Run the standard-library catalog suite from the repository root with:
+
+```bash
+python3 -m unittest discover -s core -p 'test_*.py'
+```
