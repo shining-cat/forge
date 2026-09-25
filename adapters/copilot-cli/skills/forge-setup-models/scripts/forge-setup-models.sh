@@ -4,9 +4,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETUP_PY="$SCRIPT_DIR/setup_models.py"
 COPILOT_DIR="${COPILOT_DIR:-$HOME/.copilot}"
 VAULT_PATH="${VAULT_PATH:-$(grep '^VAULT_PATH=' "$COPILOT_DIR/forge.conf" 2>/dev/null | cut -d= -f2)}"
+
+# Resolve path to core tool
+if [[ -n "${FORGE_CORE:-}" ]]; then
+    SETUP_PY="$FORGE_CORE/tools/forge-model-catalog-setup.py"
+elif [[ -d "$COPILOT_DIR/forge/core/tools" ]]; then
+    SETUP_PY="$COPILOT_DIR/forge/core/tools/forge-model-catalog-setup.py"
+else
+    # Development mode: derive from script location
+    # SCRIPT_DIR is at: .../forge/adapters/copilot-cli/skills/forge-setup-models/scripts
+    # Go up 5 levels to reach the root
+    FORGE_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
+    SETUP_PY="$FORGE_ROOT/core/tools/forge-model-catalog-setup.py"
+fi
 
 if [[ -z "$VAULT_PATH" ]]; then
     echo "Error: VAULT_PATH not found in $COPILOT_DIR/forge.conf" >&2
