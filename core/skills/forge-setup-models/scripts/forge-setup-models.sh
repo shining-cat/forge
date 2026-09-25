@@ -176,6 +176,9 @@ with open("$MODELS_TMPFILE", "r") as f:
         print(json.dumps(model))
 MODELS_EXTRACT
 
+LINES_COUNT=$(wc -l < "$MODELS_LINES_TMPFILE")
+echo -e "${BLUE}[DEBUG] Extracted $LINES_COUNT model lines to process${NC}" >&2
+
 # Now iterate over the extracted models
 while IFS= read -r MODEL_JSON; do
     [[ -z "$MODEL_JSON" ]] && continue
@@ -183,6 +186,8 @@ while IFS= read -r MODEL_JSON; do
     MODEL=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['id'])")
     VENDOR=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['vendor'] or 'Unknown')")
     INFERRED=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['inferred_tier'] or 'unknown')")
+    
+    echo -e "${BLUE}[Processing $MODEL]${NC}" >&2
     
     # Ask user for tier (read from /dev/tty to ensure interactive input)
     echo -n "Assign tier for $MODEL ($VENDOR) [$INFERRED]: " >&2
