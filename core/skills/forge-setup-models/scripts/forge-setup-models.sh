@@ -57,8 +57,18 @@ echo ""
 echo "Press Ctrl+D when done (or paste, then press Enter twice):"
 echo ""
 
-# Read user input
-MODELS_INPUT=$(cat)
+# Read user input line-by-line until blank line (allows for piped input + confirmations)
+MODELS_INPUT=""
+while IFS= read -r line; do
+    # Blank line signals end of models
+    if [[ -z "$line" ]]; then
+        break
+    fi
+    MODELS_INPUT+="$line"$'\n'
+done
+
+# Remove trailing newline
+MODELS_INPUT="${MODELS_INPUT%$'\n'}"
 
 if [[ -z "$MODELS_INPUT" ]]; then
     echo -e "${RED}No models provided. Exiting.${NC}"
