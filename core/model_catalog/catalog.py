@@ -7,7 +7,7 @@ import tempfile
 
 SCHEMA_VERSION = 1
 FRESHNESS_SECONDS = 24 * 60 * 60
-TIERS = ("economy", "standard", "premium")
+TIERS = ("minimal", "economy", "standard", "premium")
 EVIDENCE_KINDS = ("declared", "public_benchmark", "passive")
 EXIT_CODES = {"resolved": 0, "inherit": 1, "no_match": 2, "invalid": 3}
 

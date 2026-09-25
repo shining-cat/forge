@@ -18,14 +18,15 @@ VENDOR_PATTERNS = {
     "gemini": "Google",
 }
 
-# Infer tier from model name
+# Infer tier from model name (deprecated: use infer_tier function logic)
 TIER_PATTERNS = {
-    "premium": ["opus", "gpt-5.6", "luna", "terra", "sol", "claude-opus"],
-    "standard": ["sonnet", "gpt-5.4", "gpt-5.3", "claude-sonnet"],
-    "economy": ["haiku", "flash", "3.8", "claude-haiku"],
+    "minimal": ["haiku", "mini"],
+    "economy": ["flash", "3.8"],
+    "standard": ["sonnet", "gpt-5.4", "gpt-5.3"],
+    "premium": ["opus", "gpt-5.6", "luna", "terra", "sol"],
 }
 
-NEUTRAL_TIERS = ["economy", "standard", "premium"]
+NEUTRAL_TIERS = ["minimal", "economy", "standard", "premium"]
 
 
 def infer_vendor(model_id: str) -> Optional[str]:
@@ -39,10 +40,23 @@ def infer_vendor(model_id: str) -> Optional[str]:
 def infer_tier(model_id: str) -> Optional[str]:
     """Infer tier from model ID based on naming patterns."""
     model_lower = model_id.lower()
-    for tier, patterns in TIER_PATTERNS.items():
-        for pattern in patterns:
-            if pattern.lower() in model_lower:
-                return tier
+    
+    # premium: full-strength reasoning + extended thinking (check first, most specific)
+    if any(p in model_lower for p in ["opus", "gpt-5.6", "luna", "terra", "sol"]):
+        return "premium"
+    
+    # standard: balanced reasoning
+    if any(p in model_lower for p in ["sonnet", "gpt-5.4", "gpt-5.3"]):
+        return "standard"
+    
+    # economy: lightweight reasoning
+    if any(p in model_lower for p in ["flash", "3.8"]):
+        return "economy"
+    
+    # minimal: ultra-lightweight, admin-only tasks (check last, avoid substring collisions)
+    if "haiku" in model_lower:
+        return "minimal"
+    
     return None
 
 
@@ -279,7 +293,7 @@ if __name__ == "__main__":
     # resolve-test: test resolve for given tiers
     resolve_cmd = subparsers.add_parser("resolve-test")
     resolve_cmd.add_argument("catalog_path")
-    resolve_cmd.add_argument("--tiers", default="economy,standard,premium")
+    resolve_cmd.add_argument("--tiers", default="minimal,economy,standard,premium")
     
     # infer: infer vendor and tier for a model
     infer_cmd = subparsers.add_parser("infer")

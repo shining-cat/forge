@@ -1,6 +1,6 @@
 ---
 name: forge-setup-models
-description: Guide user through discovering available models and mapping them to Forge neutral tiers (economy/standard/premium). One-shot setup, idempotent. Saves to canonical catalog at ${VAULT_PATH}/_shared/model-catalog/catalog.json
+description: Guide user through discovering available models and mapping them to Forge neutral tiers (minimal/economy/standard/premium). One-shot setup, idempotent. Saves to canonical catalog at ${VAULT_PATH}/_shared/model-catalog/catalog.json
 ---
 
 # Forge Model Catalog Setup
@@ -39,9 +39,10 @@ For each model, extract:
 - Inferred capability tier based on naming (e.g. `opus` → premium, `sonnet` → standard, `3.8-flash` → economy)
 
 **Inference rules** (fallback logic):
-- Capability model keywords: `opus` / `gpt-5.6` / `luna` / `terra` / `sol` → *premium*
+- Capability model keywords: `haiku`, `mini` → *minimal*
+- `flash` / `3.8` → *economy*
 - `sonnet` / `gpt-5.4` / `gpt-5.3` → *standard*
-- `haiku` / `flash` / `3.8` → *economy*
+- `opus` / `gpt-5.6` / `luna` / `terra` / `sol` → *premium*
 - Unknown → ask user
 
 ### 3. Interactive Tier Assignment
@@ -50,12 +51,17 @@ For each model, present:
 ```
 Model: claude-opus-5 (Anthropic)
 Inferred tier: premium
-Capabilities: reasoning, extended-thinking, code, analysis
+
+Tier guide:
+  minimal   — Admin-only: Keeper reads/writes, forge startup, web scraping
+  economy   — Lightweight reasoning, edge cases, fallback
+  standard  — Main-loop reasoning, synthesis, review, debugging
+  premium   — Hard work: architecture, extended-thinking, scalpel work
 
 Confirm tier assignment:
-  1) economy   2) standard   3) premium   4) skip
+  1) minimal  2) economy  3) standard  4) premium  5) skip
 
-Your choice [3]:
+Your choice [4]:
 ```
 
 Capture user's response. Allow override.
