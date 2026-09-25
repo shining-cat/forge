@@ -126,6 +126,75 @@ measured net loss; mid-session flipping — cache-bust) live in
 `adapters/claude-code/references/model-cost-posture.md` — the Claude binding of the
 vendor-neutral principle in `core/references/model-cost-posture.md`.
 
+## Model Catalog Setup
+
+Forge's tier system is **vendor-neutral** — it maps available models to abstract tiers, independent of which vendor supplies them. Each organization has different models enabled (Anthropic, OpenAI, Google, etc.), so Forge **cannot ship a pre-baked catalog**. Instead, it guides you through discovering your available models and assigning them to tiers.
+
+### Tier definitions
+
+Four neutral tiers, ordered by cost and reasoning capability:
+
+| Tier | Use case | Examples |
+|------|----------|----------|
+| **minimal** | Admin tasks with no reasoning needed: Keeper reads/writes, forge startup, web scraping, brain dump truncate | claude-haiku-4, gpt-mini (when available) |
+| **economy** | Lightweight reasoning, edge cases, fallback dispatch | gemini-3.8-flash |
+| **standard** | Main-loop reasoning, synthesis, review, debugging (default: Sonnet-level) | claude-sonnet-5, gpt-5.4 |
+| **premium** | Full-strength reasoning, extended-thinking, scalpel work | claude-opus-5, gpt-5.6-luna, gpt-5.6-terra, gpt-5.6-sol |
+
+The tiers exist because every tier costs more to run than the one below it, so Forge routes work to the cheapest tier that can handle it.
+
+### First-time setup
+
+After installing Forge, run the model discovery flow:
+
+```bash
+/forge-setup-models
+```
+
+This interactive tool will:
+
+1. **Ask for available models** — Copy/paste from your organization's settings page (e.g., `{ORG}/settings/copilot/features`)
+2. **Infer vendor and tier** — Forge guesses based on model name (e.g., `claude-haiku-4` → Anthropic, minimal)
+3. **Confirm tier assignments** — Review the inference, override if needed
+4. **Validate and test** — Forge tests that each tier can resolve correctly
+5. **Write canonical catalog** — Saves to `${VAULT_PATH}/_shared/model-catalog/catalog.json`
+
+The setup is idempotent — you can re-run it anytime your organization enables new models.
+
+**Important:** Forge assumes you have at least one model in each tier. In practice, every organization has cheap models (Haiku, Flash) available, so this is not a blocker.
+
+### Tier assignment examples
+
+Here's how Forge infers tiers from model names:
+
+- **minimal** ← "haiku" (exact match to avoid substring collisions with "gemini")
+- **economy** ← "flash", "3.8" (e.g., gemini-3.8-flash)
+- **standard** ← "sonnet", "gpt-5.4", "gpt-5.3"
+- **premium** ← "opus", "gpt-5.6", "luna", "terra", "sol"
+
+You can override any inference during setup. If a model name doesn't match, setup will ask you to assign it manually.
+
+### Using the catalog at runtime
+
+Once the catalog is written, Forge's internal operations and subagents use it to select models by tier:
+
+```bash
+forge-model-catalog resolve --role keeper --tier minimal
+# Output: dispatch_id: claude-haiku-4
+```
+
+Roles and operations declare their tier needs:
+- `keeper` → minimal (Keeper logs are structured, no reasoning needed)
+- `impl` → standard (builder needs reasoning for code)
+- `architect` / `debugger` → premium (hard thinking)
+- fallback / entry ceremony → minimal (cheap operations)
+
+The resolve logic returns the first active model matching the requested tier. If that tier is unavailable, Forge falls back gracefully (currently to economy/standard/premium chain, depending on what's available).
+
+### Refresh
+
+If your organization enables new models, re-run `/forge-setup-models` to update the catalog. The tool is idempotent and will preserve existing assignments.
+
 ## GitHub Copilot CLI adapter
 
 The Copilot adapter is a separate runtime binding. It leaves the Claude adapter
