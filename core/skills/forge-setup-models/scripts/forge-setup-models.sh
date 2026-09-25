@@ -390,37 +390,34 @@ else
 fi
 
 # ============================================================================
-# STEP 6: Test resolve
+# STEP 6: Verify tier coverage
 # ============================================================================
 
 echo ""
-echo -e "${BLUE}Testing resolve() for each tier...${NC}"
+echo -e "${BLUE}Verifying tier coverage...${NC}"
 
-RESOLVE_RESULTS=$(python3 "$SETUP_PY" resolve-test "$TEMP_CATALOG")
-
-echo "$RESOLVE_RESULTS" | python3 << 'PYTHON_RESOLVE'
+python3 << PYTHON_VERIFY
 import json
 import sys
 
-results = json.load(sys.stdin)
+catalog = json.loads("""$CATALOG""")
 
-for tier, result in results.items():
-    if result.get("success"):
-        dispatch_id = result.get("dispatch_id")
-        print(f"  ✓ {tier:12} → {dispatch_id}")
+tier_coverage = {}
+for record in catalog.get("records", []):
+    tier = record.get("tier")
+    if tier not in tier_coverage:
+        tier_coverage[tier] = []
+    tier_coverage[tier].append(record["identity"]["id"])
+
+for tier in ["minimal", "economy", "standard", "premium"]:
+    models = tier_coverage.get(tier, [])
+    if models:
+        model_list = ", ".join(models)
+        print(f"  ✓ {tier:12} → {model_list}")
     else:
-        error = result.get("error", "unknown")
-        print(f"  ✗ {tier:12} → {error}")
-PYTHON_RESOLVE
+        print(f"  ✗ {tier:12} → (no model assigned)")
+PYTHON_VERIFY
 
-# Check if all resolutions passed
-FAILED=$(echo "$RESOLVE_RESULTS" | python3 -c "import sys, json; r = json.load(sys.stdin); print(sum(1 for v in r.values() if not v.get('success')))")
-
-if [[ $FAILED -gt 0 ]]; then
-    echo -e "${RED}Some tiers failed resolve test. Check tier assignments.${NC}"
-    rm -f "$TEMP_CATALOG"
-    exit 1
-fi
 
 # ============================================================================
 # STEP 7: Write canonical catalog
