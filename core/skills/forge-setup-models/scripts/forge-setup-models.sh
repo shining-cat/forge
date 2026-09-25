@@ -113,11 +113,15 @@ echo ""
 RECORDS=()
 SKIPPED_MODELS=()
 
+MODELS_TMPFILE=$(mktemp)
+echo "$MODELS_JSON" > "$MODELS_TMPFILE"
+
 python3 << PYTHON_LOOP
 import json
 import sys
 
-models = json.loads("""$MODELS_JSON""")
+with open("$MODELS_TMPFILE", "r") as f:
+    models = json.load(f)
 for model in models:
     model_id = model["id"]
     vendor = model["vendor"] or "Unknown"
