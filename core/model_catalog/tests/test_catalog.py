@@ -3,7 +3,8 @@ import json
 import os
 import tempfile
 import unittest
-from model_catalog.catalog import SnapshotError, load_snapshot, migrate_config, publish_manual, resolve, tier_from_config, write_snapshot
+from unittest import mock
+from model_catalog.catalog import SnapshotError, catalog_path, load_snapshot, migrate_config, publish_manual, resolve, tier_from_config, write_snapshot
 
 def stamp(seconds=0): return (dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
 def rec(name="model", tier="standard", caps=("reasoning",), bindings=None, evidence=None):
@@ -40,6 +41,33 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(tier_from_config(config, "keeper"), "pending")
             data = snap([rec(tier="premium")])
             self.assertEqual(resolve(data, tier="premium", role="keeper")["status"], "resolved")
+    def test_canonical_precedence_and_legacy_fallback(self):
+        with tempfile.TemporaryDirectory() as d:
+            shared = os.path.join(d, "_shared")
+            os.makedirs(os.path.join(shared, "model-catalog"))
+            legacy = os.path.join(shared, "capability-snapshot.json")
+            json.dump(snap([rec(name="legacy")]), open(legacy, "w"))
+            with mock.patch.dict(os.environ, {"VAULT_PATH": d}):
+                self.assertEqual(load_snapshot()["records"][0]["identity"]["id"], "legacy")
+                json.dump(snap([rec(name="canonical")]), open(catalog_path(d), "w"))
+                self.assertEqual(load_snapshot()["records"][0]["identity"]["id"], "canonical")
+
+    def test_canonical_invalid_does_not_fall_back(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "_shared", "model-catalog"))
+            json.dump(snap([rec(name="legacy")]), open(os.path.join(d, "_shared", "capability-snapshot.json"), "w"))
+            with mock.patch.dict(os.environ, {"VAULT_PATH": d}):
+                open(catalog_path(d), "w").write("not json")
+                with self.assertRaises(SnapshotError): load_snapshot()
+                stale = snap([], stamp(-86401)); json.dump(stale, open(catalog_path(d), "w"))
+                with self.assertRaises(SnapshotError): load_snapshot()
+
+    def test_explicit_legacy_path_remains_supported(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "capability-snapshot.json")
+            json.dump(snap([rec(name="legacy")]), open(path, "w"))
+            self.assertEqual(load_snapshot(path)["records"][0]["identity"]["id"], "legacy")
+
     def test_stale_and_future(self):
         with self.assertRaises(SnapshotError): load_snapshot(self._write(snap([], stamp(-86401))))
         with self.assertRaises(SnapshotError): load_snapshot(self._write(snap([], stamp(2))))

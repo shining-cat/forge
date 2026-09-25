@@ -178,8 +178,31 @@ if [[ ! -f "$COPILOT_DIR/forge.conf" ]]; then
     cat > "$COPILOT_DIR/forge.conf" <<EOF
 VAULT_PATH=$VAULT_PATH
 ONBOARDING_COMPLETE=false
+WELLNESS_ENABLED=true
+WELLNESS_COLD_START_HOURS=4
 RUNTIME=copilot-cli
+MODEL_KEEPER=sonnet
+MODEL_REFINER=opus
+MODEL_REVIEWER=sonnet
+MODEL_IMPL=
+MODEL_ARCHITECT=opus
+MODEL_DEBUGGER=opus
+MODEL_RELEASE=sonnet
+MODEL_TOOLSMITH=opus
 EOF
+  fi
+fi
+
+SETTINGS_FILE="$COPILOT_DIR/settings.json"
+if [[ -f "$SETTINGS_FILE" ]]; then
+  if ! jq -e '.statusLine' "$SETTINGS_FILE" >/dev/null 2>&1; then
+    if "$DRY_RUN"; then
+      printf '  would add statusLine to %s\n' "$SETTINGS_FILE"
+    else
+      tmp="$(mktemp)"
+      jq '. + {"statusLine": {"type": "command", "command": "~/.copilot/scripts/statusline.sh", "padding": 0}}' "$SETTINGS_FILE" > "$tmp"
+      mv "$tmp" "$SETTINGS_FILE"
+    fi
   fi
 fi
 

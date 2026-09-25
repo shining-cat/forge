@@ -287,4 +287,4 @@ This is project-specific — only affects projects that declare a KB. No impact 
 
 ## Model capability catalog
 
-Core owns normalized model identity, evidence, neutral tiers, and deterministic resolution. Runtime adapters own snapshots, bindings, and dispatch mechanics; no adapter ranking logic is shared with core. See `core/references/model-catalog.md`.
+Core owns catalog persistence/path resolution, normalized model identity, evidence, neutral tiers, and deterministic resolution. Runtime adapters only acquire runtime data and dispatch bindings; no adapter ranking logic is shared with core. See `core/references/model-catalog.md`.

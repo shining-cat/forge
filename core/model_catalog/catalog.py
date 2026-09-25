@@ -30,8 +30,14 @@ def _timestamp(value, field="timestamp"):
         raise SnapshotError(f"{field} must include timezone")
     return parsed.astimezone(dt.timezone.utc)
 
-def snapshot_path(vault_path=None):
+def catalog_path(vault_path=None):
+    return os.path.join(vault_path or os.environ.get("VAULT_PATH", ""), "_shared", "model-catalog", "catalog.json")
+
+def legacy_snapshot_path(vault_path=None):
     return os.path.join(vault_path or os.environ.get("VAULT_PATH", ""), "_shared", "capability-snapshot.json")
+
+def snapshot_path(vault_path=None):
+    return catalog_path(vault_path)
 
 def _text(value, field):
     if not isinstance(value, str) or not value.strip():
@@ -150,8 +156,12 @@ def validate_snapshot(data, now=None):
     return data
 
 def load_snapshot(path=None, now=None):
+    if path is None:
+        path = catalog_path()
+        if not os.path.exists(path):
+            path = legacy_snapshot_path()
     try:
-        with open(path or snapshot_path(), encoding="utf-8") as stream:
+        with open(path, encoding="utf-8") as stream:
             data = json.load(stream)
     except (OSError, ValueError) as exc:
         raise SnapshotError("snapshot unavailable or malformed") from exc

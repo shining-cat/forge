@@ -12,7 +12,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="forge-model-catalog")
     sub = parser.add_subparsers(dest="command")
     resolve_p = sub.add_parser("resolve")
-    resolve_p.add_argument("--snapshot", required=True)
+    resolve_p.add_argument("--snapshot")
     resolve_p.add_argument("--tier")
     resolve_p.add_argument("--role")
     resolve_p.add_argument("--config")

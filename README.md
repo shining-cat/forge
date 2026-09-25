@@ -81,4 +81,4 @@ in [docs/SETUP.md](docs/SETUP.md).
 
 ### Capability-based model selection
 
-Forge uses a vendor-neutral runtime capability catalog. The catalog is runtime-first, fail-closed when stale or invalid, and resolves exact neutral tiers without cost or mandatory probes. Claude installs it at `~/.claude/scripts/forge_capability/`; the snapshot lives at `${VAULT_PATH}/_shared/capability-snapshot.json`.
+Forge uses a vendor-neutral runtime capability catalog. The catalog is runtime-first, fail-closed when stale or invalid, and resolves exact neutral tiers without cost or mandatory probes. Claude installs it at `~/.claude/scripts/forge_capability/`; core owns the catalog at `${VAULT_PATH}/_shared/model-catalog/catalog.json` (with read-only fallback to the legacy snapshot path).
