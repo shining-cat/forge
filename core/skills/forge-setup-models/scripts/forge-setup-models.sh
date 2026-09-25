@@ -184,9 +184,9 @@ while IFS= read -r MODEL_JSON; do
     VENDOR=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['vendor'] or 'Unknown')")
     INFERRED=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['inferred_tier'] or 'unknown')")
     
-    # Ask user for tier
-    echo -n "Assign tier for $MODEL ($VENDOR) [$INFERRED]: "
-    read -r TIER_INPUT
+    # Ask user for tier (read from /dev/tty to ensure interactive input)
+    echo -n "Assign tier for $MODEL ($VENDOR) [$INFERRED]: " >&2
+    read -r TIER_INPUT < /dev/tty || TIER_INPUT=""
     
     # Use inferred if user just pressed enter
     if [[ -z "$TIER_INPUT" ]]; then
@@ -202,9 +202,9 @@ while IFS= read -r MODEL_JSON; do
         continue
     fi
     
-    # Ask if should be dispatch candidate
-    echo -n "Use $MODEL as active dispatch? [Y/n]: "
-    read -r DISPATCH_INPUT
+    # Ask if should be dispatch candidate (read from /dev/tty)
+    echo -n "Use $MODEL as active dispatch? [Y/n]: " >&2
+    read -r DISPATCH_INPUT < /dev/tty || DISPATCH_INPUT=""
     
     if [[ "$DISPATCH_INPUT" =~ ^[nN] ]]; then
         DISPATCH_ID=""
