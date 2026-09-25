@@ -14,9 +14,11 @@ elif [[ -d "$COPILOT_DIR/forge/core/tools" ]]; then
     SETUP_PY="$COPILOT_DIR/forge/core/tools/forge-model-catalog-setup.py"
 else
     # Development mode: derive from script location
-    # SCRIPT_DIR is at: .../forge/core/skills/forge-setup-models/scripts
+    # Follow symlinks to get the canonical path
+    REAL_SCRIPT="$(cd "$SCRIPT_DIR" && pwd -P)"
+    # REAL_SCRIPT is at: .../forge/core/skills/forge-setup-models/scripts
     # Go up 4 levels to reach the root
-    FORGE_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
+    FORGE_ROOT="$(cd "$REAL_SCRIPT/../../../../" && pwd)"
     SETUP_PY="$FORGE_ROOT/core/tools/forge-model-catalog-setup.py"
 fi
 
