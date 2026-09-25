@@ -127,97 +127,160 @@ echo ""
 # ============================================================================
 
 echo -e "${BLUE}=== Tier Assignment ===${NC}"
-echo "Forge uses 3 neutral tiers:"
-echo "  economy   — lightweight, fast, cost-optimized (e.g., Haiku, Flash)"
+echo "Forge uses 4 tiers:"
+echo "  minimal   — ultra-lightweight tasks (e.g., Haiku)"
+echo "  economy   — lightweight, fast, cost-optimized (e.g., Flash)"
 echo "  standard  — balanced capability (e.g., Sonnet, GPT-5.4)"
 echo "  premium   — full-strength reasoning (e.g., Opus, GPT-5.6, Luna)"
 echo ""
 
 RECORDS=()
-SKIPPED_MODELS=()
 
 MODELS_TMPFILE=$(mktemp)
 printf '%s\n' "$MODELS_JSON" > "$MODELS_TMPFILE"
 
-python3 << PYTHON_LOOP
+echo ""
+echo "Pick one model for each tier."
+echo ""
+
+# Group models by inferred tier
+echo -e "${BLUE}Analyzing models...${NC}"
+python3 << PYTHON_GROUP
 import json
-import os
 import sys
-
-models_file = "$MODELS_TMPFILE"
-if not os.path.exists(models_file):
-    print(f"ERROR: File not found: {models_file}", file=sys.stderr)
-    sys.exit(1)
-
-with open(models_file, "r") as f:
-    models = json.load(f)
-for model in models:
-    model_id = model.get("id", "MISSING")
-    vendor = model.get("vendor") or "Unknown"
-    inferred_tier = model.get("inferred_tier") or "unknown"
-    
-    print(f"\n{model_id} ({vendor})")
-    print(f"  Inferred tier: {inferred_tier}")
-PYTHON_LOOP
-
-echo ""
-echo "For each model, I'll ask you to confirm the tier."
-echo ""
-
-# Collect tier assignments interactively
-# Extract models to a separate temp file (one JSON object per line)
-MODELS_LINES_TMPFILE=$(mktemp)
-python3 << MODELS_EXTRACT > "$MODELS_LINES_TMPFILE"
-import json
 
 with open("$MODELS_TMPFILE", "r") as f:
     models = json.load(f)
-    for model in models:
-        print(json.dumps(model))
-MODELS_EXTRACT
 
-LINES_COUNT=$(wc -l < "$MODELS_LINES_TMPFILE")
-echo -e "${BLUE}[DEBUG] Extracted $LINES_COUNT model lines to process${NC}" >&2
+# Group by tier
+tiers = {
+    "minimal": [],
+    "economy": [],
+    "standard": [],
+    "premium": [],
+}
 
-# Now iterate over the extracted models
-while IFS= read -r MODEL_JSON; do
-    [[ -z "$MODEL_JSON" ]] && continue
+for model in models:
+    tier = model.get("inferred_tier") or "unknown"
+    if tier in tiers:
+        tiers[tier].append(model)
+
+# Write grouping to stderr for display
+for tier in ["minimal", "economy", "standard", "premium"]:
+    candidates = tiers[tier]
+    if candidates:
+        print(f"\n{tier.upper()}:", file=sys.stderr)
+        for i, m in enumerate(candidates, 1):
+            print(f"  {i}. {m['id']} ({m.get('vendor', 'Unknown')})", file=sys.stderr)
+    else:
+        print(f"\n{tier.upper()}: (no models inferred)", file=sys.stderr)
+
+# Write JSON grouping for shell to read
+import json
+print(json.dumps({
+    "minimal": tiers["minimal"],
+    "economy": tiers["economy"],
+    "standard": tiers["standard"],
+    "premium": tiers["premium"],
+}))
+PYTHON_GROUP
+) > "$MODELS_TMPFILE.groups"
+
+echo ""
+
+# Collect tier-to-model assignments
+TIER_MODELS=()  # Will store: TIER|MODEL_ID|VENDOR|INFERRED_TIER
+TIERS_ARRAY=("minimal" "economy" "standard" "premium")
+
+for TIER in "${TIERS_ARRAY[@]}"; do
+    # Extract candidates for this tier from JSON grouping
+    CANDIDATES_JSON=$(python3 -c "import json; data = json.load(open('$MODELS_TMPFILE.groups')); print(json.dumps(data['$TIER']))")
+    CANDIDATES_COUNT=$(python3 -c "import json; data = json.load(open('$MODELS_TMPFILE.groups')); print(len(data['$TIER']))")
     
-    MODEL=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['id'])")
-    VENDOR=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['vendor'] or 'Unknown')")
-    INFERRED=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['inferred_tier'] or 'unknown')")
-    
-    echo -e "${BLUE}[Processing $MODEL]${NC}" >&2
-    
-    # Ask user for tier (read from /dev/tty to ensure interactive input)
-    echo "  Tier options: minimal, economy, standard, premium" >&2
-    echo -n "  Tier [$INFERRED]: " >&2
-    read -r TIER_INPUT < /dev/tty || TIER_INPUT=""
-    
-    # Use inferred if user just pressed enter
-    if [[ -z "$TIER_INPUT" ]]; then
-        TIER="$INFERRED"
+    if [[ "$CANDIDATES_COUNT" -eq 0 ]]; then
+        echo -e "${YELLOW}No models inferred for $TIER tier.${NC}" >&2
+        echo -n "Enter a model ID manually (or press Enter to skip): " >&2
+        read -r MANUAL_MODEL < /dev/tty || MANUAL_MODEL=""
+        
+        if [[ -z "$MANUAL_MODEL" ]]; then
+            echo -e "${YELLOW}Skipped $TIER tier${NC}"
+            continue
+        fi
+        
+        # Validate manual entry exists in full list
+        FOUND=$(python3 -c "import json; models = json.load(open('$MODELS_TMPFILE')); m = [x for x in models if x['id'] == '$MANUAL_MODEL']; print(json.dumps(m[0]) if m else 'null')")
+        if [[ "$FOUND" == "null" ]]; then
+            echo -e "${RED}Model not found: $MANUAL_MODEL${NC}"
+            continue
+        fi
+        CHOICE_JSON="$FOUND"
     else
-        TIER="$TIER_INPUT"
+        # Show candidates and prompt
+        echo -e "${BLUE}[$TIER]${NC}" >&2
+        python3 -c "import json; data = json.load(open('$MODELS_TMPFILE.groups')); [print(f'  {i}. {m[\"id\"]} ({m.get(\"vendor\", \"Unknown\")})', file=__import__('sys').stderr) for i, m in enumerate(data['$TIER'], 1)]"
+        
+        echo -n "Pick one (enter number or model ID): " >&2
+        read -r PICK_INPUT < /dev/tty || PICK_INPUT=""
+        
+        if [[ -z "$PICK_INPUT" ]]; then
+            echo -e "${YELLOW}Skipped $TIER tier${NC}"
+            continue
+        fi
+        
+        # Parse input: either a number or a model ID
+        if [[ "$PICK_INPUT" =~ ^[0-9]+$ ]]; then
+            # Number input: extract from candidates
+            IDX=$((PICK_INPUT - 1))
+            CHOICE_JSON=$(python3 -c "import json; data = json.load(open('$MODELS_TMPFILE.groups')); candidates = data['$TIER']; print(json.dumps(candidates[$IDX]) if 0 <= $IDX < len(candidates) else 'null')")
+            if [[ "$CHOICE_JSON" == "null" ]]; then
+                echo -e "${RED}Invalid selection${NC}"
+                continue
+            fi
+        else
+            # Model ID input: look up in full list
+            CHOICE_JSON=$(python3 -c "import json; models = json.load(open('$MODELS_TMPFILE')); m = [x for x in models if x['id'] == '$PICK_INPUT']; print(json.dumps(m[0]) if m else 'null')")
+            if [[ "$CHOICE_JSON" == "null" ]]; then
+                echo -e "${RED}Model not found: $PICK_INPUT${NC}"
+                continue
+            fi
+            
+            # Check if this model belongs to a different tier
+            INFERRED_TIER=$(python3 -c "import json; m = json.loads('$CHOICE_JSON'); print(m.get('inferred_tier', 'unknown'))")
+            if [[ "$INFERRED_TIER" != "$TIER" ]] && [[ "$INFERRED_TIER" != "unknown" ]]; then
+                echo -e "${YELLOW}Warning: $PICK_INPUT inferred as $INFERRED_TIER, but you're assigning to $TIER${NC}" >&2
+                echo -n "Confirm? [y/N]: " >&2
+                read -r CONFIRM < /dev/tty || CONFIRM=""
+                if [[ ! "$CONFIRM" =~ ^[yY] ]]; then
+                    echo "Skipped"
+                    continue
+                fi
+            fi
+        fi
     fi
     
-    # Validate tier
-    if [[ ! "$TIER" =~ ^(minimal|economy|standard|premium)$ ]]; then
-        echo -e "${YELLOW}Invalid tier '$TIER', skipping $MODEL${NC}"
-        SKIPPED_MODELS+=("$MODEL")
-        continue
-    fi
+    # Extract model info and store
+    MODEL_ID=$(python3 -c "import json; m = json.loads('$CHOICE_JSON'); print(m['id'])")
+    VENDOR=$(python3 -c "import json; m = json.loads('$CHOICE_JSON'); print(m.get('vendor', 'Unknown'))")
+    INFERRED=$(python3 -c "import json; m = json.loads('$CHOICE_JSON'); print(m.get('inferred_tier', 'unknown'))")
     
-    # Ask if should be dispatch candidate (read from /dev/tty)
-    echo "  Dispatch: use as active model for copilot-cli?" >&2
-    echo -n "  Active? [Y/n]: " >&2
-    read -r DISPATCH_INPUT < /dev/tty || DISPATCH_INPUT=""
-    
-    if [[ "$DISPATCH_INPUT" =~ ^[nN] ]]; then
-        DISPATCH_ID=""
-    else
-        DISPATCH_ID="$MODEL"
-    fi
+    echo -e "  Selected: ${GREEN}$MODEL_ID${NC} ($VENDOR) for $TIER"
+    TIER_MODELS+=("$TIER|$MODEL_ID|$VENDOR|$INFERRED")
+done
+
+echo ""
+if [[ ${#TIER_MODELS[@]} -eq 0 ]]; then
+    echo -e "${RED}No models selected. Exiting.${NC}"
+    exit 1
+fi
+
+# ============================================================================
+# STEP 3: Build records from tier assignments
+# ============================================================================
+
+echo -e "${BLUE}Building records...${NC}"
+
+for TIER_ASSIGNMENT in "${TIER_MODELS[@]}"; do
+    IFS='|' read -r TIER MODEL_ID VENDOR INFERRED <<< "$TIER_ASSIGNMENT"
     
     # Build record JSON
     RECORD=$(python3 << PYTHON_REC
@@ -228,7 +291,7 @@ now = datetime.now(timezone.utc).isoformat()
 record = {
     "identity": {
         "vendor": "$VENDOR",
-        "id": "$MODEL",
+        "id": "$MODEL_ID",
     },
     "tier": "$TIER",
     "capabilities": [],
@@ -241,8 +304,8 @@ record = {
     "bindings": [
         {
             "runtime": "copilot-cli",
-            "active": $([[ -n "$DISPATCH_ID" ]] && echo "True" || echo "False"),
-            "dispatch_id": "$DISPATCH_ID",
+            "active": True,
+            "dispatch_id": "$MODEL_ID",
             "captured_at": now,
         }
     ],
@@ -252,12 +315,7 @@ PYTHON_REC
 )
     
     RECORDS+=("$RECORD")
-done < "$MODELS_LINES_TMPFILE"
-
-echo ""
-if [[ ${#SKIPPED_MODELS[@]} -gt 0 ]]; then
-    echo -e "${YELLOW}Skipped: ${SKIPPED_MODELS[*]}${NC}"
-fi
+done
 
 if [[ ${#RECORDS[@]} -eq 0 ]]; then
     echo -e "${RED}No valid records. Exiting.${NC}"
