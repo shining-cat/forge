@@ -222,9 +222,9 @@ while IFS= read -r MODEL_JSON; do
     # Build record JSON
     RECORD=$(python3 << PYTHON_REC
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-now = datetime.utcnow().isoformat() + "Z"
+now = datetime.now(timezone.utc).isoformat()
 record = {
     "identity": {
         "vendor": "$VENDOR",
