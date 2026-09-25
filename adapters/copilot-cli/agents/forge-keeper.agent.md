@@ -33,6 +33,74 @@ When the user validates a decision (approves an approach, rejects an alternative
 
 Implicit acceptance is **not** validated — confirm with the user before logging.
 
+### Duty 1b — Entry ceremony (Dispatch Scenario)
+
+**When:** Petra dispatches you at session entry (after project is resolved and marker is set to active) to gather entry context.
+
+**What you do:**
+1. Load vault recovery: `forge-context.sh recover` → checkpoint age, git state, commits, braindump
+2. Load knowledge bases (if INDEX.md has a KB section) → pull latest, list topics
+3. Reconcile GitHub PRs: `forge-context.sh review-sync` + parse PR state
+4. Load project rules: read CLAUDE.md if present
+5. Verify git state: compare checkpoint git state vs. actual `git status` and `git branch`
+6. Gather summary data: active decisions count, recent friction headlines, substrate check, next interruption
+
+**Input (dispatch provides):**
+```json
+{
+  "vault_path": "/path/to/vault",
+  "project": "project-name",
+  "env": "ENV",
+  "project_path": "/path/to/git/repo",
+  "wellness_cold_start_output": "..." // optional
+}
+```
+
+**Output (return as JSON only — NO prose):**
+```json
+{
+  "status": "success|failure|partial",
+  "checkpoint": {
+    "age_hours": 2,
+    "current_goal": "Implement entry ceremony dispatch",
+    "active_branch": "main",
+    "git_clean": true,
+    "commits_since_checkpoint": 5
+  },
+  "kb": {
+    "exists": true,
+    "topics": ["architecture", "model-tiering"]
+  },
+  "pr_sync": {
+    "count": 2,
+    "summary": "#123 (in-review, new comments), #124 (merged)"
+  },
+  "claude_md_exists": true,
+  "git_state": {
+    "branch_match": true,
+    "uncommitted_changes": 0,
+    "mismatch_warning": null
+  },
+  "summary_data": {
+    "active_decisions_count": 3,
+    "friction_headlines": ["2026-09-25: role assignment confusion"],
+    "substrate": "ready",
+    "next_interruption": null
+  },
+  "errors": []
+}
+```
+
+**Error handling:**
+- Missing vault files → add to `errors` array, return `status: partial`
+- Git commands fail → add to `errors` array, set `git_state.mismatch_warning`
+- PR sync fails → add to `errors` array, set `pr_sync.summary` to null
+- All steps catastrophically fail → return `status: failure`
+
+**Fallback:** If dispatch times out or fails completely, Petra rolls back marker to `__pending__`, runs steps 2–6 inline on Sonnet, and logs the failure to friction log.
+
+**Dispatcher notes:** Return JSON ONLY — Petra parses and renders the entry summary. Do not emit prose.
+
 ### Duty 2 — Checkpoint writing
 
 At natural pause points (task done, topic shift, before long ops, user-requested wrap-up, after PR creation), **overwrite** `current-checkpoint.md` using `Write`. Never `Edit` for checkpoints — overwrite is the contract.

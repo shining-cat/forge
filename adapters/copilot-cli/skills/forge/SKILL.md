@@ -162,60 +162,38 @@ When the active project is **blocked** (waiting on CI, a local build, external i
 
 **Scope fence — declare-only:** Forge never *prevents* the excursion and never auto-detects blocks. The user declares the block; the declared reason is the return ticket that channels them back. This is distinct from the log-it-and-stay path for a live project (an intrusive B-idea while A is moving is still logged, not chased).
 
-### 2. Load Vault Context
+### 2–6. Load Vault Context & Reconcile (Keeper Dispatch)
 
-Run the recovery script to get a structured summary of the project state:
+**Dispatch Keeper to gather entry context** (steps 2–6 run on minimal tier):
 
-```bash
-$COPILOT_DIR/scripts/forge-context.sh recover
-```
+Keeper gathers structured context data and returns JSON. Petra renders it inline. This keeps Keeper's work lightweight (Haiku, minimal tier) and preserves entry ceremony transparency — output looks identical to user.
 
-This replaces manually reading checkpoint, braindump, and breadcrumbs. The script outputs: checkpoint age, git branch/status, commits since checkpoint, brain dump contents, breadcrumb summary, and open PRs. It also truncates breadcrumbs for a fresh session.
+**Keeper's responsibilities (steps 2–6):**
+1. **Step 2:** Load vault recovery (checkpoint, git state, braindump, commits since checkpoint)
+2. **Step 2b:** Load knowledge bases (if present)
+3. **Step 3:** Reconcile GitHub PRs (sync, review-sync, new/merged PR tracking)
+4. **Step 4:** Load project rules (CLAUDE.md if present)
+5. **Step 5:** Verify git state (branch, uncommitted changes vs checkpoint)
+6. **Step 6 partial:** Gather context for summary (decisions, friction, substrate check, next interruption, wellness cold-start)
 
-Still read separately. Read `VAULT_PATH` from `$COPILOT_DIR/forge.conf` for the vault root:
+**Dispatch contract:**
+- **Input:** Project name, env, vault path, git project path, wellness cold-start output (optional)
+- **Output:** JSON structure (see forge-keeper.agent.md for schema)
+- **Timeout:** 10 seconds
+- **Error handling:** On failure, Petra rolls back marker to `__pending__` and runs steps 2–6 inline on Sonnet as fallback
 
-1. `{VAULT_PATH}/{ENV}/{PROJECT}/INDEX.md` — active decisions, architecture pointers
-2. **Run** `$COPILOT_DIR/scripts/forge-context.sh friction-tail` for recent friction headlines (default: last 5 entries, one line each as `<date>  <title>`). This is the priming view — just enough to know what surfaced recently. If a headline looks relevant to the current work, re-run with `--full` (optionally with `N`, e.g. `friction-tail 3 --full`) to read the body of those entries. Pinned entries are hidden by default — use `--include-pinned` to surface them. Do NOT Read `friction-log.md` directly — the file grows unbounded and a naive Read charges the whole thing into context every session entry, driving compaction frequency. The log is a write-buffer maintained by the harvest flow (`harvest-friction`, `promote-friction`, `archive-friction-entries`, `bootstrap-harvest`); for the full subcommand surface, pinned-marker convention, promotion heuristic, and the orchestrated weekly-wrap harvest flow Petra runs, see `references/friction-harvest.md`.
+Invoke Keeper via Agent tool with dispatch prompt including vault context and project details. Keeper returns structured JSON; Petra parses and renders the entry summary.
 
-**Note:** cross-project synthesis (OVERVIEW.md, `_shared/current-checkpoint.md`) was explicitly removed from Petra's responsibility per decision `2026-06-01-petra-single-project-scope`. Petra's day-to-day attention is bounded to the active project; cross-project work happens at the weekly wrap, on-demand at user request, or via the vault folder structure browsed by the user directly.
+**Fallback on dispatch failure:**
+1. Keeper dispatch times out or fails with error
+2. Petra rolls back marker: `forge-context.sh set-marker pending`
+3. Petra re-runs steps 2–6 inline (load recovery, check PRs, verify git state, gather summary data)
+4. After inline completion (success), Petra sets marker to active
+5. Petra logs failure to friction log: "Entry ceremony dispatch failed, fell back to inline execution"
 
-### 2b. Load Knowledge Bases (optional)
+**Note:** The entry ceremony summary that the user sees is identical regardless of dispatch success or fallback — Keeper's output is rendered by Petra's inline summary logic. Only difference: dispatch failure incurs cost penalty (runs on Sonnet instead of Haiku) and logs a friction event for post-session review.
 
-If the project's INDEX.md contains a `## Knowledge Base` section with a local repo path:
-
-1. Check if the repo exists at the specified path — if not, skip silently
-2. Pull latest: `git -C {kb_path} pull --ff-only` — if it fails (dirty state, diverged), warn the user
-3. List filenames in `decisions/` and `specs/` for topic awareness (don't read content)
-4. Note available topics in context so they can be consulted when relevant
-
-**During work:**
-- Before reading KB content, pull latest: `git -C {kb_path} pull --ff-only` (the KB may have been updated by teammates since session start)
-- Before proposing an architecture approach, check if a relevant KB decision or spec exists
-- When a decision is validated or a spec is written, offer to contribute it back to the KB
-- Follow the KB's git flow: decisions/specs via branch+PR, ideas/conventions via direct push
-- Contribute in the KB repo directory, not the project repo
-
-This step is project-specific and fully optional — projects without a KB section are unaffected.
-
-### 3. Reconcile GitHub PRs
-
-Sync the vault against GitHub to catch merges, approvals, and new PRs since the last session. Resolve the remote explicitly via `git -C {project_path} remote get-url origin` → compose `gh pr list --author @me --repo {owner/repo}` with `GH_HOST={host}` for enterprise. Never let `gh` guess from cwd — it silently defaults to github.com and picks the wrong repo on enterprise or multi-project workspaces.
-
-**Also run** `$COPILOT_DIR/scripts/forge-context.sh review-sync` — scans `tasks/reviews/*.md` for PR-numbered review docs, queries gh for each PR's state, and emits `~`-prefixed rows for any merged or closed-unmerged PRs (review doc is ripe for cleanup). Merge these rows into the same PR Sync block. The `~` prefix distinguishes reviewed-PR rows from your own-PR rows. **Don't run the cleanup at entry time** — queue a single one-line offer after the entry summary: *"N merged review docs queued — `/promote-from-review <pr>` when ready."* The user opts in when they have headspace.
-
-Load `references/pr-sync.md` for the full data-gathering steps (remote-URL parsing, the gh-call composition), the "why explicit" rationale + documented failure example, update rules (merged/closed/approved/new), and the entry-summary output format. Load it when implementing or debugging PR sync, including when briefing subagents for the operation.
-
-### 4. Load Project Rules
-
-Read the project-level CLAUDE.md if one exists in the project's working directory.
-
-### 5. Verify Git State
-
-Run `git -C {project_path} status --short` and `git -C {project_path} branch --show-current` to confirm the actual state matches the checkpoint.
-
-If there's a mismatch (different branch, uncommitted changes not in checkpoint), flag it.
-
-### 6. Present Context Summary
+### 6. Present Context Summary (Petra Inline)
 
 Petra narrates entry. The greeting branches on vault state AND the gap-since-last-signal primitive — three cases:
 
