@@ -250,7 +250,7 @@ PYTHON_REC
 )
     
     RECORDS+=("$RECORD")
-done
+done < "$MODELS_LINES_TMPFILE"
 
 echo ""
 if [[ ${#SKIPPED_MODELS[@]} -gt 0 ]]; then
