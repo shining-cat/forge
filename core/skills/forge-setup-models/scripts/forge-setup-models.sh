@@ -46,13 +46,19 @@ mkdir -p "$CATALOG_DIR"
 
 echo -e "${BLUE}=== Forge Model Catalog Setup ===${NC}"
 echo ""
-echo "Paste your available models from your org's settings page."
-echo "Format: one per line, or comma-separated"
-echo "Example:"
-echo "  claude-opus-5"
-echo "  claude-sonnet-5"
-echo "  gpt-5.6-luna"
+echo "Paste your available model IDs from your org's settings page."
+echo "Format: one per line, or comma-separated (use model IDs, NOT product names)"
+echo ""
+echo "Valid model IDs:"
+echo "  claude-haiku-4.5, claude-opus-5, claude-sonnet-5"
+echo "  gpt-5.4, gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra"
+echo "  gpt-6-luna, gpt-6-sol"
 echo "  gemini-3.8-flash"
+echo "  kimi-k2.7-code, kimi-k3"
+echo ""
+echo "Do NOT paste product names like:"
+echo "  ✗ Anthropic Claude Haiku 4.5  (use: claude-haiku-4.5)"
+echo "  ✗ Copilot CLI  (not a model)"
 echo ""
 
 # Read models: piped input goes until EOF, TTY input expects blank line terminator
@@ -96,8 +102,9 @@ MODELS_JSON=$(python3 "$SETUP_PY" parse <<< "$MODELS_INPUT" 2>&1) || {
     exit 1
 }
 
-# Count models
+# Count models and check for "unknown" entries
 MODEL_COUNT=$(echo "$MODELS_JSON" | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
+UNKNOWN_COUNT=$(echo "$MODELS_JSON" | python3 -c "import sys, json; data = json.load(sys.stdin); print(sum(1 for m in data if m.get('inferred_tier') == 'unknown'))")
 
 if [[ $MODEL_COUNT -eq 0 ]]; then
     echo -e "${RED}No valid models found. Exiting.${NC}"
@@ -105,6 +112,14 @@ if [[ $MODEL_COUNT -eq 0 ]]; then
 fi
 
 echo -e "${GREEN}Found $MODEL_COUNT model(s)${NC}"
+
+if [[ $UNKNOWN_COUNT -gt 0 ]]; then
+    echo -e "${YELLOW}⚠️  Warning: $UNKNOWN_COUNT model(s) not recognized${NC}"
+    echo -e "${YELLOW}   This usually means you pasted product names instead of model IDs.${NC}"
+    echo -e "${YELLOW}   Model ID format: claude-haiku-4.5, gpt-5.6-luna, kimi-k3, etc.${NC}"
+    echo ""
+fi
+
 echo ""
 
 # ============================================================================
