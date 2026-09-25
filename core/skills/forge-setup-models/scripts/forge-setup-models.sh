@@ -283,19 +283,24 @@ RECORDS_JSON+="]"
 # Build complete catalog
 CATALOG=$(python3 << PYTHON_CAT
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-now = datetime.utcnow()
+now = datetime.now(timezone.utc).isoformat()
 
 records = json.loads("""$RECORDS_JSON""")
 
 catalog = {
     "schema_version": 1,
+    "captured_at": now,
     "clock": {
         "source": "manual",
         "timezone": "UTC",
-        "captured_at": now.isoformat() + "Z",
     },
+    "migration": {
+        "status": "complete",
+        "captured_at": now,
+    },
+    "outcomes": [],
     "records": records,
 }
 
