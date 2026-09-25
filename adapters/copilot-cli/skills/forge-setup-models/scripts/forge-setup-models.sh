@@ -101,11 +101,11 @@ echo ""
 RECORDS=()
 SKIPPED_MODELS=()
 
-echo "$MODELS_JSON" | python3 << 'PYTHON_LOOP'
+python3 << PYTHON_LOOP
 import json
 import sys
 
-models = json.load(sys.stdin)
+models = json.loads("""$MODELS_JSON""")
 for model in models:
     model_id = model["id"]
     vendor = model["vendor"] or "Unknown"
@@ -124,7 +124,7 @@ echo ""
 MODELS_ARRAY=()
 while IFS= read -r line; do
     MODELS_ARRAY+=("$line")
-done < <(echo "$MODELS_JSON" | python3 -c "import sys, json; [print(json.dumps(m)) for m in json.load(sys.stdin)]")
+done < <(python3 -c "import json; [print(json.dumps(m)) for m in json.loads('''$MODELS_JSON''')]")
 
 for MODEL_JSON in "${MODELS_ARRAY[@]}"; do
     MODEL=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['id'])")
