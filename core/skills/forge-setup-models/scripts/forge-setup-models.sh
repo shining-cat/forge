@@ -126,14 +126,20 @@ printf '%s\n' "$MODELS_JSON" > "$MODELS_TMPFILE"
 
 python3 << PYTHON_LOOP
 import json
+import os
 import sys
 
-with open("$MODELS_TMPFILE", "r") as f:
+models_file = "$MODELS_TMPFILE"
+if not os.path.exists(models_file):
+    print(f"ERROR: File not found: {models_file}", file=sys.stderr)
+    sys.exit(1)
+
+with open(models_file, "r") as f:
     models = json.load(f)
 for model in models:
-    model_id = model["id"]
-    vendor = model["vendor"] or "Unknown"
-    inferred_tier = model["inferred_tier"] or "unknown"
+    model_id = model.get("id", "MISSING")
+    vendor = model.get("vendor") or "Unknown"
+    inferred_tier = model.get("inferred_tier") or "unknown"
     
     print(f"\n{model_id} ({vendor})")
     print(f"  Inferred tier: {inferred_tier}")
