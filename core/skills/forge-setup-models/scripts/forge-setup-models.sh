@@ -145,7 +145,7 @@ echo ""
 
 # Group models by inferred tier
 echo -e "${BLUE}Analyzing models...${NC}"
-python3 << PYTHON_GROUP
+python3 << PYTHON_GROUP > "$MODELS_TMPFILE.groups"
 import json
 import sys
 
@@ -184,7 +184,6 @@ print(json.dumps({
     "premium": tiers["premium"],
 }))
 PYTHON_GROUP
-) > "$MODELS_TMPFILE.groups"
 
 echo ""
 
