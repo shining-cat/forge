@@ -54,21 +54,29 @@ echo "  claude-sonnet-5"
 echo "  gpt-5.6-luna"
 echo "  gemini-3.8-flash"
 echo ""
-echo "Press Ctrl+D when done (or paste, then press Enter twice):"
-echo ""
 
-# Read user input line-by-line until blank line (allows for piped input + confirmations)
+# Read models: piped input goes until EOF, TTY input expects blank line terminator
 MODELS_INPUT=""
-while IFS= read -r line; do
-    # Blank line signals end of models
-    if [[ -z "$line" ]]; then
-        break
-    fi
-    MODELS_INPUT+="$line"$'\n'
-done
 
-# Remove trailing newline
-MODELS_INPUT="${MODELS_INPUT%$'\n'}"
+if [[ ! -t 0 ]]; then
+    # Input is piped: read until EOF
+    MODELS_INPUT=$(cat)
+else
+    # Input is TTY: interactive prompt with blank-line terminator
+    echo "Press Ctrl+D when done (or paste, then press Enter twice):"
+    echo ""
+    
+    while IFS= read -r line; do
+        # Blank line signals end of models
+        if [[ -z "$line" ]]; then
+            break
+        fi
+        MODELS_INPUT+="$line"$'\n'
+    done
+    
+    # Remove trailing newline
+    MODELS_INPUT="${MODELS_INPUT%$'\n'}"
+fi
 
 if [[ -z "$MODELS_INPUT" ]]; then
     echo -e "${RED}No models provided. Exiting.${NC}"
@@ -114,7 +122,9 @@ RECORDS=()
 SKIPPED_MODELS=()
 
 MODELS_TMPFILE=$(mktemp)
-echo "$MODELS_JSON" > "$MODELS_TMPFILE"
+cat > "$MODELS_TMPFILE" << MODELS_JSON_DATA
+$MODELS_JSON
+MODELS_JSON_DATA
 
 python3 << PYTHON_LOOP
 import json
@@ -136,13 +146,21 @@ echo "For each model, I'll ask you to confirm the tier."
 echo ""
 
 # Collect tier assignments interactively
-# Convert JSON to bash arrays for processing
-MODELS_ARRAY=()
-while IFS= read -r line; do
-    MODELS_ARRAY+=("$line")
-done < <(python3 -c "import json; [print(json.dumps(m)) for m in json.loads('''$MODELS_JSON''')]")
+# Extract models to a separate temp file (one JSON object per line)
+MODELS_LINES_TMPFILE=$(mktemp)
+python3 << MODELS_EXTRACT > "$MODELS_LINES_TMPFILE"
+import json
 
-for MODEL_JSON in "${MODELS_ARRAY[@]}"; do
+with open("$MODELS_TMPFILE", "r") as f:
+    models = json.load(f)
+    for model in models:
+        print(json.dumps(model))
+MODELS_EXTRACT
+
+# Now iterate over the extracted models
+while IFS= read -r MODEL_JSON; do
+    [[ -z "$MODEL_JSON" ]] && continue
+    
     MODEL=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['id'])")
     VENDOR=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['vendor'] or 'Unknown')")
     INFERRED=$(echo "$MODEL_JSON" | python3 -c "import sys, json; m = json.load(sys.stdin); print(m['inferred_tier'] or 'unknown')")
