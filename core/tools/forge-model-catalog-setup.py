@@ -16,6 +16,7 @@ VENDOR_PATTERNS = {
     "claude": "Anthropic",
     "gpt": "OpenAI",
     "gemini": "Google",
+    "kimi": "Moonshot",
 }
 
 # Infer tier from model name (deprecated: use infer_tier function logic)
@@ -42,7 +43,7 @@ def infer_tier(model_id: str) -> Optional[str]:
     model_lower = model_id.lower()
     
     # premium: full-strength reasoning + extended thinking (check first, most specific)
-    if any(p in model_lower for p in ["opus", "gpt-5.6", "luna", "terra", "sol"]):
+    if any(p in model_lower for p in ["opus", "gpt-5.6", "luna", "terra", "sol", "kimi-k3"]):
         return "premium"
     
     # standard: balanced reasoning
@@ -50,7 +51,7 @@ def infer_tier(model_id: str) -> Optional[str]:
         return "standard"
     
     # economy: lightweight reasoning
-    if any(p in model_lower for p in ["flash", "3.8"]):
+    if any(p in model_lower for p in ["flash", "3.8", "kimi-k2"]):
         return "economy"
     
     # minimal: ultra-lightweight, admin-only tasks (check last, avoid substring collisions)
