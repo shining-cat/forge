@@ -190,7 +190,7 @@ while IFS= read -r MODEL_JSON; do
     echo -e "${BLUE}[Processing $MODEL]${NC}" >&2
     
     # Ask user for tier (read from /dev/tty to ensure interactive input)
-    echo "  Tier options: economy, standard, premium" >&2
+    echo "  Tier options: minimal, economy, standard, premium" >&2
     echo -n "  Tier [$INFERRED]: " >&2
     read -r TIER_INPUT < /dev/tty || TIER_INPUT=""
     
@@ -202,7 +202,7 @@ while IFS= read -r MODEL_JSON; do
     fi
     
     # Validate tier
-    if [[ ! "$TIER" =~ ^(economy|standard|premium)$ ]]; then
+    if [[ ! "$TIER" =~ ^(minimal|economy|standard|premium)$ ]]; then
         echo -e "${YELLOW}Invalid tier '$TIER', skipping $MODEL${NC}"
         SKIPPED_MODELS+=("$MODEL")
         continue
