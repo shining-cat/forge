@@ -176,9 +176,8 @@ record = {
     "capabilities": [],
     "evidence": [
         {
-            "kind": "manual",
+            "kind": "declared",
             "captured_at": now,
-            "source": "user-setup",
         }
     ],
     "bindings": [
@@ -310,9 +309,60 @@ rm -f "$TEMP_CATALOG"
 
 echo -e "${GREEN}✓ Catalog saved to $CATALOG_FILE${NC}"
 echo ""
+
+# ============================================================================
+# STEP 8: Migrate forge.conf with role-to-tier assignments
+# ============================================================================
+
+echo -e "${BLUE}Migrating forge.conf with role-to-tier assignments...${NC}"
+
+# Role-to-tier assignment (locked per model tiering design)
+# KEEPER → minimal (orchestration, checkpoint writes, index updates)
+# ARCHITECT → premium (design/tradeoffs)
+# REVIEWER, RELEASE, IMPL, REFINER, DEBUGGER, TOOLSMITH → standard
+
+ROLE_TIERS=(
+    "KEEPER:minimal"
+    "ARCHITECT:premium"
+    "REVIEWER:standard"
+    "RELEASE:standard"
+    "IMPL:standard"
+    "REFINER:standard"
+    "DEBUGGER:standard"
+    "TOOLSMITH:standard"
+)
+
+# Build a backup of forge.conf if it doesn't exist
+FORGE_CONF_BAK="${COPILOT_DIR}/forge.conf.bak.$(date +%s)"
+if [[ -f "$COPILOT_DIR/forge.conf" ]]; then
+    cp "$COPILOT_DIR/forge.conf" "$FORGE_CONF_BAK"
+fi
+
+# Migrate forge.conf: add or update MODEL_TIER_* keys
+for ROLE_TIER in "${ROLE_TIERS[@]}"; do
+    ROLE="${ROLE_TIER%%:*}"
+    TIER="${ROLE_TIER##*:}"
+    KEY="MODEL_TIER_${ROLE}"
+    
+    if grep -q "^${KEY}=" "$COPILOT_DIR/forge.conf" 2>/dev/null; then
+        # Update existing key
+        sed -i.tmp "s/^${KEY}=.*/${KEY}=${TIER}/" "$COPILOT_DIR/forge.conf"
+        rm -f "$COPILOT_DIR/forge.conf.tmp"
+    else
+        # Append new key
+        echo "${KEY}=${TIER}" >> "$COPILOT_DIR/forge.conf"
+    fi
+done
+
+echo -e "${GREEN}✓ forge.conf migrated${NC}"
+if [[ -f "$FORGE_CONF_BAK" ]]; then
+    echo "  Backup saved: $FORGE_CONF_BAK"
+fi
+
+echo ""
 echo -e "${GREEN}Setup complete!${NC}"
 echo ""
 echo "Next steps:"
 echo "  1. Verify the catalog: \`cat $CATALOG_FILE | jq .\`"
-echo "  2. Test resolve: \`forge-model-catalog resolve --role keeper --tier standard\`"
-echo "  3. Use in Forge: Sonnet main-loop, Opus for hard work"
+echo "  2. Test resolve: \`forge-model-catalog resolve --role keeper\`"
+echo "  3. Use in Forge: entry ceremony runs on Keeper role (minimal tier)"

@@ -159,9 +159,8 @@ def build_record(model_id: str, vendor: str, tier: str,
         "capabilities": [],  # User can edit later if needed
         "evidence": [
             {
-                "kind": "manual",
+                "kind": "declared",
                 "captured_at": now,
-                "source": "user-setup",
             }
         ],
         "bindings": [
@@ -185,11 +184,16 @@ def build_catalog(records: List[Dict]) -> Dict:
     
     catalog = {
         "schema_version": 1,
+        "captured_at": now.isoformat() + "Z",
         "clock": {
             "source": "manual",
             "timezone": "UTC",
+        },
+        "migration": {
+            "status": "complete",
             "captured_at": now.isoformat() + "Z",
         },
+        "outcomes": [],
         "records": records,
     }
     
@@ -209,6 +213,16 @@ def validate_catalog(catalog: Dict) -> Tuple[bool, Optional[str]]:
     clock = catalog["clock"]
     if "source" not in clock or clock["source"] not in ["manual", "system"]:
         return False, "clock.source must be 'manual' or 'system'"
+    
+    if "migration" not in catalog:
+        return False, "Missing migration field"
+    
+    migration = catalog["migration"]
+    if "status" not in migration:
+        return False, "migration.status is required"
+    
+    if "outcomes" not in catalog or not isinstance(catalog["outcomes"], list):
+        return False, "outcomes must be an array"
     
     if "records" not in catalog or not isinstance(catalog["records"], list):
         return False, "records must be a non-empty array"

@@ -101,7 +101,21 @@ Writing catalog to ${VAULT_PATH}/_shared/model-catalog/catalog.json...
 ✓ Setup complete
 ```
 
-Update `${VAULT_PATH}/_shared/model-catalog/catalog.json` with full record (schema_version, clock, records).
+Update `${VAULT_PATH}/_shared/model-catalog/catalog.json` with full record (schema_version, clock, migration, outcomes, records).
+
+### 8. Migrate forge.conf
+
+After catalog is written, update `${COPILOT_DIR}/forge.conf` with role-to-tier assignments:
+- `MODEL_TIER_KEEPER=minimal` (orchestration, checkpoint writes)
+- `MODEL_TIER_ARCHITECT=premium` (design/tradeoffs)
+- `MODEL_TIER_REVIEWER=standard` (code review)
+- `MODEL_TIER_RELEASE=standard` (PR composition, commits)
+- `MODEL_TIER_IMPL=standard` (implementation executor)
+- `MODEL_TIER_REFINER=standard` (root-cause analysis)
+- `MODEL_TIER_DEBUGGER=standard` (systematic diagnosis)
+- `MODEL_TIER_TOOLSMITH=standard` (skill authoring)
+
+This ensures that when forge roles are dispatched, each role resolves to its assigned tier via the model resolver.
 
 ## Idempotency
 
