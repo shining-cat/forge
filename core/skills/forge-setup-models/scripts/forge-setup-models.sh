@@ -217,7 +217,12 @@ for TIER in "${TIERS_ARRAY[@]}"; do
     else
         # Show candidates and prompt
         echo -e "${BLUE}[$TIER]${NC}" >&2
-        python3 -c "import json; data = json.load(open('$MODELS_TMPFILE.groups')); [print(f'  {i}. {m[\"id\"]} ({m.get(\"vendor\", \"Unknown\")})', file=__import__('sys').stderr) for i, m in enumerate(data['$TIER'], 1)]"
+        python3 << PYTHON_SHOW
+import json
+data = json.load(open('$MODELS_TMPFILE.groups'))
+for i, m in enumerate(data['$TIER'], 1):
+    print(f'  {i}. {m["id"]} ({m.get("vendor", "Unknown")})', file=__import__('sys').stderr)
+PYTHON_SHOW
         
         echo -n "Pick one (enter number or model ID): " >&2
         read -r PICK_INPUT < /dev/tty || PICK_INPUT=""
