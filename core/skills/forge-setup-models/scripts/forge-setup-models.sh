@@ -241,7 +241,7 @@ record = {
     "bindings": [
         {
             "runtime": "copilot-cli",
-            "active": $([[ -n "$DISPATCH_ID" ]] && echo "true" || echo "false"),
+            "active": $([[ -n "$DISPATCH_ID" ]] && echo "True" || echo "False"),
             "dispatch_id": "$DISPATCH_ID",
             "captured_at": now,
         }
