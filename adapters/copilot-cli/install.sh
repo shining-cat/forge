@@ -132,6 +132,21 @@ while IFS= read -r file; do
   esac
 done < <(find "$ADAPTER/scripts" "$ADAPTER/hooks" "$ADAPTER/modules/wellness-coach" "$ADAPTER/references" -type f -print | sort)
 
+# Vendor the core model_catalog Python package into the installed tooling.
+# forge-model-catalog.sh's primary lookup is
+# $COPILOT_DIR/scripts/model_catalog/cli.py (falling back to a PYTHONPATH
+# relative to its own location, which only resolves correctly when running
+# from inside the source repo, not from an installed copy). Without this
+# vendoring step, `forge-model-catalog.sh resolve` fails with
+# ModuleNotFoundError once installed, silently breaking MODEL_TIER_* dispatch.
+while IFS= read -r file; do
+  relative="${file#"$FORGE_ROOT/core/model_catalog/"}"
+  case "$relative" in
+    tests/*) continue ;;
+    *) copy_owned "$file" "$COPILOT_DIR/scripts/model_catalog/$relative" ;;
+  esac
+done < <(find "$FORGE_ROOT/core/model_catalog" -type f -print | sort)
+
 if ! "$DRY_RUN"; then
   find "$COPILOT_DIR/scripts" "$COPILOT_DIR/hooks" "$COPILOT_DIR/skills/wellness-coach" \
     -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +
