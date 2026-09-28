@@ -28,28 +28,30 @@ The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable f
 
 ## Model tuning
 
-Role-to-model assignments are configured in `$COPILOT_DIR/forge.conf` under `MODEL_*` keys. Read them at session start. Empty value means *"inherit from session model"*.
+Role-to-model assignments are **tier-based** (migrated 2026-09-25 — see the model-tiering checkpoint). `$COPILOT_DIR/forge.conf` holds `MODEL_TIER_<ROLE>` keys, each set to one of the 4 tiers (`minimal`, `economy`, `standard`, `premium`, or `inherit`/empty to inherit the session model). The **catalog** (`${VAULT_PATH}/_shared/model-catalog/catalog.json`) is the source of truth for tier→model binding, and is the moving part — re-run `/forge-setup-models` whenever new models become available or the catalog goes stale (records expire after 24h; a resolve against a stale catalog fails loudly with `"snapshot is stale or from the future"` rather than silently falling back).
 
-Defaults (written by `install.sh`):
+Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 
-| Key | Default | Role | Background |
+| Key | Default tier | Role | Background |
 |-----|---------|------|------------|
-| `MODEL_KEEPER` | `sonnet` | Checkpoint writes, index updates | yes |
-| `MODEL_REFINER` | `opus` | Root cause analysis | no |
-| `MODEL_REVIEWER` | `sonnet` | Structured checklist review | no |
-| `MODEL_IMPL` | (inherit) | Implementation | yes |
-| `MODEL_ARCHITECT` | `opus` | Design and tradeoff analysis | no |
-| `MODEL_DEBUGGER` | `opus` | Systematic diagnosis | no |
-| `MODEL_RELEASE` | `sonnet` | Verification, commits, PRs | no |
-| `MODEL_TOOLSMITH` | `opus` | Skill authoring | no |
+| `MODEL_TIER_KEEPER` | `minimal` | Checkpoint writes, index updates | yes |
+| `MODEL_TIER_REFINER` | `standard` | Root cause analysis | no |
+| `MODEL_TIER_REVIEWER` | `standard` | Structured checklist review | no |
+| `MODEL_TIER_IMPL` | `standard` | Implementation | yes |
+| `MODEL_TIER_ARCHITECT` | `premium` | Design and tradeoff analysis | no |
+| `MODEL_TIER_DEBUGGER` | `standard` | Systematic diagnosis | no |
+| `MODEL_TIER_RELEASE` | `standard` | Verification, commits, PRs | no |
+| `MODEL_TIER_TOOLSMITH` | `standard` | Skill authoring | no |
 
-When dispatching a subagent for a role, read the model from `forge.conf`:
+(Read the live values from `$COPILOT_DIR/forge.conf` — the table above is the install-time default, not a substitute for checking.)
+
+**Before every Forge subagent dispatch**, resolve the role's tier to an actual `dispatch_id` — don't skip this and let the harness default silently apply (this exact omission caused a real regression: friction 2026-09-28, session-entry Keeper ran on the default model instead of `minimal`/Haiku):
 
 ```bash
-grep '^MODEL_KEEPER=' $COPILOT_DIR/forge.conf | cut -d= -f2
+VAULT_PATH=<vault path> "$COPILOT_DIR/scripts/forge-model-catalog.sh" resolve --role keeper
 ```
 
-Then pass it to the Agent tool: `Agent({ model: "{value}", ... })`. If the value is empty, omit the `model` parameter (inherits from session).
+This prints the resolved model's `dispatch_id` for the role's configured tier (looked up via `MODEL_TIER_KEEPER` in `forge.conf` against the active `copilot-cli` bindings in the catalog). Pass that value to the Agent/task tool's `model` parameter: `task({ model: "{dispatch_id}", ... })`. If the tier is `inherit`/empty, or the resolve call errors (e.g. stale catalog), omit the `model` parameter and note the fallback rather than silently proceeding as if the tier were honored.
 
 ## Source of truth per role
 
