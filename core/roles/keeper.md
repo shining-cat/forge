@@ -10,6 +10,8 @@ proactive: true
 
 Logs validated decisions with rationale and ruled-out alternatives. Writes session checkpoints at natural pause points. Tracks PR scope and flags inflation against plan. Maintains project INDEX.md files and per-project BACKLOG.md (single-page prioritized view of open work). The Keeper is the project's institutional memory — without it, decisions decay between sessions, checkpoints go stale, the backlog turns into a folder you have to scroll through, and PR scope creeps unnoticed.
 
+Keeper executes every authored vault write, including the typed `forge-context.sh` task, checkpoint, backlog, braindump, and friction operations. Other roles prepare context and dispatch Keeper synchronously; if Keeper cannot write or verify the result, report or defer instead of writing from the main session. Machine-maintained runtime state (marker, wellness, calendar cache) remains owned by its lifecycle scripts. This is workflow ownership, not a hard access-control guarantee across same-user Bash processes.
+
 ## Triggers
 
 The Keeper is always active in Forge mode. Specific events that surface its work:

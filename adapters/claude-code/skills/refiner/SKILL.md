@@ -42,7 +42,7 @@ Based on root cause:
 
 **Step 3: Log the Friction Event**
 
-Write the entry via `forge-context.sh append-friction` — **never hand-edit `friction-log.md`**. Direct edits desync the human log from `friction-classified.json` and skip the marker-driven project routing; the subcommand is the only write path.
+Have Keeper write the entry via `forge-context.sh append-friction` — **never hand-edit `friction-log.md`**. Direct edits desync the human log from `friction-classified.json` and skip the marker-driven project routing; the subcommand is the only write path. Give Keeper the classified content and verify the result; if Keeper is unavailable, report/defer rather than write it as Refiner.
 
 For a fresh, un-triaged one-off, **only `--description` is required** — date, pattern, recurrence, and action-ref default to today / `needs_new_pattern` / `0` / `needs_new_pattern`:
 
@@ -65,8 +65,8 @@ Add `--pinned` to keep the entry out of the default harvest sweep.
 
 **Step 4: Update Meta (after user approves fix)**
 
-- If rules/skills/vault structure changed: update `{{VAULT}}/_meta/BLUEPRINT.md` to reflect current state
-- Add a line to `{{VAULT}}/_meta/CHANGELOG.md`
+- If rules/skills/vault structure changed: have Keeper update `{{VAULT}}/_meta/BLUEPRINT.md` to reflect current state
+- Have Keeper add a line to `{{VAULT}}/_meta/CHANGELOG.md`
 
 ## Subagent Dispatch
 
@@ -76,7 +76,7 @@ When dispatching Refiner as a subagent via the Agent tool:
 - **Name:** `Forge-Refiner`
 - **Background:** No — friction analysis should complete before continuing
 
-Refiner rarely benefits from subagent dispatch. It needs conversation context (what went wrong, what the user said, what Claude did) to identify root causes. Prefer inline execution.
+Refiner's analysis needs conversation context (what went wrong, what the user said, what Claude did). Prefer inline analysis, but dispatch Keeper for every authored vault mutation.
 
 **Critical rules:**
 - NEVER modify rules, skills, or CLAUDE.md without explicit user approval

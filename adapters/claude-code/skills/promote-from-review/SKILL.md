@@ -75,7 +75,7 @@ Use `AskUserQuestion` if the candidate count is ≤4. Otherwise present in prose
 
 ### 4. Scaffold patterns
 
-For each `yes`:
+For each `yes`, have Keeper create and verify the vault pattern file:
 
 - Generate slug from the candidate's symptom (kebab-case, brief, no date prefix)
 - Path: `${VAULT_PATH}/${ENV_PROJ}/patterns/<slug>.md`
@@ -84,11 +84,11 @@ For each `yes`:
 
 ### 5. Delete the review doc + commit
 
-After all candidates are decided (`yes` / `no` for each):
+After all candidates are decided (`yes` / `no` for each), have Keeper delete the authored vault review doc and verify its removal. Do not run `git rm` as Petra. If Keeper cannot complete the mutation, report/defer the cleanup; do not commit an incomplete promotion. The vault commit is a separate release step after the verified changes:
 
 ```bash
-git rm "${REVIEWS_DIR}/<the-review-doc>.md"
 git add "${VAULT_PATH}/${ENV_PROJ}/patterns/<new-slug>.md"  # for each promoted
+git add -u "${REVIEWS_DIR}/<the-review-doc>.md"
 git commit -m "forge: prune merged review doc for PR #${PR_NUM} (+ N new patterns)"
 ```
 

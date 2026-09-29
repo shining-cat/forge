@@ -61,7 +61,7 @@ The output gives `pattern` (one of `hook-injection`, `wrapper-subcommand`, `mark
 
 If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the call below — the framework handles it via write-then-flag. Do not block on classification: roles must never be stuck on ambiguity.
 
-**Step 4 — Log the friction event via the gated subcommand.**
+**Step 4 — Give Keeper the classified event to log via the gated subcommand.**
 
 ```bash
 ~/.claude/scripts/forge-context.sh append-friction \
@@ -72,14 +72,14 @@ If classification is genuinely impossible (ambiguous, novel friction type), retu
   --action-ref "tasks/open/<YYYY-MM-DD-slug>.md"
 ```
 
-The subcommand validates `--pattern` against the catalog, writes to both `friction-log.md` (human) and `friction-classified.json` (machine), and auto-creates a stub task at `--action-ref` when `--recurrence == 1`. On invalid pattern, it falls back to `pattern: unknown` + `validation_failed: true` and returns non-zero — the log is written either way. Never bypass with bare `>>` appends.
+Keeper runs the subcommand and verifies its output. It validates `--pattern` against the catalog, writes to both `friction-log.md` (human) and `friction-classified.json` (machine), and auto-creates a stub task at `--action-ref` when `--recurrence == 1`. On invalid pattern, it falls back to `pattern: unknown` + `validation_failed: true` and returns non-zero — the log is written either way. Never bypass with bare `>>` appends; if Keeper cannot write or verify, report and defer.
 
-**Step 5 — Apply the fix (after explicit user approval).** When approved, make the proposed change (rule update, memory entry, etc.) and record the resolution in the linked action task (the stub at `--action-ref` from Step 4). Do not hand-edit the friction log entry — the gated subcommand is the only write path.
+**Step 5 — Apply the fix (after explicit user approval).** When approved, make the proposed change (rule update, memory entry, etc.) and have Keeper record the resolution in the linked vault action task (the stub at `--action-ref` from Step 4). Do not hand-edit the friction log entry — the gated subcommand is the only write path.
 
 ## Vault interaction
 
 - **Reads:** `${VAULT_PATH}/_shared/friction-log.md` (to avoid duplicate entries), `${VAULT_PATH}/_shared/friction-classified.json` (machine state — for recurrence counts), existing rules and memory files (to know what already covers the case), CLAUDE.md files in the active project.
-- **Writes:** via the `append-friction` subcommand only — which writes `${VAULT_PATH}/_shared/friction-log.md` (human), `${VAULT_PATH}/_shared/friction-classified.json` (machine), and auto-creates a stub task at the supplied `--action-ref` path when `--recurrence == 1`. Rule/memory/skill files: only after explicit user approval.
+- **Writes:** none in the vault; Keeper invokes `append-friction`, which writes `${VAULT_PATH}/_shared/friction-log.md` (human), `${VAULT_PATH}/_shared/friction-classified.json` (machine), and auto-creates a stub task when `--recurrence == 1`. Rule/memory/skill files outside the vault: only after explicit user approval.
 
 ## Constraints
 

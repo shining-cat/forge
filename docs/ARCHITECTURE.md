@@ -29,7 +29,7 @@ are separate adapters over the same role-neutral core.
 | `forge-audit-permissions` | Surfaces anti-patterns in `settings.json` permission rules |
 | `forge-vault-sync` | Commit + push the vault when drift accumulates (categorized commits) |
 | `keeper` | Decision logging, checkpoints, scope monitoring, INDEX maintenance, auto-archive |
-| `refiner` | Friction detection, root cause analysis, classification, friction-log writes |
+| `refiner` | Friction detection, root cause analysis, classification; Keeper persists friction entries |
 | `plan-reviewer` | Checklist-based plan validation |
 | `promote-from-review` | Walks the user through extracting durable patterns from merged review docs into `patterns/`, then deletes the review doc |
 | `wellness-coach` | Forge module (skill + hooks + scripts) — break reminders, escalation, strike enforcement (optional, opt-in) |
@@ -44,7 +44,7 @@ are separate adapters over the same role-neutral core.
 | `approval-notifier.sh` | Hook (PreToolUse) | Notification on tool approval prompts |
 | `forge-compaction.sh` | Hook (PreCompact + PostCompact) | Warns if checkpoint stale (PreCompact), reminds to reload Forge after (PostCompact) |
 | `forge-vault-plan-guard.sh` | Hook (PreToolUse on Write/Edit) | Blocks plan content writes outside the vault (e.g. `docs/plans/`) — enforces the single-doc workflow |
-| `forge-vault-write-guard.sh` | Hook (PreToolUse on Write/Edit) | Denies raw vault writes from the main session — forces Tier 1 script / Tier 2 subagent. Exempts subagents via `agent_id` |
+| `forge-vault-write-guard.sh` (Claude Code only) | Hook (PreToolUse on Write/Edit) | Backstop against direct main-session vault edits where `agent_id` is supplied. Copilot CLI does not register it: its documented tool payload lacks subagent identity. Keeper owns all authored vault writes in both adapters, including typed scripts; same-user Bash is not role-enforced. |
 | `forge-credential-guard.sh` | Hook (PreToolUse on Bash) | Asks before a content-printing verb inspects a credential-bearing file — backstop against secret leaks into the transcript. Always-on (not marker-gated) |
 | `forge-session-end.sh` | Hook (SessionEnd) | Clears the `forge-active` marker on session close |
 | `inject-current-time.sh` | Hook (UserPromptSubmit) | Injects authoritative `[Current local time: ...]` + the expected block-header prefix into every prompt |

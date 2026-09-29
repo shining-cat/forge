@@ -28,7 +28,7 @@ If wellness-coach isn't installed, the conditional skips silently — proceed to
 
 ### 1. Final Checkpoint
 
-Execute the full forge-checkpoint process (gather state, write checkpoint, log decisions).
+Execute the full forge-checkpoint process (gather state, have Keeper write and verify checkpoint and decisions). If Keeper cannot complete it, report the failure and do not present a saved-checkpoint confirmation.
 
 ### 2. Session Summary
 
@@ -123,7 +123,7 @@ If it returns a project name, the session hopped away from it and never returned
 
 > *"{parked-project} is still parked ({reason}) — resume and close it out, or drop it?"*
 
-- **resume / close it out** → run `$COPILOT_DIR/scripts/forge-context.sh resume`, scoped-load the restored project (read its `current-checkpoint.md` + `git -C <path> status`), write its final checkpoint, then proceed to Step 3.
+- **resume / close it out** → run `$COPILOT_DIR/scripts/forge-context.sh resume`, scoped-load the restored project (read its `current-checkpoint.md` + `git -C <path> status`), have Keeper write and verify its final checkpoint, then proceed to Step 3.
 - **drop / leave it** → proceed to Step 3. The parked project's return-ticket checkpoint (written at park time) already records where it stood; nothing is lost.
 
 This is the concrete form of the channel-me-back guarantee: an excursion can never quietly become the abandoned main thread.

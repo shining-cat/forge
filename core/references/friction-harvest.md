@@ -3,6 +3,7 @@
 The friction log is a **write-buffer**, not an archive. New entries land via `append-friction`; periodically the buffer gets harvested into structured forms (tasks, decisions, feedback memories) and consumed raw entries move to dated archive files. The live log stays bounded; the structured forms carry forward.
 
 This reference documents the subcommands and the orchestrated flow Petra runs at weekly-wrap moments (or any time the log feels heavy).
+Petra surveys and confirms proposals; Keeper executes and verifies every mutating subcommand below (including `pin-friction`, `archive-friction-entries`, and a non-dry-run `bootstrap-harvest`). Read-only previews may run inline. If Keeper cannot write or verify, defer the harvest instead of falling back to a parent-session write.
 
 ---
 
@@ -17,7 +18,7 @@ All live in `~/.claude/scripts/forge-context.sh`.
 | `friction-tail [N]` | Headlines-only view, defaults to last 5. **Skips pinned entries** unless `--include-pinned`. Use `--full` to see bodies for triage. |
 | `archive-friction-entries --entry "<date>\|<prefix>" ...` | Move matched entries to `friction-log-archive/YYYY-W<ISO-week>.md`. Skips pinned. Updates JSON with `archived_in: "YYYY-WNN"`. Idempotent. |
 | `harvest-friction --days N [--pretty]` | Output JSON proposals for unpinned/unarchived entries in the last N days. Applies promotion heuristic. |
-| `promote-friction --entry "..." --target archive\|task\|decision\|feedback` | Execute a promotion decision. `archive` chains to `archive-friction-entries`. For task/decision/feedback, prints scaffold hint — Petra writes the file directly via Write tool, then re-invokes with `--target archive` to clean up. |
+| `promote-friction --entry "..." --target archive\|task\|decision\|feedback` | Execute a promotion decision. `archive` chains to `archive-friction-entries`. For task/decision/feedback, prints scaffold hint — Keeper writes authored vault files, then re-invokes with `--target archive` to clean up. Feedback memory outside the vault follows its own workflow. |
 | `bootstrap-harvest --older-than N [--dry-run]` | One-shot non-interactive sweep. Archives all unpinned/unarchived entries older than N days. Used periodically to reset accumulated log size. |
 
 ---
@@ -83,8 +84,8 @@ Run at weekly-wrap moments (`eow_window` / `past_eow` state), or any time the lo
 1. **Survey** — `forge-context.sh harvest-friction --days 14 --pretty`. Read the JSON.
 2. **Display** — render a table to the user: date, description, proposed target, justification. Group by target.
 3. **Confirm / override** — ask the user: "OK to promote these? Anything to override?"
-4. **Execute archive-only items** — single bundled call: `archive-friction-entries --entry "..." --entry "..." ...`.
-5. **For task / decision / feedback targets** — Petra writes the file directly via Write tool using conversation context (slug, title, body, back-link to source entry). Then chains `promote-friction --entry "..." --target archive` to clean up the raw entry.
+4. **Execute archive-only items** — dispatch Keeper for one bundled `archive-friction-entries --entry "..." --entry "..." ...` call.
+5. **For task / decision / feedback targets** — give Keeper the conversation context (slug, title, body, back-link to source entry). Keeper writes and verifies authored vault files, then runs `promote-friction --entry "..." --target archive` to clean up the raw entry. Feedback memory outside the vault follows its own workflow.
 6. **Verify** — `friction-tail` after the pass; the buffer should now show only recent active entries.
 
 Pinned entries never appear in the harvest proposal — they stay in the log indefinitely.
@@ -97,7 +98,7 @@ For initial cleanup of an accumulated log:
 
 ```
 forge-context.sh bootstrap-harvest --dry-run --older-than 30   # preview
-forge-context.sh bootstrap-harvest --older-than 30              # execute
+forge-context.sh bootstrap-harvest --older-than 30              # Keeper executes
 ```
 
 No promotion heuristic — just sweeps all unpinned/unarchived entries older than the cutoff to per-week archive files. Use once when the log is bloated; subsequent maintenance via `harvest-friction` + `promote-friction`.

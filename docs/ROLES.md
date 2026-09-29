@@ -6,7 +6,7 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 
 ## Forge Master (Petra)
 
-**Responsibility.** Runs the session. Loads vault context, reconciles PRs, presents entry summary, delegates to roles, manages checkpoints and wrap-up. Break-aware work planning (steers away from deep work near interruptions). Vault authority — full read/write to everything in the vault.
+**Responsibility.** Runs the session. Loads vault context, reconciles PRs, presents entry summary, delegates to roles, manages checkpoints and wrap-up. Break-aware work planning (steers away from deep work near interruptions). Reads authored vault content and delegates its mutation to Keeper.
 
 **Backed by**
 - `forge` skill (`~/.claude/skills/forge/SKILL.md`) — entry, session rules, persona
@@ -30,13 +30,13 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 **Vault interaction**
 - **Scope:** day-to-day attention is bounded to the active project (the one named in `forge-active`). Cross-project work happens at the weekly wrap, on-demand at user request, or via the user browsing the vault folder structure directly. See decision `2026-06-01-petra-single-project-scope`.
 - **Reads:** active project's `INDEX.md`, `current-checkpoint.md`, `BACKLOG.md`, task files, decisions; friction log (via `friction-tail`); `_shared/` tasks/decisions when relevant to current work.
-- **Writes:** active project's `current-checkpoint.md`, `INDEX.md`, decision files, task files, `BACKLOG.md`; friction log (via `append-friction` only — never direct edit); vault structure as work demands.
+- **Authored writes:** dispatches Keeper for checkpoints, INDEX, decisions, tasks, BACKLOG, friction (via `append-friction`), and other authored vault changes, including typed helper commands. If Keeper cannot write or verify, Petra reports/defers rather than taking over. Machine-managed `_shared` runtime state remains with lifecycle scripts. Forge source and tooling installation are outside this ownership rule.
 
 ---
 
 ## Keeper
 
-**Responsibility.** Logs validated decisions with rationale and ruled-out alternatives. Writes conversation checkpoints. Tracks PR scope and flags inflation. Maintains project INDEX.md files.
+**Responsibility.** Executes and verifies every authored vault mutation for the session, including typed helper commands and arbitrary edits. Logs validated decisions with rationale and ruled-out alternatives. Writes conversation checkpoints. Tracks PR scope and flags inflation. Maintains project INDEX.md files.
 
 **Backed by**
 - `keeper` skill (`~/.claude/skills/keeper/SKILL.md`)
@@ -61,7 +61,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** previous decisions, previous checkpoints, INDEX files, task files (parses `status:` frontmatter for auto-archive)
-- **Writes:** decision logs, checkpoints (`current-checkpoint.md`), scope alerts, INDEX updates, BACKLOG (rows sorted within clusters by `updated:` frontmatter)
+- **Writes:** decision logs, checkpoints (`current-checkpoint.md`), scope alerts, INDEX updates, BACKLOG (rows sorted within clusters by `updated:` frontmatter), tasks, braindump, friction, weekly artifacts and review-doc cleanup
 - **On every checkpoint write:** silently reconciles GitHub PRs
 - **At every session entry:** auto-archives task files with `status: resolved` from `tasks/open/` to `tasks/resolved/`. Standalone task/issue files move alone; `umbrella.md` moves the whole containing subfolder atomically; sub-tasks inside an umbrella subfolder stay in place until the umbrella itself resolves. The recovery output emits an `--- Auto-archive ---` summary listing what was moved. Keeper does NOT auto-edit BACKLOG — the summary signals which rows to remove on the next BACKLOG curation. (See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md#auto-archive-keeper-duty) for the full convention.)
 - **On request:** runs the `/forge-vault-sync` skill (or `forge-context.sh vault-sync`) to surface dirty vault files grouped by top-level directory, with a suggested commit message per group. Default is a read-only report; the user runs `vault-sync --commit` in a real terminal for the interactive Y/N walkthrough + push. Refuses when files are already staged.
@@ -70,7 +70,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 ## Refiner
 
-**Responsibility.** Turns friction into permanent improvements. When the user corrects Claude, identifies root cause (rule missing, ignored, context lost, skill gap) and proposes a concrete fix. Maintains the friction log.
+**Responsibility.** Turns friction into permanent improvements. When the user corrects the assistant, identifies root cause (rule missing, ignored, context lost, skill gap) and proposes a concrete fix. Prepares friction entries for Keeper to persist.
 
 **Backed by**
 - `refiner` skill (`~/.claude/skills/refiner/SKILL.md`)
@@ -79,9 +79,9 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** existing rules/memories (to avoid duplicates), friction log, pattern catalog, classifier decision tree
-- **Writes:** friction log entries (via `forge-context.sh append-friction` — never edits files directly), proposes rule/skill updates
+- **Writes:** none in the vault; Keeper runs `forge-context.sh append-friction` and verifies the result
 
-**Classification handoff.** When a friction surfaces, the Refiner classifies it against the pattern catalog (`core/references/script-replacement-patterns.md`) using the classifier decision tree (`core/references/friction-classifier.md`). Concretely: runs `forge-classify-friction.sh` to derive `{pattern, action-ref}`, then calls `forge-context.sh append-friction --description "..." --pattern X --recurrence N --action-ref Y` to write the structured entry. For a fresh un-triaged one-off, `--description` alone suffices — date, pattern, recurrence, and action-ref default to today / `needs_new_pattern` / `0` / `needs_new_pattern`. The subcommand handles friction-log + classified-JSON writes and auto-creates a stub task at recurrence=1. Direct file edits to the friction log are forbidden — the subcommand is the only write path, which keeps both formats consistent and triggers the marker-driven prefix logic (forge-on-forge friction routes to the project subtree; other friction lands in `_shared/`). See `adapters/claude-code/skills/refiner/SKILL.md` step 3 for the protocol.
+**Classification handoff.** When friction surfaces, Refiner classifies it against the pattern catalog (`core/references/script-replacement-patterns.md`) using the classifier decision tree (`core/references/friction-classifier.md`). Refiner runs `forge-classify-friction.sh` to derive `{pattern, action-ref}`, then dispatches Keeper to run `forge-context.sh append-friction --description "..." --pattern X --recurrence N --action-ref Y`. For a fresh un-triaged one-off, `--description` alone suffices. The subcommand handles friction-log + classified-JSON writes and auto-creates a stub task at recurrence=1. Direct edits to the friction log are forbidden; Keeper verifies both formats. See `adapters/claude-code/skills/refiner/SKILL.md` step 3 for the protocol.
 
 ---
 
@@ -114,7 +114,7 @@ The `${VAULT_PATH}/_shared/forge-active` marker file (written on Forge entry, cl
 
 **Vault interaction**
 - **Reads:** decisions, architecture notes (before proposing approaches)
-- **Writes:** architecture notes, plans
+- **Writes:** architecture notes and plans outside the vault; Keeper writes any authored vault notes or plans
 
 ---
 

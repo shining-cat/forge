@@ -37,7 +37,7 @@ If the work is non-trivial, invoke the `superpowers:brainstorming` skill. Genera
 
 ### Step 4 — Produce a plan
 
-Once an approach is selected, invoke the `superpowers:writing-plans` skill to produce a structured implementation plan. Plan goes INTO the task file as its `## Plan` section (per the single-doc workflow — `_templates/task.md` covers the shape):
+Once an approach is selected, invoke the `superpowers:writing-plans` skill to prepare a structured implementation plan. Dispatch Keeper synchronously to write and verify the plan IN the task file as its `## Plan` section (per the single-doc workflow — `_templates/task.md` covers the shape). If Keeper cannot complete it, report/defer; do not write it as Architect:
 
 ```
 ${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/YYYY-MM-DD-{topic}.md         (single task)
@@ -50,7 +50,7 @@ If the work has multiple ship-able sub-pieces, use the umbrella shape (`_templat
 
 ### Step 5 — Hand off to Reviewer
 
-After writing the plan, invoke the Reviewer (via `Use the  "forge-reviewer", ...})` for inline dispatch, or via team-mode if a team is active). Loop on FAIL: receive findings, revise plan, re-submit. The user does not see intermediate FAIL → revise cycles; they see only the final PASS.
+After Keeper verifies the plan, invoke the Reviewer. Loop on FAIL: revise the plan, have Keeper persist the revision, then re-submit. The user does not see intermediate FAIL → revise cycles; they see only the final PASS.
 
 ## Vault paths
 

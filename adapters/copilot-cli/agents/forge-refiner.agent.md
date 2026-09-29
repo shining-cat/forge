@@ -81,9 +81,9 @@ The output gives `pattern` (one of `hook-injection`, `wrapper-subcommand`, `mark
 
 If classification is genuinely impossible (ambiguous, novel friction type), return `pattern: unknown` in the Step 4 call below — the framework handles it via write-then-flag. Do not block on classification: roles must never be stuck on ambiguity.
 
-### Step 4 — Log the friction event via the gated subcommand
+### Step 4 — Have Keeper log the friction event via the gated subcommand
 
-Use `Bash` to invoke the gated subcommand. Never bypass with bare `Edit` / `>>` appends to `friction-log.md`.
+Dispatch Keeper synchronously with the classified event. Keeper invokes the gated subcommand and verifies the vault changes. Never bypass with bare `Edit` / `>>` appends to `friction-log.md`.
 
 ```bash
 ~/.copilot/scripts/forge-context.sh append-friction \
@@ -96,11 +96,11 @@ Use `Bash` to invoke the gated subcommand. Never bypass with bare `Edit` / `>>` 
 
 The subcommand validates `--pattern` against the catalog, writes to both `friction-log.md` (human) and `friction-classified.json` (machine), and auto-creates a stub task at `--action-ref` when `--recurrence == 1`. On invalid pattern, it falls back to `pattern: unknown` + `validation_failed: true` and returns non-zero — the log is written either way.
 
-Always log the event, even if no fix is applied yet. The log is the historical record.
+Always request the log, even if no fix is applied yet. If Keeper cannot write or verify it, report/defer instead of writing it as Refiner.
 
 ### Step 5 — Apply the fix (after explicit user approval)
 
-Once the user approves, make the change with `Edit`, then record the resolution in the linked action task — the stub at `--action-ref` from Step 4 — using `Edit`. Do not hand-edit the friction log entry; the gated subcommand is the only write path to `friction-log.md`.
+Once the user approves, make changes outside the vault with `Edit`; have Keeper record and verify the resolution in the linked vault action task — the stub at `--action-ref` from Step 4. Do not hand-edit the friction log entry; the gated subcommand is the only write path to `friction-log.md`.
 
 ## Vault paths
 

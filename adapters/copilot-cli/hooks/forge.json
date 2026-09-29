@@ -27,12 +27,6 @@
         "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-vault-plan-guard.sh",
         "matcher": "Write|Edit",
         "timeoutSec": 10
-      },
-      {
-        "type": "command",
-        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-vault-write-guard.sh",
-        "matcher": "Write|Edit",
-        "timeoutSec": 10
       }
     ],
     "PostToolUse": [

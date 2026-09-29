@@ -31,21 +31,21 @@ Collect from the session context and git:
 If `{{VAULT}}/{ENV}/{PROJECT}/braindump.md` exists and has content beyond the header:
 1. Read it
 2. Incorporate relevant entries into the checkpoint's "Completed" / "In progress" / "Notes" sections
-3. After writing the checkpoint, truncate braindump.md — write just `# Brain Dump\n` as the contents
+3. After Keeper writes and reads back the checkpoint, have Keeper truncate braindump.md to `# Brain Dump\n`. If the checkpoint write or verification fails, preserve the braindump and report the failure.
 
 ### 2. Write Checkpoint
 
-**OVERWRITE** `{{VAULT}}/{ENV}/{PROJECT}/current-checkpoint.md` using the template from the Keeper skill.
+Dispatch Keeper synchronously to **OVERWRITE** `{{VAULT}}/{ENV}/{PROJECT}/current-checkpoint.md` using the template from the Keeper skill, then verify the result. Provide the gathered state and braindump entries. If Keeper cannot complete or verify the write, report/defer it; do not write it inline or truncate the braindump.
 
 ### 3. Log Any Unlogged Decisions
 
-If decisions were validated during the session but not yet logged:
-- Create decision files in `{{VAULT}}/{ENV}/{PROJECT}/decisions/`
-- Update INDEX.md
+If the checkpoint was verified and decisions were validated during the session but not yet logged:
+- Have Keeper create decision files in `{{VAULT}}/{ENV}/{PROJECT}/decisions/`
+- Have Keeper update INDEX.md and verify both writes
 
 ### 4. Confirm
 
-Display:
+Only after Keeper verifies the checkpoint, display:
 ```
 **[Keeper]** Checkpoint saved — {date}
   Branch: {branch}

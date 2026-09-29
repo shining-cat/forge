@@ -76,44 +76,13 @@ At natural checkpoints (task done, topic shift, before long ops, user request), 
 - Keep INDEX.md lean: one line per entry, under 50 active entries
 - Never bulk-read all decision files -- always go through INDEX.md first
 
-## Inline vs Subagent Dispatch
+## Authored Vault Writes
 
-**Default: inline.** The main session writes the checkpoint itself via Write/Edit. This is the reliable path under current Claude Code — see the platform-limit note below for why.
+Keeper executes **every** mutation of authored vault content: checkpoints, decisions, INDEX, tasks, BACKLOG, braindump, friction, weekly artifacts, and review docs. This includes typed `forge-context.sh` helpers; the parent must not run one on Keeper's behalf. Machine-managed `_shared` runtime state (marker, wellness state, calendar cache) remains with its lifecycle scripts. Forge source and installed tooling are outside this boundary.
 
-Use inline (no subagent) for:
-- Routine checkpoint writes at pause points (task done, topic shift, before long operations)
-- Checkpoints the user explicitly requested
-- Session exit
-- Decision logging (requires conversation context to identify what was decided)
-- After context compression (must reorient the main session)
+**Default: synchronous Keeper dispatch.** The main session gathers context and gives Keeper the current branch, completed and pending work, vault paths, and the precise mutation. Keeper uses a typed helper where available, otherwise Write/Edit, then reads back or checks the result. If dispatch, permission, or verification fails, report or defer; do not fall back to a main-session vault edit. The main session may read the checkpoint after compression, but Keeper writes it.
 
-**Subagent dispatch is opt-in, not default.**
-
-### Platform limitation
-
-Two independent blockers make **background** dispatch (`run_in_background: true`) unreliable for a lone Keeper:
-
-1. **Folder-trust gate (the dominant one).** A background subagent spawns in a separate tmux/iTerm pane, and a fresh pane hits Claude Code's *"Do you trust the files in this folder?"* gate. A background agent has no UI surface to answer it, so the spawn stalls or the prompt is idle-dropped and the agent dies before writing anything. This affects **all projects**. Observed 2026-08-04 (five background keepers all stalled); the fix is to dispatch **synchronously** (`run_in_background: false`), which runs in-process — no pane, no gate.
-2. **Permission inheritance.** Subagents do NOT inherit path-scoped Write permissions from the parent, and background dispatch has no UI surface for permission prompts mid-run, so a Write into the vault can silently deny.
-
-**Default for a single Keeper: synchronous dispatch (`run_in_background: false`).** There's no parallelism to lose on a lone dispatch, and synchronous sidesteps both blockers. Background/pane dispatch is only for genuine parallel fan-out (agent-team reviews, weekly harvest) and requires the user to accept the trust gate interactively per pane — see `vault-write-protocol.md`.
-
-### If you do dispatch (advanced)
-
-- **Model:** `sonnet` — checkpoint writes are formulaic, don't need opus
-- **Name:** `Forge-Keeper`
-- **Background:** default `run_in_background: false` (synchronous). Only go background for authorized parallel fan-out, never for a lone Keeper write.
-
-The main session must include all necessary context in the prompt: current branch, completed items, in-progress work, next steps, vault paths. The subagent has no conversation history.
-
-Example (foreground):
-```
-Agent({
-  description: "Forge-Keeper checkpoint",
-  model: "sonnet",
-  prompt: "Write a checkpoint to {vault_path}/current-checkpoint.md. ..."
-})
-```
+Background dispatch for a lone write is unreliable because a new pane may hit the folder-trust gate and miss a permission prompt. Use background only for user-authorized parallel fan-out. Claude Code's hook distinguishes subagent calls from main-session Write/Edit but does not constrain same-user Bash to Keeper. See `vault-write-protocol.md`.
 
 ## Active Reminders
 

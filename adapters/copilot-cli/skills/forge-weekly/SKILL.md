@@ -9,6 +9,8 @@ Wraps the week's friction, BACKLOG, and decisions into a closing inventory. Pers
 
 **Announce:** "**[Quartermaster]** Opening the week-ledger."
 
+Quartermaster gathers input and asks the user; Keeper executes and verifies all authored vault mutations below (friction promotions, draft moves, BACKLOG/INDEX edits, and weekly checkpoint). Batch related writes in synchronous Keeper dispatches. If Keeper cannot write or verify, report/defer instead of editing inline. Feedback memory outside the vault remains outside this rule; the runtime-only wrap ledger stays with the lifecycle command.
+
 ## Steps
 
 ### 0. Idempotency guard
@@ -42,7 +44,7 @@ Archive-only (informational):
 
 Then **batch fast-path:** *"Apply all proposals as-is? (Y/n, or enter numbers to override)"*
 
-- `Y` → execute each proposal in order. For `task`/`decision`/`feedback` targets, the script's `promote-friction --target <type>` only prints scaffold hints — actual file creation is your work: use the Write tool with the appropriate template from `${VAULT_PATH}/_templates/` (task → `task.md`, decision → `decision.md`, feedback → save to `$COPILOT_DIR/projects/-Users-<user>/memory/feedback_<slug>.md` per the auto-memory format), then chain to `promote-friction --entry "<id>" --target archive` to clean up the raw entry.
+- `Y` → give Keeper each vault proposal in order. For `task`/`decision`/`feedback` targets, `promote-friction --target <type>` only prints scaffold hints — Keeper creates vault files from `${VAULT_PATH}/_templates/` (task → `task.md`, decision → `decision.md`); feedback memory outside the vault is saved to `$COPILOT_DIR/projects/-Users-<user>/memory/feedback_<slug>.md` per the auto-memory format. Keeper then runs `promote-friction --entry "<id>" --target archive` to clean up the raw vault entry and verifies the result.
 - `n` or number list → per-entry loop, ask for override per item, then proceed.
 
 When the harvest is empty (no unpinned entries in the window), say so plainly and skip to Step 2 — *"No friction this week. Quiet forge."*
@@ -62,7 +64,7 @@ When non-empty, for each draft, ask the user:
 >   Project: `{project}` *(or unset)*
 >   **Keep / Discard / Defer?** (k/d/f)
 
-Behaviour per choice:
+Behaviour per choice (Keeper executes and verifies any vault move or edit):
 
 - **Keep** —
   1. If `project` is `—`, ask: *"Which project? (e.g. `PERSO/forge`, or `<env>/<project>`)"*
@@ -94,7 +96,7 @@ Read the active project's `BACKLOG.md` (path: `${VAULT_PATH}/${ENV}/${PROJECT}/B
 2. **Done-but-listed?** — anything still showing as open that actually shipped?
 3. **New since Monday?** — anything from this week that should be on the list and isn't?
 
-Apply edits the user confirms. **This is not a full re-grooming** — keep the pass light, 2-3 min max. If the user wants deep BACKLOG work, suggest a separate session.
+Have Keeper apply and verify edits the user confirms. **This is not a full re-grooming** — keep the pass light, 2-3 min max. If the user wants deep BACKLOG work, suggest a separate session.
 
 ### 4. Aging-decisions audit
 
@@ -108,7 +110,7 @@ Extract dates via regex `^\s*-\s*\*\*(\d{4}-\d{2}-\d{2})`, filter to dates older
 > Still active / archive / revise?
 
 - **Still active** → no change.
-- **Archive** → move the bullet to a `## Archived decisions` section in the same INDEX.md (create the section lazily on first archive — append at end of file with a divider).
+- **Archive** → have Keeper move the bullet to a `## Archived decisions` section in the same INDEX.md (create the section lazily on first archive — append at end of file with a divider).
 - **Revise** → mark for follow-up (note in this ceremony's weekly-checkpoint, Step 5) but don't rewrite in-flight.
 
 When zero decisions are old enough, say so and skip — *"All decisions fresh. No audit needed."*
@@ -117,7 +119,7 @@ When zero decisions are old enough, say so and skip — *"All decisions fresh. N
 
 > **[Quartermaster]** Closing the ledger.
 
-Write a new file at `${VAULT_PATH}/${ENV}/${PROJECT}/weekly-checkpoints/YYYY-WNN.md` (create the directory lazily if missing). Use this template:
+Have Keeper write and verify a new file at `${VAULT_PATH}/${ENV}/${PROJECT}/weekly-checkpoints/YYYY-WNN.md` (create the directory lazily if missing). Use this template:
 
 ```markdown
 ---
@@ -154,7 +156,7 @@ Compute `{YYYY-WNN}` as ISO 8601 week (e.g. `2026-W22`). Compute `{date range}` 
 
 ### 6. Mark the wrap done
 
-Run `$COPILOT_DIR/scripts/forge-context.sh mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses.
+Only after Keeper verifies all required authored vault mutations (including friction promotions, triage changes, and the weekly checkpoint), run `$COPILOT_DIR/scripts/forge-context.sh mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses. If any required write failed or was deferred, do not mark the wrap done or announce it closed; report the incomplete work and leave the wrap due.
 
 ### 7. Hand-off
 
