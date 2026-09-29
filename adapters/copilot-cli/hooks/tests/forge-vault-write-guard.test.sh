@@ -65,7 +65,7 @@ teardown_env() {
 # Hooks rely on $HOME — override it for the invocation.
 invoke() {
   local input="$1"
-  echo "$input" | HOME="$TMP_HOME" bash "$HOOK_FILE" 2>/dev/null
+  echo "$input" | HOME="$TMP_HOME" bash "$HOOK_FILE"
 }
 
 echo "=== forge-vault-write-guard ==="
@@ -159,6 +159,35 @@ INPUT="$(jq -n --arg path "$TMP_VAULT/tasks/b.md" '{
 }')"
 OUT="$(invoke "$INPUT")"
 assert_eq "case 8: non-Write/Edit tool → allow" "" "$OUT"
+teardown_env
+
+# Freeform patch inputs must enforce the same vault boundary, across files and moves.
+setup_env '{"session_id":"main-9","project":"forge"}'
+PATCH="$(printf '*** Begin Patch\n*** Update File: /tmp/safe.txt\n@@\n+x\n*** Move to: %s/tasks/moved.md\n*** End Patch' "$TMP_VAULT")"
+INPUT="$(jq -nc --arg patch "$PATCH" '{tool_name:"Edit",tool_input:$patch}')"
+OUT="$(invoke "$INPUT")"; RC=$?
+assert_eq "case 9: multi-file/move patch exits cleanly" "0" "$RC"
+assert_contains "case 9: main patch moving into vault denied" '"permissionDecision": "deny"' "$OUT"
+INPUT="$(jq -nc --arg patch "$PATCH" '{tool_name:"Edit",agent_id:"keeper",tool_input:$patch}')"
+OUT="$(invoke "$INPUT")"; RC=$?
+assert_eq "case 10: Keeper patch exits cleanly" "0" "$RC"
+assert_eq "case 10: Keeper patch allowed" "" "$OUT"
+PATCH=$'*** Begin Patch\n*** Update File: /tmp/source.txt\n@@\n+x\n*** End Patch'
+INPUT="$(jq -nc --arg patch "$PATCH" '{tool_name:"Edit",tool_input:$patch}')"
+OUT="$(invoke "$INPUT")"; RC=$?
+assert_eq "case 11: non-vault patch exits cleanly" "0" "$RC"
+assert_eq "case 11: non-vault patch allowed" "" "$OUT"
+INPUT='{"tool_name":"Edit","tool_input":"not a patch"}'
+OUT="$(invoke "$INPUT")"; RC=$?
+assert_eq "case 12: malformed input exits cleanly" "0" "$RC"
+assert_contains "case 12: malformed patch explicitly denied" 'Unrecognized patch input' "$OUT"
+teardown_env
+
+setup_env ""
+INPUT="$(jq -nc --arg patch "$PATCH" '{tool_name:"Edit",tool_input:$patch}')"
+OUT="$(invoke "$INPUT")"; RC=$?
+assert_eq "case 13: inactive marker exits cleanly" "0" "$RC"
+assert_eq "case 13: inactive marker preserves allow behavior" "" "$OUT"
 teardown_env
 
 echo ""
