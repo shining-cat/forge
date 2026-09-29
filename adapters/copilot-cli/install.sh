@@ -110,7 +110,7 @@ copy_owned "$FORGE_ROOT/core/tools/forge-model-catalog-setup.py" "$COPILOT_DIR/s
 while IFS= read -r file; do
   relative="${file#"$ADAPTER/"}"
   case "$relative" in
-    scripts/tests/*|modules/wellness-coach/*/tests/*) continue ;;
+    */__pycache__/*|*.pyc|scripts/tests/*|modules/wellness-coach/*/tests/*) continue ;;
     scripts/*) copy_owned "$file" "$COPILOT_DIR/scripts/${relative#scripts/}" ;;
     hooks/forge.json) ;;
     hooks/*) copy_owned "$file" "$COPILOT_DIR/hooks/${relative#hooks/}" ;;
@@ -146,7 +146,7 @@ done < <(find "$ADAPTER/scripts" "$ADAPTER/hooks" "$ADAPTER/modules/wellness-coa
 while IFS= read -r file; do
   relative="${file#"$FORGE_ROOT/core/model_catalog/"}"
   case "$relative" in
-    tests/*) continue ;;
+    tests/*|*/__pycache__/*|*.pyc) continue ;;
     *) copy_owned "$file" "$COPILOT_DIR/scripts/model_catalog/$relative" ;;
   esac
 done < <(find "$FORGE_ROOT/core/model_catalog" -type f -print | sort)

@@ -36,4 +36,9 @@ jq -e '
 expected="$(jq -c '[.hooks.PreToolUse[] | select(.bash | contains("forge-")) | .bash]' "$SOURCE_HOOKS")"
 actual="$(jq -c '[.hooks.PreToolUse[] | select(.bash | contains("forge-")) | .bash]' "$installed")"
 [[ "$expected" == "$actual" ]]
+if find "$TMP/home/.copilot/scripts" "$TMP/home/.copilot/skills" -type f -name '*.pyc' -print | grep -q .; then
+  echo "installer copied generated Python bytecode" >&2
+  exit 1
+fi
 printf '  ✓ retired Copilot vault-write hook; preserved plan guard and unrelated hooks\n'
+printf '  ✓ generated Python bytecode excluded from installed tooling\n'
