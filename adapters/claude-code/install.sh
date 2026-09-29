@@ -478,6 +478,10 @@ build_pairs() {
       printf "%s\t%s\tskill_md\toverwrite\n" "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
     done
 
+    printf "%s\t%s\tskill_md\toverwrite\n" "$FORGE_ROOT/core/skills/forge-setup-models/SKILL.md" "$SKILLS_DIR/forge-setup-models/SKILL.md"
+    printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/skills/forge-setup-models/scripts/forge-setup-models.sh" "$SKILLS_DIR/forge-setup-models/scripts/forge-setup-models.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/tools/forge-model-catalog-setup.py" "$CLAUDE_DIR/scripts/forge-model-catalog-setup.py"
+
     # Forge skill references (symlinks to core/references/*) — A2: preserve local edits
     for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md; do
       printf "%s\t%s\tsymlink\tpreserve\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
@@ -1459,6 +1463,10 @@ for skill in forge forge-checkpoint forge-exit forge-weekly forge-audit forge-au
   install_skill_md "$ADAPTER/skills/$skill/SKILL.md" "$SKILLS_DIR/$skill/SKILL.md"
 done
 ok "Core skills (forge, forge-checkpoint, forge-exit, forge-weekly, forge-audit, forge-audit-permissions, forge-vault-sync, keeper, refiner, plan-reviewer, promote-from-review)"
+run mkdir -p "$SKILLS_DIR/forge-setup-models/scripts"
+install_skill_md "$FORGE_ROOT/core/skills/forge-setup-models/SKILL.md" "$SKILLS_DIR/forge-setup-models/SKILL.md"
+safe_cp "$FORGE_ROOT/core/skills/forge-setup-models/scripts/forge-setup-models.sh" "$SKILLS_DIR/forge-setup-models/scripts/"
+
 
 # Symlink core references into forge skill — A2 preserve policy:
 # users may copy a ref to a real file and edit it (e.g. tweaking
@@ -1543,6 +1551,7 @@ safe_cp "$ADAPTER/scripts/forge-calendar.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-snapshot.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-audit.py" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-model-catalog.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$FORGE_ROOT/core/tools/forge-model-catalog-setup.py" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh" preserve
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
@@ -1560,6 +1569,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-audit.py" \
              "$CLAUDE_DIR/scripts/forge-model-catalog.sh" \
+             "$SKILLS_DIR/forge-setup-models/scripts/forge-setup-models.sh" \
              "$CLAUDE_DIR/statusline.sh"
 
 ok "Hooks and scripts installed"

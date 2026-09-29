@@ -28,7 +28,7 @@ The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable f
 
 ## Model tuning
 
-Role-to-model assignments are **tier-based** (migrated 2026-09-25 — see the model-tiering checkpoint). `$COPILOT_DIR/forge.conf` holds `MODEL_TIER_<ROLE>` keys, each set to one of the 4 tiers (`minimal`, `economy`, `standard`, `premium`, or `inherit`/empty to inherit the session model). The **catalog** (`${VAULT_PATH}/_shared/model-catalog/catalog.json`) is the source of truth for tier→model binding, and is the moving part — re-run `/forge-setup-models` whenever new models become available or the catalog goes stale (records expire after 24h; a resolve against a stale catalog fails loudly with `"snapshot is stale or from the future"` rather than silently falling back).
+Role-to-model assignments are **tier-based** (migrated 2026-09-25 — see the model-tiering checkpoint). `$COPILOT_DIR/forge.conf` holds `MODEL_TIER_<ROLE>` keys, each set to one of the 4 tiers (`minimal`, `economy`, `standard`, `premium`, or `inherit`/empty to inherit the session model). The **catalog** (`${VAULT_PATH}/_shared/model-catalog/catalog.json`) is the source of truth for tier→model binding, and is the moving part — re-run `/forge-setup-models` whenever new models become available or you want to change mappings (confirmed manual mappings stay valid until changed; system-sourced snapshots still expire after 24h).
 
 Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 

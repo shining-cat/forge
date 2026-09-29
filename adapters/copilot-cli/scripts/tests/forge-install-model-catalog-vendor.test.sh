@@ -32,6 +32,15 @@ else
   bad "vendoring" "missing files under $T/home/.copilot/scripts/model_catalog/"
 fi
 
+if [ -f "$T/home/.copilot/skills/forge-setup-models/SKILL.md" ] &&
+   [ -f "$T/home/.copilot/skills/forge-setup-models/scripts/forge-setup-models.sh" ] &&
+   [ -f "$T/home/.copilot/scripts/forge-model-catalog-setup.py" ] &&
+   [ -f "$T/home/.copilot/skills/forge/references/onboarding.md" ]; then
+  ok "manual setup skill, runnable script, backend and onboarding reference installed"
+else
+  bad "setup assets" "required onboarding files missing"
+fi
+
 if [ -d "$T/home/.copilot/scripts/model_catalog/tests" ]; then
   bad "tests excluded" "model_catalog/tests/ should not be vendored, but exists"
 else
@@ -74,6 +83,96 @@ if echo "$out" | grep -q "ModuleNotFoundError"; then
   bad "resolve works post-install" "still raises ModuleNotFoundError: $out"
 else
   ok "resolve --role keeper runs without ModuleNotFoundError post-install"
+fi
+
+# Installed setup must use the packaged backend and leave runtime config intact.
+cp "$T/home/.copilot/forge.conf" "$T/config-before"
+setup="$T/home/.copilot/skills/forge-setup-models/scripts/forge-setup-models.sh"
+if printf 'model-a\n\n1\n1\n1\n1\n' |
+   HOME="$T/home" COPILOT_DIR="$T/home/.copilot" VAULT_PATH="$T/vault" FORGE_RUNTIME=copilot-cli bash "$setup" >/dev/null 2>&1 &&
+   cmp -s "$T/config-before" "$T/home/.copilot/forge.conf" &&
+   python3 "$T/home/.copilot/scripts/model_catalog/cli.py" check-coverage --snapshot "$T/vault/_shared/model-catalog/catalog.json" --binding copilot-cli >/dev/null; then
+  ok "installed model setup maps four tiers without changing forge.conf"
+else
+  bad "installed setup" "mapping failed or changed forge.conf"
+fi
+cp "$T/vault/_shared/model-catalog/catalog.json" "$T/catalog-before"
+if printf 'model-a\n\n9\n' |
+   HOME="$T/home" COPILOT_DIR="$T/home/.copilot" VAULT_PATH="$T/vault" FORGE_RUNTIME=copilot-cli bash "$setup" >/dev/null 2>&1; then
+  bad "invalid selection" "unexpected success"
+elif cmp -s "$T/config-before" "$T/home/.copilot/forge.conf" &&
+     cmp -s "$T/catalog-before" "$T/vault/_shared/model-catalog/catalog.json"; then
+  ok "invalid installed mapping preserves both config and catalog"
+else
+  bad "invalid selection" "modified config or catalog"
+fi
+
+wrapper="$T/home/.copilot/scripts/forge-model-catalog.sh"
+# A full foreign mapping must never satisfy an incomplete local mapping.
+python3 - "$T/vault/_shared/model-catalog/catalog.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    catalog = json.load(stream)
+for record in catalog["records"]:
+    record["bindings"].append({**record["bindings"][0], "runtime": "claude"})
+catalog["records"][-1]["bindings"][0]["active"] = False
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+PY
+if HOME="$T/home" "$wrapper" finish-onboarding --snapshot "$T/vault/_shared/model-catalog/catalog.json" --binding claude --config "$T/home/.copilot/forge.conf" >/dev/null 2>&1; then
+  bad "mixed-runtime completion" "foreign coverage bypassed missing Copilot tier"
+elif cmp -s "$T/config-before" "$T/home/.copilot/forge.conf"; then
+  ok "mixed-runtime completion refuses foreign coverage"
+else
+  bad "mixed-runtime completion" "config was modified"
+fi
+cp "$T/catalog-before" "$T/vault/_shared/model-catalog/catalog.json"
+if HOME="$T/home" "$wrapper" finish-onboarding --snapshot "$T/vault/_shared/model-catalog/catalog.json" --binding claude --config "$T/home/.copilot/forge.conf" >/dev/null 2>&1; then
+  bad "foreign completion" "wrong-runtime coverage completed onboarding"
+elif cmp -s "$T/config-before" "$T/home/.copilot/forge.conf"; then
+  ok "foreign-runtime completion leaves config unchanged"
+else
+  bad "foreign completion" "config was modified"
+fi
+if HOME="$T/home" "$wrapper" finish-onboarding --snapshot "$T/vault/_shared/model-catalog/catalog.json" --binding copilot-cli --config "$T/home/.copilot/forge.conf" >/dev/null 2>&1; then
+  cp "$T/config-before" "$T/config-expected"
+  printf 'ONBOARDING_COMPLETE=true\n' >> "$T/config-expected"
+  if cmp -s "$T/config-expected" "$T/home/.copilot/forge.conf"; then
+    ok "installed final step changes only onboarding flag"
+  else
+    bad "final completion" "unexpected config change"
+  fi
+else
+  bad "final completion" "valid coverage did not finish onboarding"
+fi
+
+# Custom COPILOT_HOME is an installer-supported location, independent of HOME.
+custom_home="$T/home/custom-copilot"
+mkdir -p "$custom_home" "$T/custom-vault/_shared/model-catalog"
+if HOME="$T/home" COPILOT_HOME="$custom_home" bash "$INSTALL_SH" --vault-path "$T/custom-vault" >/dev/null 2>&1; then
+  cp "$T/catalog-before" "$T/custom-vault/_shared/model-catalog/catalog.json"
+  cp "$custom_home/forge.conf" "$T/custom-config-before"
+  if printf 'model-a\n\n1\n1\n1\n1\n' |
+     env -u COPILOT_DIR HOME="$T/home" COPILOT_HOME="$custom_home" VAULT_PATH="$T/custom-vault" FORGE_RUNTIME=copilot-cli \
+       bash "$custom_home/skills/forge-setup-models/scripts/forge-setup-models.sh" >/dev/null 2>&1 &&
+     cmp -s "$T/custom-config-before" "$custom_home/forge.conf" &&
+     HOME="$T/home" COPILOT_HOME="$custom_home" "$custom_home/scripts/forge-model-catalog.sh" \
+       finish-onboarding --snapshot "$T/custom-vault/_shared/model-catalog/catalog.json" \
+       --binding copilot-cli --config "$custom_home/forge.conf" >/dev/null 2>&1; then
+    sed 's/^ONBOARDING_COMPLETE=false$/ONBOARDING_COMPLETE=true/' "$T/custom-config-before" > "$T/custom-config-expected"
+    if cmp -s "$T/custom-config-expected" "$custom_home/forge.conf"; then
+      ok "custom COPILOT_HOME setup and completion preserve config"
+    else
+      bad "custom COPILOT_HOME" "completion changed other config keys"
+    fi
+  else
+    bad "custom COPILOT_HOME" "setup or completion failed"
+  fi
+else
+  bad "custom COPILOT_HOME" "install failed"
 fi
 
 rm -rf "$T"

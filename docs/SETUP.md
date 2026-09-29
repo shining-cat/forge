@@ -145,55 +145,9 @@ The tiers exist because every tier costs more to run than the one below it, so F
 
 ### First-time setup
 
-After installing Forge, run the model discovery flow:
+During the first `/forge` onboarding, supply the model IDs enabled for your active runtime. The installed `/forge-setup-models` skill asks you to **select one model for each tier** (the same model can serve multiple tiers); it makes no inferred choice or automatic discovery. You can rerun the skill whenever you want to change mappings. The canonical catalog is `${VAULT_PATH}/_shared/model-catalog/catalog.json` and holds runtime-specific dispatch bindings; `forge.conf` holds neutral `MODEL_TIER_<ROLE>` policy. Setup tests all four active runtime tiers before publishing. Deferring or making an invalid selection leaves mapping incomplete and preserves the existing catalog and config. Successful mapping also preserves `forge.conf` byte-for-byte: neither role-to-tier keys, legacy model keys, nor the onboarding flag are changed by model setup. After all first-run steps and active-runtime coverage succeed, the separate final onboarding step sets only `ONBOARDING_COMPLETE=true`; deferral or invalid coverage leaves it unchanged.
 
-```bash
-/forge-setup-models
-```
-
-This interactive tool will:
-
-1. **Ask for available models** — Copy/paste from your organization's settings page (e.g., `{ORG}/settings/copilot/features`)
-2. **Infer vendor and tier** — Forge guesses based on model name (e.g., `claude-haiku-4` → Anthropic, minimal)
-3. **Confirm tier assignments** — Review the inference, override if needed
-4. **Validate and test** — Forge tests that each tier can resolve correctly
-5. **Write canonical catalog** — Saves to `${VAULT_PATH}/_shared/model-catalog/catalog.json`
-
-The setup is idempotent — you can re-run it anytime your organization enables new models.
-
-**Important:** Forge assumes you have at least one model in each tier. In practice, every organization has cheap models (Haiku, Flash) available, so this is not a blocker.
-
-### Tier assignment examples
-
-Here's how Forge infers tiers from model names:
-
-- **minimal** ← "haiku" (exact match to avoid substring collisions with "gemini")
-- **economy** ← "flash", "3.8" (e.g., gemini-3.8-flash)
-- **standard** ← "sonnet", "gpt-5.4", "gpt-5.3"
-- **premium** ← "opus", "gpt-5.6", "luna", "terra", "sol"
-
-You can override any inference during setup. If a model name doesn't match, setup will ask you to assign it manually.
-
-### Using the catalog at runtime
-
-Once the catalog is written, Forge's internal operations and subagents use it to select models by tier:
-
-```bash
-forge-model-catalog resolve --role keeper --tier minimal
-# Output: dispatch_id: claude-haiku-4
-```
-
-Roles and operations declare their tier needs:
-- `keeper` → minimal (Keeper logs are structured, no reasoning needed)
-- `impl` → standard (builder needs reasoning for code)
-- `architect` / `debugger` → premium (hard thinking)
-- fallback / entry ceremony → minimal (cheap operations)
-
-The resolve logic returns the first active model matching the requested tier. If that tier is unavailable, Forge falls back gracefully (currently to economy/standard/premium chain, depending on what's available).
-
-### Refresh
-
-If your organization enables new models, re-run `/forge-setup-models` to update the catalog. The tool is idempotent and will preserve existing assignments.
+Confirmed manual mappings remain valid until you change them. System-sourced snapshots still expire after 24 hours; manual remapping accepts a structurally valid expired system catalog, retaining other runtime records with inactive bindings until each runtime is remapped. Resolution requires an exact tier and an active binding for the requested runtime — **there is no cross-tier fallback**. Check coverage with `forge-model-catalog.sh check-coverage --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding claude` (or `--binding copilot-cli`), as appropriate.
 
 ## GitHub Copilot CLI adapter
 
@@ -268,7 +222,8 @@ After install, start Claude Code and type `/forge`. On first run, Forge will:
 1. **Offer the wellness coach** — optional break-tracking module. If you decline, it offers to clean up the files.
 2. **Verify superpowers** — warns if the plugin isn't installed.
 3. **Set up your vault** — creates project directories and starter files.
-4. **Enter Forge mode** — Petra takes over.
+4. **Map models** — manually select all four tiers; onboarding stays incomplete if deferred or invalid.
+5. **Enter Forge mode** — Petra takes over.
 
 ## Extending
 
@@ -347,11 +302,11 @@ The change takes effect on the next `/forge` invocation.
 
 ## Capability catalog
 
-Claude installation includes the stdlib-only resolver at `~/.claude/scripts/forge_capability/` and the wrapper at `~/.claude/scripts/forge-model-catalog.sh`. A missing, malformed, incompatible, or stale runtime snapshot fails closed; legacy `MODEL_<ROLE>` settings remain readable.
+Claude installation includes the stdlib-only resolver at `~/.claude/scripts/forge_capability/` and the wrapper at `~/.claude/scripts/forge-model-catalog.sh`. A missing, malformed, incompatible, or stale system-sourced snapshot fails closed; manual catalogs stay valid until changed; legacy `MODEL_<ROLE>` settings remain readable.
 
 ### Capability catalog setup
 
-Claude installs the stdlib-only package at `~/.claude/scripts/forge_capability/`. To publish a manual/runtime catalog without probes, network, or cost data, prepare a JSON record input and run `~/.claude/scripts/forge-model-catalog.sh publish --input catalog.json`. The wrapper also exposes `migrate --config ~/.claude/forge.conf`; installation runs this migration safely, preserving legacy and unrelated keys with one `.pre-model-catalog` backup.
+Claude installs the stdlib-only package at `~/.claude/scripts/forge_capability/`. To publish a manual/runtime catalog without probes, network, or cost data, prepare a JSON record input and run `~/.claude/scripts/forge-model-catalog.sh publish --input catalog.json`. Separately from user model setup, the wrapper exposes `migrate --config ~/.claude/forge.conf`; the existing installer invokes that legacy migration with one `.pre-model-catalog` backup. `/forge-setup-models` never invokes migration or writes `forge.conf`.
 
 ### Catalog tests
 

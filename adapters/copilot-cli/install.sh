@@ -103,6 +103,10 @@ while IFS= read -r skill; do
   install_skill "$skill" "$COPILOT_DIR/skills/$name/SKILL.md"
 done < <(find "$ADAPTER/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -print | sort)
 
+install_skill "$FORGE_ROOT/core/skills/forge-setup-models/SKILL.md" "$COPILOT_DIR/skills/forge-setup-models/SKILL.md"
+copy_owned "$FORGE_ROOT/core/skills/forge-setup-models/scripts/forge-setup-models.sh" "$COPILOT_DIR/skills/forge-setup-models/scripts/forge-setup-models.sh"
+copy_owned "$FORGE_ROOT/core/tools/forge-model-catalog-setup.py" "$COPILOT_DIR/scripts/forge-model-catalog-setup.py"
+
 while IFS= read -r file; do
   relative="${file#"$ADAPTER/"}"
   case "$relative" in
@@ -148,7 +152,7 @@ while IFS= read -r file; do
 done < <(find "$FORGE_ROOT/core/model_catalog" -type f -print | sort)
 
 if ! "$DRY_RUN"; then
-  find "$COPILOT_DIR/scripts" "$COPILOT_DIR/hooks" "$COPILOT_DIR/skills/wellness-coach" \
+  find "$COPILOT_DIR/scripts" "$COPILOT_DIR/hooks" "$COPILOT_DIR/skills/wellness-coach" "$COPILOT_DIR/skills/forge-setup-models" \
     -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +
 fi
 

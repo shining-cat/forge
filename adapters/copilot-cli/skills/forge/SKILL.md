@@ -56,21 +56,27 @@ You MUST complete all steps in order:
 
 ### 0. First-Run Onboarding
 
-Check if onboarding has been completed by reading `$COPILOT_DIR/forge.conf` with the Read tool (not Bash — avoids a visible grep on every session start).
-
-- If the file contains `ONBOARDING_COMPLETE=true` → skip to step 1
-- If `ONBOARDING_COMPLETE=false` or the key is missing → **load `references/onboarding.md` and follow the flow there**. The full onboarding (wellness coach setup, superpowers verification, vault project scaffolding, multi-environment guidance) lives in that file. It runs once per machine, then sets `ONBOARDING_COMPLETE=true` and is never read again.
-- If `$COPILOT_DIR/forge.conf` doesn't exist at all, the install script hasn't been run. Tell the user: *"Forge needs to be installed first. Clone the repo and run `./install.sh` — see the README for details."* Then stop.
+Read `$COPILOT_DIR/forge.conf` with the Read tool. If it does not exist, tell the user to install Forge and stop.
 
 ### 0a. Wellness Cold-Start Check (pre-onboarding)
 
-Run BEFORE step 1, BEFORE step 2's recovery read, BEFORE anything that touches a forge file:
+Run AFTER the step-0 config existence check but BEFORE step 0b catalog reads, step 1, or step 2 recovery:
 
 ```bash
 $COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh --if-cold-start
 ```
 
 The script self-gates on `WELLNESS_ENABLED` + `WELLNESS_COLD_START_HOURS`. Surface stdout verbatim before the step-6 summary if non-empty. For why this is step 0a (not step 2.5), the strike-exemption interaction, and the shell-to-shell gap-script note, see `references/wellness-cold-start.md`.
+
+### 0b. Model Coverage and First-Run Routing
+
+**Independently of `ONBOARDING_COMPLETE`**, run the read-only `$COPILOT_DIR/scripts/forge-model-catalog.sh onboarding-status --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding copilot-cli --config "$COPILOT_DIR/forge.conf"`. It validates all four bindings for this runtime and reports an `action` and `skip_model_mapping`; never infer coverage from the completion flag.
+
+- `action=continue`: flag and coverage complete; proceed to step 1 without a model prompt.
+- `action=map-models-only`: previously completed onboarding, but coverage missing/incomplete/invalid. Load `references/onboarding.md` and run **only model-mapping subsection (e) and coverage check (f)**; do not repeat wellness, vault, or other first-run steps.
+- `action=full-onboarding`: flag false/missing. Load `references/onboarding.md` and run **all first-run steps**, including wellness and vault, regardless of catalog state. If `skip_model_mapping=true` (for example after a prior `/forge-setup-models`), skip **only subsection (e)**, then perform the read-only check (f).
+
+On deferral or invalid coverage, leave `ONBOARDING_COMPLETE` unchanged and avoid tier-specific dispatch from an unresolved catalog. Model setup never changes role policy or legacy model keys. Existing installs can run `/forge-setup-models` manually.
 
 ### 1. Detect Environment
 

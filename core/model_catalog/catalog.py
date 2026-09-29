@@ -83,7 +83,7 @@ def _validate_record(record, index):
         if "captured_at" in binding:
             _timestamp(binding["captured_at"], f"{bp}.captured_at")
 
-def validate_snapshot(data, now=None):
+def validate_snapshot(data, now=None, allow_stale_system=False):
     if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
         raise SnapshotError("missing or incompatible schema_version")
     captured = _timestamp(data.get("captured_at"), "captured_at")
@@ -149,7 +149,7 @@ def validate_snapshot(data, now=None):
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=dt.timezone.utc)
     age = (reference.astimezone(dt.timezone.utc) - captured).total_seconds()
-    if age < 0 or age > FRESHNESS_SECONDS:
+    if age < 0 or (clock["source"] == "system" and age > FRESHNESS_SECONDS and not allow_stale_system):
         raise SnapshotError("snapshot is stale or from the future")
     for i, record in enumerate(data["records"]):
         _validate_record(record, i)

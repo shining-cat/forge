@@ -1,6 +1,6 @@
 # Forge First-Run Onboarding
 
-Loaded by the `forge` skill (step 0 of the entry checklist) **only** when `~/.claude/forge.conf` exists but `ONBOARDING_COMPLETE` is `false` or missing. Runs once per machine — after the first successful pass, sets `ONBOARDING_COMPLETE=true` and is never read again.
+Loaded by the `forge` skill (step 0 of the entry checklist) when active-runtime model coverage needs mapping or the active runtime’s `ONBOARDING_COMPLETE` is `false` or missing. On a previously completed install, run only subsections (e) and (f) if coverage is incomplete. Model setup never writes `forge.conf`; only the separate final onboarding step sets the completion flag after all first-run work succeeds. For Copilot CLI use `$COPILOT_DIR` (`~/.copilot` by default); for Claude use `~/.claude`.
 
 ## Onboarding flow
 
@@ -145,9 +145,19 @@ If the user opts in, walk them through creating the second environment folder + 
 
 This is a recommendation, not a requirement. Don't push if the user dismisses it.
 
-### e) Complete onboarding
+### e) Required model-tier mapping
 
-Update `~/.claude/forge.conf`: set `ONBOARDING_COMPLETE=true`
+If the entry coverage check already resolved all four tiers for this active runtime, skip only this subsection; finish the other first-run onboarding steps. Otherwise ask the user to supply model IDs available for this runtime and explicitly select one for **each** of minimal, economy, standard, and premium. Load the installed `forge-setup-models` skill and run its interactive script with `FORGE_RUNTIME=claude` or `FORGE_RUNTIME=copilot-cli` as appropriate. One model may serve multiple tiers; do not infer a default from its name, discover models automatically, or silently skip a tier. **Ownership boundary:** Model setup only edits user-selected tier-to-model bindings in `${VAULT_PATH}/_shared/model-catalog/catalog.json`; they remain valid until changed. It never writes `MODEL_TIER_<ROLE>` or legacy `MODEL_<ROLE>` keys. Role-to-tier policy belongs to Forge core, and legacy config migration is a separate task—not an onboarding step. A missing skill/script is an installation error: ask the user to reinstall, not to complete onboarding without mapping.
+
+If the user defers or setup/coverage fails, explain which selection is missing or invalid, **leave `ONBOARDING_COMPLETE` unchanged** (false stays false; previously true stays true), and stop model onboarding. They can resume with `/forge` or `/forge-setup-models`. Do not perform daily catalog refreshes.
+
+### f) Validate model coverage and continue
+
+Run the installed resolver with `check-coverage --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding <active runtime>` (the installed `scripts/forge-model-catalog.sh` routes this command). Continue only when all four tiers resolve for the active runtime. On incomplete/invalid coverage, explain the missing tier and leave onboarding pending. The model-mapping flow does **not** write `forge.conf`, including `ONBOARDING_COMPLETE`; it leaves all role policy and legacy model keys byte-for-byte untouched. Completion-flag management is separate from model mapping, not an implicit setup side effect.
+
+### g) Finish full first-run onboarding
+
+**Only on the full first-run path, after all earlier steps have succeeded and (f) returned complete**, run the installed `scripts/forge-model-catalog.sh finish-onboarding --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding <active runtime> --config <active runtime forge.conf>`. This final read/validate/write step sets **only** `ONBOARDING_COMPLETE=true` in the active runtime config; it preserves role-to-tier keys, legacy model keys, and all other config bytes. It refuses incomplete, invalid, or foreign-runtime coverage without changing config. Do not run it if the user defers or an earlier step fails. On the `map-models-only` path for previously completed installs, leave the already-true flag untouched and continue after (f) succeeds.
 
 > Petra: Forge is ready. Let's get to work.
 
