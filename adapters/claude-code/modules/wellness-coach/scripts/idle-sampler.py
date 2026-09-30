@@ -12,13 +12,14 @@ principle "Forge should not behave as if it monitors when not running" —
 the launchd timer still wakes the script, but no samples land in the log
 between sessions. See tasks/resolved/2026-06-04-idle-sampler-daemon-gating.md
 """
+import os
 import json
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-import os
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
 from wellness_location import file_path, safe_sidecar, consented
@@ -29,7 +30,8 @@ MAX_AGE_SECONDS = 7200  # 2 hours
 
 
 def get_vault_path():
-    """Read VAULT_PATH from ~/.claude/forge.conf. Returns None when absent
+    """
+    Read VAULT_PATH from ~/.claude/forge.conf. Returns None when absent
     or unreadable — caller treats that as 'Forge not configured, don't sample'.
     """
     if not FORGE_CONF_PATH.is_file():

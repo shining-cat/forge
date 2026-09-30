@@ -102,7 +102,7 @@ EOF
 
 run_sampler() {
   local home="$1"
-  HOME="$home" python3 "$SAMPLER" 2>/dev/null || true
+  HOME="$home" COPILOT_HOME="$home/.copilot" "$SAMPLER"
 }
 
 # Convenience: locate the idle log under a sandbox HOME.
