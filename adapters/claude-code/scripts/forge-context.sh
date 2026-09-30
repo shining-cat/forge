@@ -1316,6 +1316,61 @@ do_auto_archive() {
 # + archive. They're complementary, not redundant — auto-archive cleans up
 # resolved-but-not-moved (e.g. manual edits), resolve-task is the
 # commit-driven closure path.
+rewrite_task_frontmatter() {
+  local source="$1" destination="$2" status="$3" today="$4" mode="$5" pr_spec="${6:-}"
+  python3 - "$source" "$destination" "$status" "$today" "$mode" "$pr_spec" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source, destination, status, today, mode, pr_spec = sys.argv[1:]
+data = Path(source).read_bytes()
+lines = data.splitlines(keepends=True)
+newline = b"\r\n" if b"\r\n" in data[: data.find(b"\n") + 1] else b"\n"
+
+if lines and lines[0].rstrip(b"\r\n") == b"---":
+    end = next((i for i in range(1, len(lines)) if lines[i].rstrip(b"\r\n") == b"---"), None)
+    if end is None:
+        sys.exit("task frontmatter has no closing delimiter")
+    frontmatter, body = lines[1:end], b"".join(lines[end + 1:])
+    opening, closing = lines[0], lines[end]
+else:
+    frontmatter, body = [], data
+    opening = closing = b"---" + newline
+
+existing = {}
+for line in frontmatter:
+    match = re.match(rb"^(status|updated|resolved|shipped_via):[ \t]*(.*?)[\r\n]*$", line)
+    if match and match[1] not in existing:
+        existing[match[1]] = match[2]
+
+was_resolved = existing.get(b"status", b"").strip(b"'\" ") == b"resolved"
+values = {b"status": status.encode()}
+if mode == "status" or not was_resolved:
+    values[b"updated"] = today.encode()
+if mode == "resolve" and not was_resolved:
+    values[b"resolved"] = today.encode()
+if pr_spec:
+    values[b"shipped_via"] = pr_spec.encode()
+
+result = []
+seen = set()
+for line in frontmatter:
+    match = re.match(rb"^(status|updated|resolved|shipped_via):", line)
+    if match and match[1] in values:
+        key = match[1]
+        if key not in seen:
+            result.append(key + b": " + values[key] + newline)
+            seen.add(key)
+    else:
+        result.append(line)
+for key, value in values.items():
+    if key not in seen:
+        result.append(key + b": " + value + newline)
+Path(destination).write_bytes(opening + b"".join(result) + closing + body)
+PY
+}
+
 do_resolve_task() {
   local slug="${1:-}"
   local sha="${2:-}"
@@ -1364,7 +1419,7 @@ do_resolve_task() {
   fi
 
   local task_file="${matches[0]}"
-  local task_dir task_base task_root resolved_dir today current_status
+  local task_dir task_base task_root resolved_dir today
   task_dir="$(dirname "$task_file")"
   task_base="$(basename "$task_file")"
   task_root="${task_dir%/tasks/open}"
@@ -1372,44 +1427,13 @@ do_resolve_task() {
   mkdir -p "$resolved_dir"
   today="$(date +%Y-%m-%d)"
 
-  current_status=$(awk '
-    /^---[[:space:]]*$/ { c++; if (c==2) exit; next }
-    c==1 && /^status:/ {
-      sub(/^status:[[:space:]]*/, "")
-      gsub(/^["'"'"']|["'"'"']$/, "")
-      gsub(/[[:space:]]+$/, "")
-      print
-      exit
-    }
-  ' "$task_file" 2>/dev/null)
-
-  # Flip frontmatter in place unless already resolved AND no new pr_spec to record.
-  if [ "$current_status" != "resolved" ] || [ -n "$pr_spec" ]; then
-    local tmp="$task_file.tmp.$$"
-    awk -v today="$today" -v pr_spec="$pr_spec" '
-      BEGIN { in_fm=0; fm_count=0; have_resolved=0; have_shipped=0 }
-      /^---[[:space:]]*$/ {
-        fm_count++
-        if (fm_count == 1) { in_fm=1; print; next }
-        if (fm_count == 2 && in_fm) {
-          if (!have_resolved) print "resolved: " today
-          if (!have_shipped && pr_spec != "") print "shipped_via: " pr_spec
-          in_fm=0
-          print
-          next
-        }
-        print; next
-      }
-      in_fm && /^status:[[:space:]]/ { print "status: resolved"; next }
-      in_fm && /^updated:[[:space:]]/ { print "updated: " today; next }
-      in_fm && /^resolved:[[:space:]]/ { print "resolved: " today; have_resolved=1; next }
-      in_fm && /^shipped_via:[[:space:]]/ {
-        if (pr_spec != "") { print "shipped_via: " pr_spec } else { print }
-        have_shipped=1; next
-      }
-      { print }
-    ' "$task_file" > "$tmp" && mv "$tmp" "$task_file"
+  local tmp="$task_file.tmp.$$"
+  if ! rewrite_task_frontmatter "$task_file" "$tmp" resolved "$today" resolve "$pr_spec"; then
+    rm -f "$tmp"
+    echo "[resolve-task] ERR: could not rewrite frontmatter for $task_base" >&2
+    return 1
   fi
+  mv "$tmp" "$task_file"
 
   # git mv if vault is a git repo AND the file is tracked; else plain mv.
   local moved=0 rel_from rel_to
@@ -5305,23 +5329,7 @@ do_set_task_status() {
 
   # Step 1: frontmatter rewrite → tmp (NOT promoted to $target yet).
   local tmp="$target.tmp.$$"
-  awk -v new_status="$new_status" -v today="$today" '
-    BEGIN { in_fm=0; fm_count=0; saw_updated=0 }
-    /^---[[:space:]]*$/ {
-      fm_count++
-      if (fm_count == 1) { in_fm=1; print; next }
-      if (fm_count == 2 && in_fm) {
-        if (!saw_updated) print "updated: " today
-        in_fm=0
-        print
-        next
-      }
-      print; next
-    }
-    in_fm && /^status:[[:space:]]/ { print "status: " new_status; next }
-    in_fm && /^updated:[[:space:]]/ { print "updated: " today; saw_updated=1; next }
-    { print }
-  ' "$target" > "$tmp" || {
+  rewrite_task_frontmatter "$target" "$tmp" "$new_status" "$today" status || {
     rm -f "$tmp" 2>/dev/null
     echo "[set-task-status] FAIL: could not rewrite frontmatter" >&2
     exit 2

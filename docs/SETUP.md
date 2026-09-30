@@ -9,7 +9,7 @@ Install, upgrade, customize, roll back, and extend Forge. For the high-level pit
 | [Claude Code](https://claude.ai/code) **or** [GitHub Copilot CLI](https://github.com/github/copilot-cli) | Runtime — choose the matching Forge adapter |
 | [superpowers](https://github.com/obra/superpowers-marketplace) | Process discipline — brainstorming, TDD, debugging, plans |
 | `jq` | Used by hooks and scripts for JSON processing |
-| `python3` | Used by wellness coach hooks |
+| `python3` | Required for model catalog, task frontmatter updates, and wellness coach hooks |
 | `git` | Version control, PR reconciliation |
 
 **Recommended:**

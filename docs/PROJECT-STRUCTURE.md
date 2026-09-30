@@ -130,7 +130,7 @@ Issue uses `stabilising` as the interim state (instead of `open`/`designed`/etc.
 
 ### Auto-archive (Keeper duty)
 
-When the Keeper sees `status: resolved` in a task's frontmatter, the next session entry auto-archives it:
+When the Keeper sees `status: resolved` in a task's frontmatter, the next session entry auto-archives it. `resolve-task` also adds that status (and frontmatter if absent) before moving a task; `set-task-status` inserts a missing status when updating an existing task:
 
 - Standalone `task.md` or `issue.md` → moved to `tasks/resolved/` (flat).
 - `umbrella.md` (with `status: resolved`) → the whole containing subfolder is moved to `tasks/resolved/` atomically.

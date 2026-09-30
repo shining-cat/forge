@@ -205,5 +205,26 @@ grep -q "^status: in-progress$" "$F" \
 teardown
 
 echo ""
+echo "Check 7 — inserts missing status/frontmatter without changing body"
+for shape in missing-status no-frontmatter; do
+  setup
+  F="$TMP/PERSO/demo/tasks/open/2026-06-08-$shape.md"
+  if [ "$shape" = missing-status ]; then
+    printf '%s\n' '---' 'tags: [keep]' '---' '# Original body' > "$F"
+  else
+    printf '%s\n' '# Original body' > "$F"
+  fi
+  "$FORGE_CONTEXT" set-task-status --slug "2026-06-08-$shape" --status resolved >/dev/null
+  if [ "$(grep -c '^status: resolved$' "$F")" -eq 1 ] \
+    && tail -1 "$F" | grep -q '^# Original body$' \
+    && { [ "$shape" != missing-status ] || grep -q '^tags: \[keep\]$' "$F"; }; then
+    echo "  ✓ $shape updated"; PASS=$((PASS+1))
+  else
+    echo "  ✗ $shape lost status or content"; FAIL=$((FAIL+1))
+  fi
+  teardown
+done
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)

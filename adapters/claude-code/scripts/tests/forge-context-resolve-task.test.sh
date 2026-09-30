@@ -349,6 +349,57 @@ staged=$(git -C "$TMP" diff --cached --name-only 2>/dev/null)
   || { echo "  ✗ index left dirty: $staged"; FAIL=$((FAIL+1)); }
 teardown
 
+# ── Check 13 — missing frontmatter/status and CRLF preservation ─────────
+echo ""
+echo "Check 13 — status inserted for every task shape"
+for shape in no-frontmatter missing-status crlf duplicate-status; do
+  setup
+  task="$TMP/PERSO/demo/tasks/open/2026-05-21-$shape.md"
+  case "$shape" in
+    no-frontmatter) printf '# Body\n\nKeep this text.\n' > "$task" ;;
+    missing-status) printf '%s\n' '---' 'created: 2026-05-21' 'tags: [keep]' '---' '# Body' 'Keep this text.' > "$task" ;;
+    crlf) printf '%s\r\n' '---' 'created: 2026-05-21' 'status: open' '---' '# Body' 'Keep this text.' > "$task" ;;
+    duplicate-status) printf '%s\n' '---' 'status: open' 'status: blocked' '---' '# Body' 'Keep this text.' > "$task" ;;
+  esac
+  "$FORGE_CONTEXT" resolve-task "2026-05-21-$shape" >/dev/null
+  resolved="$TMP/PERSO/demo/tasks/resolved/2026-05-21-$shape.md"
+  if python3 - "$resolved" "$shape" <<'PY'
+import sys
+from pathlib import Path
+data = Path(sys.argv[1]).read_bytes()
+shape = sys.argv[2]
+crlf = shape == "crlf"
+nl = b"\r\n" if crlf else b"\n"
+assert data.startswith(b"---" + nl)
+frontmatter = data.split(b"---" + nl, 2)[1]
+assert frontmatter.count(b"status: resolved" + nl) == 1
+assert sum(line.startswith(b"status:") for line in frontmatter.split(nl)) == 1
+body = b"# Body" + nl + (nl if shape == "no-frontmatter" else b"") + b"Keep this text." + nl
+assert data.endswith(body)
+if shape == "missing-status":
+    assert b"tags: [keep]" + nl in data
+assert not crlf or b"\n" not in data.replace(b"\r\n", b"")
+PY
+  then
+    echo "  ✓ $shape: status and body preserved"; PASS=$((PASS+1))
+  else
+    echo "  ✗ $shape: status or body incorrect"; FAIL=$((FAIL+1))
+  fi
+  teardown
+done
+
+setup
+task="$TMP/PERSO/demo/tasks/open/2026-05-21-malformed.md"
+printf '%s\n' '---' 'status: open' '# No closing fence' > "$task"
+if "$FORGE_CONTEXT" resolve-task "2026-05-21-malformed" >/dev/null 2>&1; then
+  echo "  ✗ malformed frontmatter was accepted"; FAIL=$((FAIL+1))
+elif [ -f "$task" ] && [ "$(grep -c '^status: open$' "$task")" -eq 1 ]; then
+  echo "  ✓ malformed frontmatter refused without moving the task"; PASS=$((PASS+1))
+else
+  echo "  ✗ malformed frontmatter changed the task"; FAIL=$((FAIL+1))
+fi
+teardown
+
 echo ""
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

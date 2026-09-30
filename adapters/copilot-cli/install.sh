@@ -88,7 +88,7 @@ install_skill() {
 check_prerequisites() {
   command -v jq >/dev/null 2>&1 || fail "jq is required"
   command -v git >/dev/null 2>&1 || fail "git is required"
-  command -v python3 >/dev/null 2>&1 || warn "python3 is required only for wellness support"
+  command -v python3 >/dev/null 2>&1 || fail "python3 is required for task and model-catalog operations"
 }
 
 check_prerequisites

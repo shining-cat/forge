@@ -1061,7 +1061,7 @@ ok "jq"
 # --- Warn but continue ---
 
 if ! command -v python3 &>/dev/null; then
-  warn "python3 not found — wellness coach module will not work."
+  warn "python3 not found — task closure, model catalog, and wellness coach will not work."
   hint "Install: brew install python3"
 else
   ok "python3"
