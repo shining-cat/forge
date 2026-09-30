@@ -68,6 +68,8 @@ Run AFTER the step-0 config existence check but BEFORE step 0b catalog reads, st
 
 The script self-gates on `WELLNESS_ENABLED` + `WELLNESS_COLD_START_HOURS`. Surface stdout verbatim before the step-6 summary if non-empty. For why this is step 0a (not step 2.5), the strike-exemption interaction, and the shell-to-shell gap-script note, see `references/wellness-cold-start.md`.
 
+If `WELLNESS_ENABLED=true`, check `${VAULT_PATH}/_shared/wellness-preferences.json` for `wellness_onboarding_complete: true`. A file inherited from another runtime or a partial setup does **not** count as completed onboarding. If absent or false, invoke the wellness-coach skill and offer its eight-question interactive setup before treating the coach as active. If the user defers, continue Forge with wellness enforcement inactive; do not silently mark setup complete.
+
 ### 0b. Model Coverage and First-Run Routing
 
 **Independently of `ONBOARDING_COMPLETE`**, run the read-only `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh" onboarding-status --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding copilot-cli --config "${COPILOT_HOME:-$HOME/.copilot}/forge.conf"`. It validates all four bindings for this runtime and reports an `action` and `skip_model_mapping`; never infer coverage from the completion flag.

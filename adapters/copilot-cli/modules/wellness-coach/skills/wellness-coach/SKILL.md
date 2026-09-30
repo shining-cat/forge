@@ -47,8 +47,8 @@ else
 fi
 ```
 
-- If `NO_PREFS` → start **Onboarding** (below)
-- If files exist → use the merged view, note persona and settings, proceed normally
+- If `NO_PREFS` or `wellness_onboarding_complete` is not `true` → offer **Onboarding** (below); existing settings are suggestions, not proof that the user completed Copilot setup
+- If setup is complete → use the merged view, note persona and settings, proceed normally
 
 ### Stale-clear guard (Layer 3)
 
@@ -56,7 +56,7 @@ After the merge above, run `scripts/wellness-stale-clear-guard.sh`. It self-corr
 
 ## Onboarding
 
-Triggered when the startup check above returns `NO_PREFS`, or when the user explicitly asks to redo onboarding. Eight-question flow (persona/name, micro/real break intervals, insistence, calendar with gws scope probe, weather, personal notes, activity-monitor tier with install branches). Runs once per machine, then the file isn't needed again.
+Triggered when the startup check returns `NO_PREFS`, setup is incomplete, or the user explicitly asks to redo onboarding. Eight-question flow (persona/name, micro/real break intervals, insistence, calendar with gws scope probe, weather, personal notes, activity-monitor tier with install branches). Existing preferences may seed suggestions, but require explicit answers before setting `wellness_onboarding_complete: true`.
 
 Load `references/onboarding.md` for the full flow.
 
@@ -213,7 +213,7 @@ Load `references/strike-conversation.md` for the full recovery flow — exempt s
 - **One snooze allowed** (configurable via `max_snoozes`).
 - **Strike blocks all tool calls** except the wellness-coach skill itself.
 - **Always read preferences fresh** — another terminal may have updated them.
-- **Weather/calendar failures are silent** — skip context, still suggest break.
+- **Weather failures are silent** — skip context, still suggest break; report configured calendar failures.
 - **Trust the user over logs** — if user says they took a break, believe them.
 - **Suggestions belong before the decision.** Context-rich nudges (weather, last walk, energy pattern) go in break reminders, BEFORE the user decides what to do. At acknowledgment time, just credit + send-off. After the user returns, reflection is optional and lightweight — never a fresh suggestion.
 - **Respect stated user intent.** If the user has said they want a light day, are taking a specific break (knitting, coffee with friend), or have a planned activity, do not push more suggestions on top of that decision.

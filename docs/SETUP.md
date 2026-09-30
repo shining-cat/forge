@@ -179,6 +179,16 @@ export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 
 The installer does not edit shell startup files.
 
+Wellness requires more than copied scripts: the Copilot installer registers
+PreToolUse, PostToolUse, Stop, and PreCompact hooks, and the eight-question wellness setup
+sets `wellness_onboarding_complete: true` only after answers are confirmed.
+Until then, the hooks do not send reminders or enforce strikes, even if shared
+preferences from another runtime exist. Restart Copilot CLI after installing
+to load hooks. If activity-aware monitoring was chosen, its separate
+`skills/wellness-coach/scripts/install-monitor.sh` compiles a screen-state
+checker and loads a macOS LaunchAgent; the Forge installer alone does not do
+this. Check health with `"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/scripts/wellness-status.sh" --diagnose`.
+
 Calendar checks are opt-in: set `calendar_enabled: true` in the vault's
 `_shared/wellness-preferences.json` **and** `CALENDAR_PROVIDER=gws` in the
 active runtime's `forge.conf` after confirming Google Calendar access.

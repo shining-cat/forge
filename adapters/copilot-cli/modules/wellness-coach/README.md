@@ -15,7 +15,7 @@ A context-aware wellness coaching module for GitHub Copilot CLI, bundled with Fo
 
 ## Setup
 
-The plugin auto-configures on first use. It will ask 8 quick questions:
+On first `/forge` entry with `WELLNESS_ENABLED=true`, the coach offers 8 interactive questions. An inherited preferences file does not skip these questions until `wellness_onboarding_complete: true` has been explicitly recorded:
 
 1. **Persona style** — professional / playful / full character
 2. **Micro-break frequency** — how often to suggest short breaks (30s–2min)
@@ -124,6 +124,8 @@ All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. Break tak
 ## Configuration
 
 **Master switch — `WELLNESS_ENABLED` in `~/.copilot/forge.conf`.** This flag is the single source of truth for the entire coach. It is read strictly: the coach is active **only** when `WELLNESS_ENABLED=true`; any other value — `false`, empty, an absent key, or a missing `forge.conf` — reads as **disabled**, and every enforcement surface becomes a clean no-op (no breaks, no strikes, no blocking, no suggestions, no sampling). Toggle it in conversation ("disable the wellness coach") or by editing `forge.conf`; the change takes effect on the next tool call — no restart needed.
+
+Enforcement also waits for `wellness_onboarding_complete: true` in preferences. Copying scripts or inheriting a preferences file does not activate an unconfirmed strike policy. The installer registers PreToolUse (strike gate), PostToolUse (in-conversation reminders), Stop (timer ticks), and PreCompact (compaction notifications); a CLI restart is required to load the new manifest.
 
 Every consumer honors the flag:
 

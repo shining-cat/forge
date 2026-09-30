@@ -1,6 +1,6 @@
 # Wellness Coach — Onboarding
 
-Load when the startup check returns `NO_PREFS` (no `wellness-preferences.json` exists), or when the user explicitly asks to redo onboarding. The full flow runs once per machine, then the file isn't needed again.
+Load when preferences are missing, `wellness_onboarding_complete` is not `true`, or the user explicitly asks to redo onboarding. An existing file from another runtime does not prove that Copilot's questions were answered. Preserve it and offer existing values as suggested answers; never treat them as consent, especially for strikes or activity monitoring.
 
 Auto-triggers when no preferences file exists. Show all 8 questions upfront as a progress card, then ask one at a time.
 
@@ -114,12 +114,12 @@ hit enter), or "timing-only" to skip the daemon.
 
 Run the install script:
 ```bash
-~/.copilot/skills/wellness-coach/scripts/install-monitor.sh
+"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/scripts/install-monitor.sh"
 ```
 
 Branch on the outcome:
 
-- **Success (exit 0)** → set `activity_monitor_enabled: true` and `activity_monitor_installed: true`, then show post-install tips (below).
+- **Success (exit 0)** → the binary passed a self-check and the LaunchAgent was registered. Through Keeper, write confirmed setup with `activity_monitor_installed: true`, `activity_monitor_enabled: false` and fresh runtime timestamps, then run `"${COPILOT_HOME:-$HOME/.copilot}/bin/idle-sampler.py"` and verify that `${COPILOT_HOME:-$HOME/.copilot}/wellness-idle-log.json` contains a sample from the last minute while the Forge marker is active. Only then use Keeper to set `activity_monitor_enabled: true`. If no sample is produced, report that the sampler is not healthy, leave `activity_monitor_enabled: false`, and continue in timing-only mode. Registration alone is not proof of sampling.
 
 - **Failure (exit non-zero)** → inspect the captured output and pick the matching message:
 
@@ -152,7 +152,7 @@ For best results:
   System Settings → Lock Screen
 
 If anything looks off later, run:
-  ~/.copilot/skills/wellness-coach/scripts/wellness-status.sh --diagnose
+  "${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/scripts/wellness-status.sh" --diagnose
 ```
 
 ## Changing answers
@@ -161,13 +161,13 @@ If the user says "change 3" or "go back to 2", update that answer and re-show th
 
 ## Completing onboarding
 
-After all 8 questions are answered, write the preferences file:
+After all 8 questions are answered, write the preferences through Keeper's authored-vault path and the `preferences.py` split writer. First persist confirmed answers with `wellness_onboarding_complete: false`, `activity_monitor_enabled: false`, and fresh runtime break and reminder timestamps; clear `strike_active` and `strike_cleared_at`. Only after this write succeeds, set `wellness_onboarding_complete: true` in a separate write. This order prevents a stale shared timestamp from causing a strike between preference and runtime file writes. If activity-aware was selected, check a fresh sample after that activation and only then enable it; if sampling fails, leave the activity monitor disabled and use timing-only reminders. If setup is deferred or an answer is missing, leave the flag false and do not start enforcement.
 
 ```python
 # Build prefs dict from answers, merged with DEFAULT_PREFS
 # Run: date +"%Y-%m-%dT%H:%M:%S" to get actual system time
 # Set last_break_timestamp and last_micro_break_timestamp to date output
-# Write to ${VAULT_PATH}/_shared/wellness-preferences.json
+# Persist setup preferences and fresh runtime state using read_modify_write()
 ```
 
 Confirm in the chosen persona tone.
