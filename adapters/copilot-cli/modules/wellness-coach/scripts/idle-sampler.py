@@ -53,10 +53,16 @@ def is_wellness_enabled():
     if not FORGE_CONF_PATH.is_file():
         return False
     try:
+        vault = get_vault_path()
+        if vault is None:
+            return False
+        prefs = json.loads((vault / "_shared" / "wellness-preferences.json").read_text())
+        if prefs.get("wellness_onboarding_complete") is not True:
+            return False
         for line in FORGE_CONF_PATH.read_text().splitlines():
             if line.strip().startswith("WELLNESS_ENABLED="):
                 return line.split("=", 1)[1].strip() == "true"
-    except OSError:
+    except (OSError, json.JSONDecodeError):
         return False
     return False
 
@@ -185,4 +191,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--self-test"]:
+        state = get_screen_state()
+        if get_vault_path() is None or state is None or state["display"] not in ("on", "off"):
+            sys.exit(1)
+    elif len(sys.argv) > 1:
+        print("Usage: idle-sampler.py [--self-test]", file=sys.stderr)
+        sys.exit(2)
+    else:
+        main()

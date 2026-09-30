@@ -145,30 +145,24 @@ def is_wellness_script(hook_input):
 # ── Output helpers ─────────────────────────────────────────
 
 def emit_allow(message):
-    """Print allow JSON with systemMessage and exit."""
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-        },
-        "systemMessage": message,
-    }))
+    """Allow tool execution; informational messages use PostToolUse instead."""
+    print(json.dumps({"permissionDecision": "allow"}))
     sys.exit(0)
 
 
 def emit_deny(short_reason, detail_message):
     """Print deny JSON and exit.
     short_reason: one-liner shown in GitHub Copilot CLI's error callouts.
-    detail_message: full formatted message shown via systemMessage."""
+    detail_message: full formatted message included in the deny reason."""
     print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": short_reason,
-        },
-        "systemMessage": detail_message,
+        "permissionDecision": "deny",
+        "permissionDecisionReason": f"{short_reason}\n{detail_message}",
     }))
     sys.exit(2)
+
+def emit_post_message(message):
+    print(json.dumps({"additionalContext": f"Wellness coach reminder for the user:\n{message}"}))
+    sys.exit(0)
 
 
 def emit_stop_message(message):
@@ -295,7 +289,7 @@ def main():
         sys.exit(0)
 
     prefs = read_prefs()
-    if prefs is None:
+    if prefs is None or not prefs.get("wellness_onboarding_complete", False):
         sys.exit(0)
 
     coach_name = prefs.get("coach_name", "Wellness Coach")
@@ -308,6 +302,7 @@ def main():
     # fires too rarely (user is mostly reading long agent output, so the
     # break timer was ticking silently).
     IS_STOP = is_stop_event(hook_input)
+    IS_POST = hook_input.get("hook_event_name") == "PostToolUse"
 
     # Always allow the wellness-coach skill through — even during strike.
     # When invoked during an active strike, ONLY lift the strike flag (so the
@@ -324,7 +319,7 @@ def main():
     # stale.
     #
     # Stop events skip this — there's no tool_name to match against.
-    if not IS_STOP and is_wellness_coach_skill(hook_input):
+    if not IS_STOP and not IS_POST and is_wellness_coach_skill(hook_input):
         if prefs.get("strike_active"):
             def lift_strike_for_conversation(p):
                 now = now_iso()
@@ -340,7 +335,7 @@ def main():
     # Auto-detect breaks from activity monitoring — runs BEFORE strike check
     # so a real break (screen off, system sleep) can clear a strike naturally.
     # Returns (timestamp, tier) where tier is "real" or "micro", or None.
-    detected = _detect_auto_break(prefs)
+    detected = _detect_auto_break(prefs) if (IS_STOP or IS_POST or prefs.get("strike_active")) else None
 
     last_break = prefs.get("last_break_timestamp")
     if detected:
@@ -371,7 +366,7 @@ def main():
             except (ValueError, KeyError, TypeError):
                 pass  # Malformed entry — fall through to existing dedup
         if not rate_limited and (not prior or auto_break > prior):
-            _credit_auto_break(prefs, auto_break, last_break, coach_name, tier, IS_STOP)
+            _credit_auto_break(prefs, auto_break, last_break, coach_name, tier, IS_STOP, IS_POST)
             # Re-read prefs after crediting — strike may have been cleared
             prefs = read_prefs() or prefs
 
@@ -380,7 +375,7 @@ def main():
     # already ended) and Stop has no tool_name to match exempt paths against.
     # The next PreToolUse will pick up the strike state and emit the actual
     # block; Stop just stays silent on an existing strike.
-    if not IS_STOP and prefs.get("strike_active"):
+    if not IS_STOP and not IS_POST and prefs.get("strike_active"):
         # Let through:
         #   - vault writes (context preservation must not deadlock)
         #   - wellness state file access (preferences + runtime — recovery path)
@@ -426,6 +421,8 @@ def main():
     level = determine_level(prefs, elapsed)
 
     if level is None:
+        sys.exit(0)
+    if not IS_STOP and not IS_POST and level != "strike":
         sys.exit(0)
 
     # Schedule-aware defer (Slice 4 of wellness-coverage-audit, 2026-06-05).
@@ -495,6 +492,8 @@ def main():
         notify(coach_name, notif_body)
         if IS_STOP:
             emit_stop_message(center_block(box))
+        if IS_POST:
+            emit_post_message(center_block(box))
         emit_allow(center_block(box))
 
     # Strike — short reason in error callout, full box in systemMessage.
@@ -511,6 +510,8 @@ def main():
         notify(coach_name, notif_body)
         if IS_STOP:
             emit_stop_message(center_block(box))
+        if IS_POST:
+            emit_post_message(center_block(box))
         emit_deny(
             f"On strike — {int(elapsed)} min without a break",
             center_block(box),
@@ -529,6 +530,10 @@ def main():
         if notif_body:
             notify(coach_name, notif_body)
         emit_stop_message(centered)
+    if IS_POST:
+        if notif_body:
+            notify(coach_name, notif_body)
+        emit_post_message(centered)
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -619,7 +624,7 @@ def _detect_auto_break(prefs):
 
 
 def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real",
-                       is_stop=False):
+                       is_stop=False, is_post=False):
     """Credit an auto-detected break and optionally show welcome-back.
 
     Tier semantics:
@@ -704,6 +709,8 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real",
                     f"auto-detected break.")
                 if is_stop:
                     emit_stop_message(center_block(box))
+                if is_post:
+                    emit_post_message(center_block(box))
                 else:
                     emit_allow(center_block(box))
     except (ValueError, TypeError, OverflowError):

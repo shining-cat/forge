@@ -179,7 +179,8 @@ else
                     | map(select(
                         ((.bash // "") | contains("/hooks/forge-") or
                          contains("/scripts/forge-") or
-                         contains("copilot-")) | not)))
+                         contains("copilot-") or
+                         contains("/skills/wellness-coach/hooks/wellness-")) | not)))
                    + $forge_hooks[$event]))
           )
         )

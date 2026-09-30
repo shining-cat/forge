@@ -1,4 +1,5 @@
 #!/bin/bash
+COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 set -euo pipefail
 # Removes the wellness-coach activity monitor (Tier 2).
 # Stops launchd agent, removes binary, sampler, plist, and idle log.

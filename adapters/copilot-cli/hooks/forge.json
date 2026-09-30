@@ -18,6 +18,11 @@
     "PreToolUse": [
       {
         "type": "command",
+        "bash": "python3 \"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/hooks/wellness-timer.py\"",
+        "timeoutSec": 15
+      },
+      {
+        "type": "command",
         "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-credential-guard.sh",
         "matcher": "Bash",
         "timeoutSec": 10
@@ -32,6 +37,11 @@
     "PostToolUse": [
       {
         "type": "command",
+        "bash": "python3 \"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/hooks/wellness-timer.py\"",
+        "timeoutSec": 15
+      },
+      {
+        "type": "command",
         "bash": "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh post-tool",
         "timeoutSec": 10
       }
@@ -39,11 +49,21 @@
     "Stop": [
       {
         "type": "command",
+        "bash": "python3 \"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/hooks/wellness-timer.py\"",
+        "timeoutSec": 15
+      },
+      {
+        "type": "command",
         "bash": "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh stop",
         "timeoutSec": 10
       }
     ],
     "PreCompact": [
+      {
+        "type": "command",
+        "bash": "python3 \"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/hooks/wellness-precompact.py\"",
+        "timeoutSec": 10
+      },
       {
         "type": "command",
         "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-compaction.sh pre",

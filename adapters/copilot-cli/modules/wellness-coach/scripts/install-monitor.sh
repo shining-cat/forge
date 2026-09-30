@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 # Installs the wellness-coach activity monitor (Tier 2).
 # Compiles screen_state binary, installs idle sampler, sets up launchd agent.
 
@@ -11,6 +12,7 @@ SAMPLER_SRC="$PLUGIN_DIR/scripts/idle-sampler.py"
 BINARY_SRC="$PLUGIN_DIR/src/screen_state.c"
 
 echo "Installing wellness-coach activity monitor..."
+mkdir -p "$(dirname "$PLIST_PATH")"
 
 # 1. Create bin directory
 mkdir -p "$BIN_DIR"
@@ -25,6 +27,10 @@ fi
 
 cc -O2 -framework CoreGraphics -framework CoreFoundation \
     "$BINARY_SRC" -o "$BIN_DIR/screen_state"
+if ! "$BIN_DIR/screen_state" >/dev/null; then
+    echo "Error: Compiled screen state checker did not run." >&2
+    exit 1
+fi
 
 # 3. Copy sampler script
 cp "$SAMPLER_SRC" "$BIN_DIR/idle-sampler.py"
@@ -34,6 +40,10 @@ chmod +x "$BIN_DIR/idle-sampler.py"
 PYTHON3_PATH="$(command -v python3)"
 if [ -z "$PYTHON3_PATH" ]; then
     echo "Error: python3 not found."
+    exit 1
+fi
+if ! "$PYTHON3_PATH" "$BIN_DIR/idle-sampler.py" --self-test; then
+    echo "Error: Activity sampler self-check failed." >&2
     exit 1
 fi
 
@@ -54,8 +64,13 @@ cat > "$PLIST_PATH" << EOF
     <integer>60</integer>
     <key>RunAtLoad</key>
     <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>COPILOT_HOME</key>
+        <string>${COPILOT_DIR}</string>
+    </dict>
     <key>StandardErrorPath</key>
-    <string>${HOME}/.copilot/wellness-idle-sampler.log</string>
+    <string>${COPILOT_DIR}/wellness-idle-sampler.log</string>
     <key>StandardOutPath</key>
     <string>/dev/null</string>
 </dict>
@@ -73,43 +88,19 @@ if ! launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"; then
     rmdir "$BIN_DIR" 2>/dev/null || true
     exit 1
 fi
+if ! launchctl print "gui/$(id -u)/${PLIST_NAME}" >/dev/null; then
+    echo "Error: Activity sampler did not remain loaded." >&2
+    launchctl bootout "gui/$(id -u)/${PLIST_NAME}" 2>/dev/null || true
+    rm -f "$BIN_DIR/screen_state" "$BIN_DIR/idle-sampler.py" "$PLIST_PATH"
+    exit 1
+fi
 
-echo "Activity monitor installed successfully."
+echo "Activity monitor registered and sampler self-check passed; confirm a fresh sample after onboarding before enabling detection."
 echo "  Binary: $BIN_DIR/screen_state"
 echo "  Sampler: $BIN_DIR/idle-sampler.py"
 echo "  LaunchAgent: $PLIST_PATH"
 
-# 7. Flip the prefs flag so the hook actually reads from the idle log.
-# Without this, the hook silently ignores the daemon's samples because
-# `activity_monitor_enabled` defaults to false. This step makes the install
-# self-sufficient: the script can be run standalone (not via skill onboarding)
-# and still produce a working setup.
-FORGE_CONF="$COPILOT_DIR/forge.conf"
-if [ -f "$FORGE_CONF" ]; then
-    VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)
-    PREFS_FILE="${VAULT_PATH}/_shared/wellness-preferences.json"
-    if [ -n "${VAULT_PATH:-}" ] && [ -f "$PREFS_FILE" ]; then
-        if command -v jq &>/dev/null; then
-            TMP="${PREFS_FILE}.tmp"
-            if jq '.activity_monitor_enabled = true | .activity_monitor_installed = true' \
-                "$PREFS_FILE" > "$TMP" 2>/dev/null; then
-                mv "$TMP" "$PREFS_FILE"
-                echo "  Prefs flag: activity_monitor_enabled=true (in $PREFS_FILE)"
-            else
-                rm -f "$TMP"
-                echo "  Warning: could not update prefs flag. Set manually:"
-                echo "    jq '.activity_monitor_enabled = true | .activity_monitor_installed = true' $PREFS_FILE"
-            fi
-        else
-            echo "  Warning: jq not found. Set the prefs flag manually:"
-            echo "    Edit $PREFS_FILE and add: \"activity_monitor_enabled\": true, \"activity_monitor_installed\": true"
-        fi
-    else
-        # Prefs not yet created — wellness onboarding hasn't run.
-        # The skill will set both flags when it writes the prefs file.
-        echo "  Prefs flag: will be set when wellness onboarding runs (no prefs file yet)"
-    fi
-fi
+echo "  Preferences are unchanged. Finish wellness onboarding to verify a sample and enable activity-aware detection."
 
 echo ""
 echo "To uninstall: run $(dirname "$0")/uninstall-monitor.sh"

@@ -20,6 +20,8 @@
 #   "<color>🙆 12m  ☕ due\033[0m"           — break overdue
 #   "\033[31m⚠️ on strike\033[0m"            — strike active
 
+COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
+
 # ----- diagnose mode --------------------------------------------------------
 
 if [ "${1:-}" = "--diagnose" ]; then
@@ -70,6 +72,25 @@ if [ "${1:-}" = "--diagnose" ]; then
         hint "Wellness onboarding hasn't run. Invoke the wellness-coach skill in Claude."
         echo; echo "Cannot continue diagnostic without preferences."
         exit 1
+    fi
+
+    if [ "$(jq -r '.wellness_onboarding_complete == true' "$PREFS" 2>/dev/null)" = true ]; then
+        pass "Interactive setup:" "complete"
+    else
+        fail "Interactive setup:" "incomplete (coach will not intervene)"
+        hint "Run the wellness-coach skill to complete the eight setup questions."
+    fi
+    HOOKS="$COPILOT_DIR/hooks/forge.json"
+    if [ -f "$HOOKS" ] && jq -e '
+        (.hooks.PreToolUse // [] | any(.[]; (.bash // "") | contains("/wellness-timer.py"))) and
+        (.hooks.PostToolUse // [] | any(.[]; (.bash // "") | contains("/wellness-timer.py"))) and
+        (.hooks.Stop // [] | any(.[]; (.bash // "") | contains("/wellness-timer.py"))) and
+        (.hooks.PreCompact // [] | any(.[]; (.bash // "") | contains("/wellness-precompact.py")))
+    ' "$HOOKS" >/dev/null 2>&1; then
+        pass "Wellness hooks:" "registered (restart Copilot CLI after installation)"
+    else
+        fail "Wellness hooks:" "missing PreToolUse, PostToolUse, Stop, or PreCompact"
+        hint "Update Forge tooling and restart Copilot CLI."
     fi
 
     echo
@@ -359,6 +380,7 @@ fi
 # Resolve vault path from forge.conf (same pattern as statusline.sh forge integration)
 FORGE_CONF="$COPILOT_DIR/forge.conf"
 [ -f "$FORGE_CONF" ] || exit 0
+[ "$(grep '^WELLNESS_ENABLED=' "$FORGE_CONF" | tail -1 | cut -d= -f2-)" = true ] || exit 0
 
 VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
 [ -n "$VAULT_PATH" ] || exit 0
@@ -366,6 +388,7 @@ VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
 PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
 RUNTIME="$VAULT_PATH/_shared/wellness-runtime.json"
 [ -f "$PREFS" ] || exit 0
+[ "$(jq -r '.wellness_onboarding_complete == true' "$PREFS" 2>/dev/null)" = true ] || exit 0
 
 # Read all needed fields. Prefs fields (intervals) come from PREFS; runtime
 # fields (timestamps, strike_active) come from RUNTIME if present, else fall

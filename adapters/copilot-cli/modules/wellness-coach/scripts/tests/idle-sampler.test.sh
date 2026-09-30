@@ -85,6 +85,7 @@ EOF
     if [ "$with_vault_path" = "yes" ]; then
       local vault="$home/vault"
       mkdir -p "$vault/_shared"
+      printf '{"wellness_onboarding_complete":true}\n' > "$vault/_shared/wellness-preferences.json"
       {
         echo "VAULT_PATH=$vault"
         [ "$wellness" = "no" ] && echo "WELLNESS_ENABLED=false" \
@@ -195,6 +196,16 @@ HOME_DIR=$(mk_sandbox yes yes no)
 write_marker "$HOME_DIR" '{"session_id":"abc","project":"demo","started_at":"2026-06-05T10:00:00+0200","tmux_pane":null}'
 run_sampler "$HOME_DIR"
 assert_no_sample "wellness disabled" "$(log_path "$HOME_DIR")"
+rm -rf "$HOME_DIR"
+
+# ── 10 — inherited preferences without Copilot onboarding → no samples ──
+echo ""
+echo "Check 10 — setup incomplete → no-op (active marker present)"
+HOME_DIR=$(mk_sandbox yes yes)
+printf '{"wellness_onboarding_complete":false}\n' > "$HOME_DIR/vault/_shared/wellness-preferences.json"
+write_marker "$HOME_DIR" '{"session_id":"abc","project":"demo"}'
+run_sampler "$HOME_DIR"
+assert_no_sample "setup incomplete" "$(log_path "$HOME_DIR")"
 rm -rf "$HOME_DIR"
 
 echo ""

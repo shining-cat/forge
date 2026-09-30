@@ -113,10 +113,12 @@ rm -rf "$TMP_CONF_DIR"
 # ── Layer B — full main() integration under a sandbox HOME ──────────────────
 
 # Build a sandbox HOME. $1 = flag mode: "true" | "false" | "absent".
+# $2 = whether interactive wellness setup was completed (defaults to true).
 # Plants forge.conf, an overdue (90-min) prefs file, and sysctl/osascript
 # stubs on a PATH-prepended bin dir.
 mk_home() {
   local mode="$1"
+  local setup_complete="${2:-true}"
   local home; home=$(mktemp -d)
   mkdir -p "$home/.copilot/scripts" "$home/.copilot/bin" "$home/bin" \
            "$home/vault/_shared"
@@ -139,6 +141,7 @@ home = '$home'
 now = time.time()
 past = time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(now - 90*60))
 prefs = {
+    'wellness_onboarding_complete': json.loads('$setup_complete'),
     'coach_name': 'TestCoach',
     'persona': 'professional',
     'interruption_level': 'escalating_strike',
@@ -189,6 +192,15 @@ run_hook() {
   printf '%s||%s' "$rc" "$out"
 }
 
+run_post_hook() {
+  local home="$1"
+  local out rc
+  out=$(printf '%s' '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"echo test"}}' \
+    | HOME="$home" PATH="$home/bin:$PATH" python3 "$HOOK_FILE" 2>/dev/null)
+  rc=$?
+  printf '%s||%s' "$rc" "$out"
+}
+
 echo ""
 echo "=== B. wellness-timer main() gate (overdue 90-min break) ==="
 
@@ -217,6 +229,45 @@ HOME_DIR=$(mk_home true)
 res=$(run_hook "$HOME_DIR")
 assert_eq    "exit code 2"          "2" "${res%%||*}"
 assert_contains "strike deny emitted" '"permissionDecision": "deny"' "${res#*||}"
+rm -rf "$HOME_DIR"
+
+# ── B4 — copied preferences without interactive setup cannot enforce ───────
+echo ""
+echo "Check B4 — wellness setup incomplete → exit 0, no strike"
+HOME_DIR=$(mk_home true false)
+res=$(run_hook "$HOME_DIR")
+assert_eq "exit code 0" "0" "${res%%||*}"
+assert_not_contains "no deny emitted" '"permissionDecision": "deny"' "${res#*||}"
+rm -rf "$HOME_DIR"
+
+echo ""
+echo "Check B5 — post-tool gentle reminder reaches Copilot as additionalContext"
+HOME_DIR=$(mk_home true)
+python3 - "$HOME_DIR/vault/_shared/wellness-preferences.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    prefs = json.load(f)
+prefs["interruption_level"] = "suggest"
+with open(path, "w") as f:
+    json.dump(prefs, f)
+PY
+res=$(run_hook "$HOME_DIR")
+assert_eq "pre-tool allows" "0" "${res%%||*}"
+assert_not_contains "no pre-tool soft reminder" "systemMessage" "${res#*||}"
+res=$(run_post_hook "$HOME_DIR")
+assert_eq "post-tool succeeds" "0" "${res%%||*}"
+assert_contains "in-conversation reminder" '"additionalContext"' "${res#*||}"
+rm -rf "$HOME_DIR"
+
+echo ""
+echo "Check B6 — invalid preferences shape cannot block all tools"
+HOME_DIR=$(mk_home true)
+printf '[]\n' > "$HOME_DIR/vault/_shared/wellness-preferences.json"
+res=$(run_hook "$HOME_DIR")
+assert_eq "invalid prefs do not deny" "0" "${res%%||*}"
 rm -rf "$HOME_DIR"
 
 echo ""

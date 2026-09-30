@@ -11,6 +11,7 @@
 # files that have stale state from before the cold-start ordering fix.
 
 set -euo pipefail
+COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 
 VAULT_PATH=$(grep '^VAULT_PATH=' "$COPILOT_DIR/forge.conf" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
 SHARED_DIR="${VAULT_PATH:+$VAULT_PATH/_shared}"

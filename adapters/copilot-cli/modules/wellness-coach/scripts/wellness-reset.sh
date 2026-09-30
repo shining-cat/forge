@@ -20,6 +20,7 @@
 #       4h), run --full-reset and emit a one-line "Wellness reset — ..." note.
 #       Otherwise silent no-op (exit 0). Invoked by Forge SKILL.md step 0a.
 
+COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 FULL_RESET="false"
 IF_COLD_START="false"
 for arg in "$@"; do
@@ -95,6 +96,10 @@ fi
 
 if [ ! -f "$PREFS_FILE" ]; then
   echo "No wellness preferences found. Nothing to reset."
+  exit 0
+fi
+if [ "$IF_COLD_START" = true ] &&
+   [ "$(jq -r '.wellness_onboarding_complete == true' "$PREFS_FILE" 2>/dev/null)" != true ]; then
   exit 0
 fi
 

@@ -27,7 +27,7 @@ def main():
         return
 
     prefs = read_prefs()
-    if prefs is None:
+    if prefs is None or not prefs.get("wellness_onboarding_complete", False):
         return
 
     coach_name = prefs.get("coach_name", "Coach")

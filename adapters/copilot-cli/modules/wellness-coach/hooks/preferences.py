@@ -103,6 +103,7 @@ RUNTIME_FIELDS = frozenset({
 })
 
 DEFAULT_PREFS = {
+    "wellness_onboarding_complete": False,
     "persona": "playful",
     "interruption_level": "escalating_strike",
     "break_interval_minutes": 60,
@@ -168,6 +169,9 @@ def read_prefs():
         return None
     except IOError as e:
         print(f"WARNING: cannot read wellness preferences: {e}", file=sys.stderr)
+        return None
+    if not isinstance(merged, dict):
+        print(f"WARNING: wellness preferences must be a JSON object: {PREFS_PATH}", file=sys.stderr)
         return None
     # Merge runtime fields if the runtime file exists. Runtime values override
     # any matching keys in prefs (handles the migration window where a field
