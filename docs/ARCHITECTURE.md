@@ -98,6 +98,14 @@ guards whose semantics are shared. There is no post-compaction equivalent in
 Copilot, so Forge performs the pre-compaction action and relies on the next
 session-start context for recovery.
 
+The model catalog follows the same boundary: `core/model_catalog/` owns neutral
+tiers, schema, validation, persistence, and role-to-tier resolution. Both
+adapters package that core and invoke it through their runtime-specific
+`forge-model-catalog.sh` wrappers. The wrappers pin resolution and
+coverage/onboarding to their own runtime binding; foreign binding requests
+fail explicitly rather than selecting another runtime's dispatch ID. Users
+choose model-to-tier mappings manually; adapters dispatch the selected model.
+
 ### External dependencies
 
 Skills reference capabilities from these marketplaces:

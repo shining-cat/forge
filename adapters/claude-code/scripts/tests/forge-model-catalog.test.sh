@@ -23,6 +23,51 @@ resolved=$(HOME="$tmp/home" VAULT_PATH="$tmp" FORGE_CONF="$tmp/forge.conf" "$ROO
 rc=$?
 set -e
 [ "$rc" = 0 ] && echo "$resolved" | grep -q '"status": "resolved"'
+python3 - "$tmp/_shared/capability-snapshot.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    catalog = json.load(stream)
+catalog["records"][0]["bindings"].insert(0, {"runtime": "copilot-cli", "active": True, "dispatch_id": "foreign-dispatch"})
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+PY
+resolved=$(HOME="$tmp/home" VAULT_PATH="$tmp" FORGE_CONF="$tmp/forge.conf" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" resolve --role keeper)
+echo "$resolved" | grep -q '"dispatch_id": "dispatch"'
+echo "$resolved" | grep -q '"runtime": "claude"'
+set +e
+foreign=$(HOME="$tmp/home" VAULT_PATH="$tmp" FORGE_CONF="$tmp/forge.conf" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" resolve --role keeper --binding=copilot-cli); rc=$?
+set -e
+[ "$rc" = 3 ] && echo "$foreign" | grep -q '"status":"invalid"'
+set +e
+coverage=$(HOME="$tmp/home" VAULT_PATH="$tmp" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" check-coverage --snapshot "$tmp/_shared/capability-snapshot.json"); rc=$?
+set -e
+[ "$rc" = 2 ] && echo "$coverage" | grep -q '"binding": "claude"'
+set +e
+foreign=$(HOME="$tmp/home" VAULT_PATH="$tmp" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" check-coverage --snapshot "$tmp/_shared/capability-snapshot.json" --binding copilot-cli); rc=$?
+set -e
+[ "$rc" = 3 ] && echo "$foreign" | grep -q '"status":"invalid"'
+set +e
+foreign=$(HOME="$tmp/home" VAULT_PATH="$tmp" FORGE_CONF="$tmp/forge.conf" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" onboarding-status --snapshot "$tmp/_shared/capability-snapshot.json" --config "$tmp/forge.conf" --binding=copilot-cli); rc=$?
+set -e
+[ "$rc" = 3 ] && echo "$foreign" | grep -q '"status":"invalid"'
+python3 - "$tmp/_shared/capability-snapshot.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    catalog = json.load(stream)
+catalog["records"][0]["bindings"][-1]["active"] = False
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+PY
+set +e
+missing=$(HOME="$tmp/home" VAULT_PATH="$tmp" FORGE_CONF="$tmp/forge.conf" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" resolve --role keeper); rc=$?
+set -e
+[ "$rc" = 2 ] && echo "$missing" | grep -q '"status": "no_match"'
 # Explicit tier overrides migrated role tier.
 set +e
 HOME="$tmp/home" VAULT_PATH="$tmp" FORGE_CONF="$tmp/forge.conf" "$ROOT/adapters/claude-code/scripts/forge-model-catalog.sh" resolve --role keeper --tier economy >/dev/null

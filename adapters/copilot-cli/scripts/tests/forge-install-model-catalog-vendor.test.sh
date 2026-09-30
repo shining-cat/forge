@@ -108,6 +108,63 @@ else
 fi
 
 wrapper="$T/home/.copilot/scripts/forge-model-catalog.sh"
+# A mixed catalog resolves the local dispatch, not the foreign runtime's ID.
+python3 - "$T/vault/_shared/model-catalog/catalog.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    catalog = json.load(stream)
+for record in catalog["records"]:
+    record["bindings"].insert(0, {"runtime": "claude", "active": True, "dispatch_id": "foreign-dispatch"})
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+PY
+out="$(HOME="$T/home" COPILOT_HOME="$T/home/.copilot" VAULT_PATH="$T/vault" "$wrapper" resolve --role keeper)"
+if echo "$out" | grep -q '"runtime": "copilot-cli"' &&
+   echo "$out" | grep -q '"dispatch_id": "model-a"'; then
+  ok "mixed-runtime resolve selects Copilot dispatch"
+else
+  bad "mixed-runtime resolve" "selected a foreign dispatch: $out"
+fi
+out="$(HOME="$T/home" COPILOT_HOME="$T/home/.copilot" VAULT_PATH="$T/vault" "$wrapper" check-coverage --snapshot "$T/vault/_shared/model-catalog/catalog.json")"
+if echo "$out" | grep -q '"status": "complete"' &&
+   echo "$out" | grep -q '"binding": "copilot-cli"'; then
+  ok "coverage without binding uses Copilot runtime"
+else
+  bad "coverage without binding" "did not select Copilot runtime: $out"
+fi
+for args in "resolve --role keeper --binding claude" \
+            "check-coverage --snapshot $T/vault/_shared/model-catalog/catalog.json --binding=claude" \
+            "onboarding-status --snapshot $T/vault/_shared/model-catalog/catalog.json --config $T/home/.copilot/forge.conf --binding claude"; do
+  out="$(HOME="$T/home" COPILOT_HOME="$T/home/.copilot" VAULT_PATH="$T/vault" "$wrapper" $args 2>&1)"
+  rc=$?
+  if [ "$rc" -eq 3 ] && echo "$out" | grep -q '"status":"invalid"'; then
+    ok "foreign binding rejected: ${args%% *}"
+  else
+    bad "foreign binding" "accepted or misreported: $args ($rc): $out"
+  fi
+done
+python3 - "$T/vault/_shared/model-catalog/catalog.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    catalog = json.load(stream)
+catalog["records"][0]["bindings"][-1]["active"] = False
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+PY
+out="$(HOME="$T/home" COPILOT_HOME="$T/home/.copilot" VAULT_PATH="$T/vault" "$wrapper" resolve --role keeper 2>&1)"
+rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '"status": "no_match"'; then
+  ok "foreign-only tier reports no match"
+else
+  bad "foreign-only tier" "did not fail closed ($rc): $out"
+fi
+cp "$T/catalog-before" "$T/vault/_shared/model-catalog/catalog.json"
 # A full foreign mapping must never satisfy an incomplete local mapping.
 python3 - "$T/vault/_shared/model-catalog/catalog.json" <<'PY'
 import json

@@ -72,4 +72,4 @@ The user can view or change role models at any time:
 
 ## Capability catalog
 
-Role selection may resolve a neutral tier through `forge-context.sh resolve-model`. The adapter only forwards the request; ranking, freshness, evidence, and dispatch binding remain owned by `core/model_catalog`. Empty or unavailable catalogs fail closed and preserve legacy MODEL_* behavior.
+`core/model_catalog/` owns neutral tiers, schema, validation, and catalog policy. The Claude adapter packages and invokes it through `forge-model-catalog.sh`, which pins `claude` for resolve and coverage/onboarding checks. A foreign `--binding` is rejected; foreign-only tiers return `no_match`, not another runtime's dispatch ID. Users choose model-to-tier bindings manually, and the adapter dispatches the selected Claude model. Empty or unavailable catalogs fail closed and preserve legacy `MODEL_*` behavior.
