@@ -12,7 +12,7 @@ Help the user commit + push the vault when it's accumulated drift. The Keeper al
 1. **Run the report** by invoking the bash subcommand:
 
    ```bash
-   bash $COPILOT_DIR/scripts/forge-context.sh vault-sync
+   bash "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" vault-sync
    ```
 
    The output is a categorized view of dirty vault files grouped by top-level directory, with a suggested commit message per group. It covers the outer vault repo AND every nested private repo in `VAULT_PRIVATE_ROOTS` (e.g. `PRO/` → its own GHEC remote), each shown under a `### Nested repo: <name> ###` section and pushed to its own origin.
@@ -24,10 +24,10 @@ Help the user commit + push the vault when it's accumulated drift. The Keeper al
    - **Unattended (Claude runs it):** `--commit` has no TTY when invoked via the Bash tool, so it falls back to the defaults (auto-Y): it commits *every* group and pushes each repo to its own origin. Use this when the user just wants the vault banked ("commit it", "sync the vault", "go ahead"). This is the common EOD/EOW path.
 
      ```bash
-     bash $COPILOT_DIR/scripts/forge-context.sh vault-sync --commit
+     bash "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" vault-sync --commit
      ```
 
-   - **Interactive per-group control (user runs it):** if the user wants to accept/skip individual groups, have them run the same command in their own shell (e.g. `! bash $COPILOT_DIR/scripts/forge-context.sh vault-sync --commit`). With a real TTY the script prompts Y/N per group and before pushing.
+   - **Interactive per-group control (user runs it):** if the user wants to accept/skip individual groups, have them run the same command in their own shell (e.g. `! bash "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" vault-sync --commit`). With a real TTY the script prompts Y/N per group and before pushing.
 
 4. **When the user says "do it" / "go ahead" / "commit it"** — just run `--commit` via the Bash tool. It auto-accepts all groups and pushes. Only steer them to the interactive terminal path if they signal they want to *pick* which groups to commit.
 

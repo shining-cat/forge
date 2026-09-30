@@ -47,13 +47,13 @@ Have Keeper write the entry via `forge-context.sh append-friction` — **never h
 For a fresh, un-triaged one-off, **only `--description` is required** — date, pattern, recurrence, and action-ref default to today / `needs_new_pattern` / `0` / `needs_new_pattern`:
 
 ```bash
-$COPILOT_DIR/scripts/forge-context.sh append-friction --description "{one sentence: what drifted}"
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" append-friction --description "{one sentence: what drifted}"
 ```
 
 Once you've classified the friction (via `forge-classify-friction.sh`), pass the full set to record the pattern — and, at recurrence 1 with a real task path, auto-create a stub task:
 
 ```bash
-$COPILOT_DIR/scripts/forge-context.sh append-friction \
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" append-friction \
   --date YYYY-MM-DD \
   --description "{one sentence}" \
   --pattern {pattern-from-catalog} \

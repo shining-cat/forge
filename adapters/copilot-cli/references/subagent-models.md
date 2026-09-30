@@ -43,15 +43,17 @@ Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 | `MODEL_TIER_RELEASE` | `standard` | Verification, commits, PRs | no |
 | `MODEL_TIER_TOOLSMITH` | `standard` | Skill authoring | no |
 
-(Read the live values from `$COPILOT_DIR/forge.conf` — the table above is the install-time default, not a substitute for checking.)
+(Read the live values from `${COPILOT_HOME:-$HOME/.copilot}/forge.conf` — the table above is the install-time default, not a substitute for checking.)
 
 **Before every Forge subagent dispatch**, resolve the role's tier to an actual `dispatch_id` — don't skip this and let the harness default silently apply (this exact omission caused a real regression: friction 2026-09-28, session-entry Keeper ran on the default model instead of `minimal`/Haiku):
 
 ```bash
-VAULT_PATH=<vault path> "$COPILOT_DIR/scripts/forge-model-catalog.sh" resolve --role keeper
+VAULT_PATH=<vault path> "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh" resolve --role keeper
 ```
 
 This prints the resolved model's `dispatch_id` for the role's configured tier (looked up via `MODEL_TIER_KEEPER` in `forge.conf` against the active `copilot-cli` bindings in the catalog). Pass that value to the Agent/task tool's `model` parameter: `task({ model: "{dispatch_id}", ... })`. If the tier is `inherit`/empty, or the resolve call errors (e.g. stale catalog), omit the `model` parameter and note the fallback rather than silently proceeding as if the tier were honored.
+
+The Copilot wrapper packages and invokes `core/model_catalog/`, which owns neutral tiers and catalog policy. It pins `copilot-cli` for resolve and coverage/onboarding checks; a foreign `--binding` is rejected, and foreign-only tiers return `no_match`. The adapter dispatches only the selected Copilot model; manual tier mapping remains user-owned.
 
 ## Source of truth per role
 

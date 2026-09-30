@@ -8,7 +8,7 @@ description: Run the Forge permission/hook linter against $COPILOT_DIR/settings.
 Run the linter:
 
 ```bash
-$COPILOT_DIR/scripts/forge-permission-lint.sh
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-permission-lint.sh"
 ```
 
 Then explain any findings to the user with brief context for each:

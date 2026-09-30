@@ -10,21 +10,21 @@ Two read-only audits live here. Run both, report each separately, never auto-fix
 ## Prose rules
 
 ```bash
-$COPILOT_DIR/scripts/forge-context.sh audit-prose-rules
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" audit-prose-rules
 ```
 
 Report findings to the user with brief context:
 
 - **Why this matters:** Prose discipline rules that the agent must remember are a maintenance liability. Each one is a candidate for a script-enforced replacement per the patterns in `core/references/script-replacement-patterns.md`.
 - **What the report shows:** new findings since the last audit run (fingerprint-cached). Each line is `file:line:matched-keyword`.
-- **Don't take action automatically.** This audit is read-only. Convert findings to action only after explicit user direction. Suggest classifying the most-recurrent finding via `$COPILOT_DIR/scripts/forge-classify-friction.sh --interactive --description "<finding>"`.
+- **Don't take action automatically.** This audit is read-only. Convert findings to action only after explicit user direction. Suggest classifying the most-recurrent finding via `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-classify-friction.sh" --interactive --description "<finding>"`.
 
 If the report is empty ("no new findings"), the prose-rule surface is stable since last audit. Report that as good news.
 
 ## Line budgets
 
 ```bash
-$COPILOT_DIR/scripts/forge-context.sh skill-budgets
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" skill-budgets
 ```
 
 Report findings to the user:

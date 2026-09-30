@@ -62,9 +62,9 @@ still gets Opus quality on demand.
 The ratios above are specific to one usage pattern and one pricing tier. Re-derive them:
 
 ```bash
-$COPILOT_DIR/scripts/forge-cost-audit.py                     # per-model cost split, all sessions
-$COPILOT_DIR/scripts/forge-cost-audit.py --days 30           # windowed
-$COPILOT_DIR/scripts/forge-cost-audit.py --cache-composition # gap-bucket cache-writes + 1h-TTL break-even
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py"                     # per-model cost split, all sessions
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --days 30           # windowed
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --cache-composition # gap-bucket cache-writes + 1h-TTL break-even
 ```
 
 The `--cache-composition` view is the one that settles the tiering call: it buckets

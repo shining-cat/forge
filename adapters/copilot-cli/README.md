@@ -23,6 +23,11 @@ neutral `./install.sh --runtime copilot` entry point. It backs up changed
 Forge-owned files with a
 `.pre-update.<timestamp>` suffix. `--dry-run` prints the planned changes.
 
+Skill commands work without `COPILOT_DIR`. For a convenient variable in your
+own shell, optionally add `export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"`
+to `~/.zshrc` or `~/.bashrc` before launching Copilot CLI. The installer does
+not change shell startup files, and custom `COPILOT_HOME` remains supported.
+
 The Copilot adapter intentionally differs from Claude in three places:
 
 1. Agent profiles use Copilot's `.agent.md` format and tool aliases

@@ -57,7 +57,7 @@ Only after Keeper verifies the checkpoint, display:
 ### 5. Reconcile marker (silent unless mismatch)
 
 After writing the checkpoint, run:
-`$COPILOT_DIR/scripts/forge-context.sh reconcile-marker`
+`"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" reconcile-marker`
 
 This compares the marker against the most-recent-checkpoint truth. If they disagree, a `[Keeper]` warning surfaces to stderr — repeat it to the user verbatim and let them decide what to do. **Do NOT auto-fix.**
 

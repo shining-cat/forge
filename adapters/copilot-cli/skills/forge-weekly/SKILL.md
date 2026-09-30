@@ -15,7 +15,7 @@ Quartermaster gathers input and asks the user; Keeper executes and verifies all 
 
 ### 0. Idempotency guard
 
-Run `$COPILOT_DIR/scripts/forge-context.sh weekly-wrap-due`:
+Run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" weekly-wrap-due`:
 
 - Output `due` → proceed to Step 1.
 - Output `not-due` → the wrap already ran within `FORGE_WEEKLY_WRAP_GAP_DAYS` (default 5). Ask once, in persona:
@@ -27,7 +27,7 @@ Run `$COPILOT_DIR/scripts/forge-context.sh weekly-wrap-due`:
 
 > **[Quartermaster]** Counting the week's friction.
 
-Run `$COPILOT_DIR/scripts/forge-context.sh harvest-friction --pretty` to get JSON proposals — each entry has `entry_id`, `date`, `description`, `pattern`, `recurrence`, `proposed_target` (`task` / `decision` / `feedback` / `archive-only`), and `justification`.
+Run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" harvest-friction --pretty` to get JSON proposals — each entry has `entry_id`, `date`, `description`, `pattern`, `recurrence`, `proposed_target` (`task` / `decision` / `feedback` / `archive-only`), and `justification`.
 
 Render as a numbered list, grouped by `proposed_target`:
 
@@ -53,7 +53,7 @@ When the harvest is empty (no unpinned entries in the window), say so plainly an
 
 > **[Quartermaster]** Draft folder.
 
-Run `$COPILOT_DIR/scripts/forge-context.sh draft-list` to enumerate captured drafts. Output is TSV with columns `path  project  title` (project is `—` when unset and unpinable from the path).
+Run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" draft-list` to enumerate captured drafts. Output is TSV with columns `path  project  title` (project is `—` when unset and unpinable from the path).
 
 When empty: *"No drafts this week. Capture folder's clean."* → skip to Step 3.
 
@@ -156,7 +156,7 @@ Compute `{YYYY-WNN}` as ISO 8601 week (e.g. `2026-W22`). Compute `{date range}` 
 
 ### 6. Mark the wrap done
 
-Only after Keeper verifies all required authored vault mutations (including friction promotions, triage changes, and the weekly checkpoint), run `$COPILOT_DIR/scripts/forge-context.sh mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses. If any required write failed or was deferred, do not mark the wrap done or announce it closed; report the incomplete work and leave the wrap due.
+Only after Keeper verifies all required authored vault mutations (including friction promotions, triage changes, and the weekly checkpoint), run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses. If any required write failed or was deferred, do not mark the wrap done or announce it closed; report the incomplete work and leave the wrap due.
 
 ### 7. Hand-off
 
