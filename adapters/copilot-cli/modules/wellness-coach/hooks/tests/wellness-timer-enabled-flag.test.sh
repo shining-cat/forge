@@ -71,7 +71,7 @@ assert_not_contains() {
 # Call preferences.is_wellness_enabled with an explicit conf path.
 run_flag() {
   local conf="$1"
-  python3 -c "
+  PYTHONPATH="$SCRIPT_DIR/.." python3 -c "
 import importlib.util
 spec = importlib.util.spec_from_file_location('pref', '$PREFS_FILE')
 pref = importlib.util.module_from_spec(spec)
@@ -162,6 +162,10 @@ with open(home + '/vault/_shared/wellness-preferences.json', 'w') as f:
     json.dump(prefs, f)
 "
 
+  mkdir -p "$home/vault/_shared/wellness-coach"
+  mv "$home/vault/_shared/wellness-preferences.json" "$home/vault/_shared/wellness-coach/wellness-preferences.json"
+  printf '{"directory":"wellness-coach"}\n' > "$home/vault/_shared/wellness-location.json"
+
   # sysctl stub — fake wake/boot far in the past (epoch 1e9 = 2001), so the
   # ISO string compares < the 2026 fake last-break and never credits an auto
   # break that would clear the strike.
@@ -243,7 +247,7 @@ rm -rf "$HOME_DIR"
 echo ""
 echo "Check B5 — post-tool gentle reminder reaches Copilot as additionalContext"
 HOME_DIR=$(mk_home true)
-python3 - "$HOME_DIR/vault/_shared/wellness-preferences.json" <<'PY'
+python3 - "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json" <<'PY'
 import json
 import sys
 
@@ -265,7 +269,7 @@ rm -rf "$HOME_DIR"
 echo ""
 echo "Check B6 — invalid preferences shape cannot block all tools"
 HOME_DIR=$(mk_home true)
-printf '[]\n' > "$HOME_DIR/vault/_shared/wellness-preferences.json"
+printf '[]\n' > "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json"
 res=$(run_hook "$HOME_DIR")
 assert_eq "invalid prefs do not deny" "0" "${res%%||*}"
 rm -rf "$HOME_DIR"

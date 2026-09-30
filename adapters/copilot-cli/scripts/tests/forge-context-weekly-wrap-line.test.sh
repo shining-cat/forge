@@ -41,13 +41,14 @@ epoch_to_hm()    { date -r "$1" +%H:%M 2>/dev/null || date -d "@$1" +%H:%M; }
 #   $3 runtime: "due" (no runtime file) | "fresh" (just-wrapped)
 mk_vault() {
   local eod_off="$1" sess_age="$2" runtime="$3"
-  local tmp; tmp=$(mktemp -d)
-  mkdir -p "$tmp/_shared" "$tmp/PERSO/test-proj"
+  local tmp; tmp=$(mktemp -d "$SCRIPT_DIR/.wellness-wrap-test.XXXXXX")
+  mkdir -p "$tmp/_shared/wellness-coach" "$tmp/PERSO/test-proj"
+  printf '{"directory":"wellness-coach"}\n' > "$tmp/_shared/wellness-location.json"
   printf '{"session_id":"s","project":"test-proj","started_at":"x","tmux_pane":null}' > "$tmp/_shared/forge-active"
   local m_epoch; m_epoch=$(( $(date +%s) - sess_age*60 ))
   touch -t "$(epoch_to_stamp "$m_epoch")" "$tmp/_shared/forge-active"
   local e_epoch; e_epoch=$(( $(date +%s) + eod_off*60 ))
-  printf '{"preferred_end_of_day":"%s"}' "$(epoch_to_hm "$e_epoch")" > "$tmp/_shared/wellness-preferences.json"
+  printf '{"preferred_end_of_day":"%s"}' "$(epoch_to_hm "$e_epoch")" > "$tmp/_shared/wellness-coach/wellness-preferences.json"
   if [ "$runtime" = "fresh" ]; then
     printf '{"last_weekly_wrap_timestamp":"%s"}' "$(date +%Y-%m-%dT%H:%M:%S)" > "$tmp/_shared/forge-runtime.json"
   fi
@@ -57,11 +58,14 @@ mk_vault() {
 # Run a subcommand with EOW_DAY + EOW_LAST_HOUR_MIN overrides in conf.
 run_cfg() {
   local vault="$1" eow_day="$2" eow_last="$3"; shift 3
-  local conf; conf=$(mktemp)
+  local conf; conf=$(mktemp "$vault/conf.XXXXXX")
   { echo "VAULT_PATH=$vault"; echo "EOW_DAY=$eow_day"; echo "EOW_LAST_HOUR_MIN=$eow_last"; } > "$conf"
+  mkdir -p "$vault/home/.copilot/skills/wellness-coach/hooks"
+  ln -sf "$SCRIPT_DIR/../../modules/wellness-coach/hooks/wellness_location.py" \
+    "$vault/home/.copilot/skills/wellness-coach/hooks/wellness_location.py"
   # stdout is the gate contract; stderr carries an unrelated "no project repo"
   # startup warning (test vault has no code repo) — drop it.
-  FORGE_CONF_OVERRIDE="$conf" "$SCRIPT" "$@" 2>/dev/null
+  HOME="$vault/home" COPILOT_HOME="$vault/home/.copilot" FORGE_CONF_OVERRIDE="$conf" "$SCRIPT" "$@" 2>/dev/null
   rm -f "$conf"
 }
 

@@ -14,7 +14,7 @@ So wellness reads its own state file (`wellness-preferences.json`), NOT the Forg
 
 ## What this implies
 
-- Multi-terminal state is shared via `${VAULT_PATH}/_shared/wellness-preferences.json` + `wellness-runtime.json`. Always read fresh; never cache.
+- Multi-terminal state is shared via the preferences and runtime files resolved via `wellness_location.py`. Always read fresh; never cache.
 - A break credited in one terminal resets the timer for ALL terminals.
 - A strike in any terminal blocks all terminals.
 - Reminders are deduped by `last_reminder_timestamp` across terminals (5-min cooldown) to avoid the same nag showing up in three windows at once.

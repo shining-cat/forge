@@ -119,7 +119,7 @@ Both are optional. Calendar uses Google Workspace only when wellness `calendar_e
 
 ## Multi-Terminal
 
-All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. Break taken in one terminal resets the timer for all. Strike in any terminal blocks all terminals. Break acknowledged anywhere resumes everywhere.
+All instances share the preferences file selected by `_shared/wellness-location.json` (default `_shared/wellness-coach/wellness-preferences.json`; flat `_shared` is read-only for legacy installs before migration). Break taken in one terminal resets the timer for all. Strike in any terminal blocks all terminals. Break acknowledged anywhere resumes everywhere.
 
 ## Configuration
 
@@ -176,3 +176,5 @@ wellness-coach/
 │   └── screen_state.c            — CoreGraphics display + lock checker
 └── README.md
 ```
+
+Storage migration: obtain explicit consent to the resolved vault destination before writes or monitor installation. Use `hooks/wellness_location.py directory` to inspect and `prepare --directory wellness-coach --consent --old-tooling-stopped` only after all old CLI sessions and LaunchAgents stop. The locator is published last; legacy flat files remain intact. Copied setup is disabled until re-confirmed. Invalid locators fail closed; there is no home fallback. Track preferences and locator in vault git, ignore runtime/log/cache files. Restart both CLIs and reinstall the sampler from new source after migration.

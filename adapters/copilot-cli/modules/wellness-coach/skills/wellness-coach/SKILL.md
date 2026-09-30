@@ -24,25 +24,23 @@ Preferences are split across two files in the same directory:
 - **`wellness-preferences.json`** (tracked in git) — user-set preferences: `persona`, `coach_name`, intervals, insistence, calendar/weather config, `personal_notes`, `energy_patterns`, `activity_monitor_*`, `preferred_end_of_day`.
 - **`wellness-runtime.json`** (gitignored) — auto-modified runtime state: `last_break_timestamp`, `last_micro_break_timestamp`, `last_reminder_timestamp`, `strike_active`, `strike_cleared_at`, `snooze_count`, `break_history`, `resistance_pattern`.
 
-Both files live in `${VAULT_PATH}/_shared/` (legacy fallback: `~/.copilot/`). The Python helper (`preferences.py`) merges them on read and splits them on write — call sites that go through the helper see one combined dict.
+The configured vault's `_shared/wellness-location.json` selects a relative directory within `_shared` (default `wellness-coach`). With no locator, existing flat `_shared` files remain readable for suggestions but **read-only** (no hook enforcement or writes); there is **no home-directory fallback**. A malformed locator is an error, never a reason to use legacy paths. The locator is published only after explicit destination consent and a stopped-old-tooling migration. The Python helper merges preferences + runtime on read and splits them on write.
+
+Resolve the actual paths with `python3 "${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json` (and `wellness-runtime.json`). Never construct a wellness path manually.
 
 **To inspect current state from outside the hook**, run `~/.copilot/skills/wellness-coach/scripts/wellness-status.sh --state`. It prints the canonical merged view (setup + runtime + next scheduled nags + recent break history) in human-readable form. Use this whenever you'd otherwise need to triangulate across both JSON files plus the activity log — much less error-prone, especially when reasoning about "did this lock credit?" or "why hasn't a nag fired yet?".
 
 ## Startup Check
 
-On every conversation start, check if `${VAULT_PATH}/_shared/wellness-preferences.json` exists. Always read BOTH files (preferences and runtime) and merge them — runtime fields override matching keys in prefs.
+On every conversation start, resolve the destination and read BOTH files (runtime overrides matching preferences). A failed resolver means stop and report the configuration error; do not write or enable enforcement.
 
 ```bash
-VAULT_PATH=$(grep '^VAULT_PATH=' ~/.copilot/forge.conf 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
-SHARED_DIR="${VAULT_PATH:+$VAULT_PATH/_shared}"
-[ -z "$SHARED_DIR" ] && SHARED_DIR="$HOME/.copilot"
-PREFS="$SHARED_DIR/wellness-preferences.json"
-RUNTIME="$SHARED_DIR/wellness-runtime.json"
-
+LOCATION="${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/hooks/wellness_location.py"
+PREFS=$(python3 "$LOCATION" file wellness-preferences.json) || exit 1
+RUNTIME=$(python3 "$LOCATION" file wellness-runtime.json) || exit 1
 if [ ! -f "$PREFS" ]; then
-  echo "NO_PREFS"
+  echo NO_PREFS
 else
-  # Merge prefs + runtime (runtime overrides matching keys)
   jq -s '.[0] * .[1]' "$PREFS" <(cat "$RUNTIME" 2>/dev/null || echo '{}')
 fi
 ```
@@ -140,7 +138,7 @@ Load `references/personas.md` for the per-persona voice catalog (tone, emoji pol
 
 ## Multi-Terminal Awareness
 
-All instances share `${VAULT_PATH}/_shared/wellness-preferences.json`. When reading/writing:
+All instances share the preferences file resolved by `wellness_location.py`. When reading/writing:
 - Always read fresh (don't cache)
 - Break taken in one terminal resets timer for all
 - Reminder shown in one terminal → check `last_reminder_timestamp` to avoid duplicating within 5 min
@@ -161,7 +159,7 @@ The user can talk to the wellness coach anytime — not just during reminders. W
 
 ### Status queries
 
-Read `${VAULT_PATH}/_shared/wellness-preferences.json` and calculate:
+Read resolved wellness preferences and runtime and calculate:
 
 - **Time since last break:** compare `last_break_timestamp` to now
 - **Time until next micro-break:** `micro_break_interval_minutes` minus elapsed since `last_micro_break_timestamp`

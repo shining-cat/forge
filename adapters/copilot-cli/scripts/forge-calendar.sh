@@ -42,10 +42,10 @@ fi
 CALENDAR_PROVIDER=$(grep '^CALENDAR_PROVIDER=' "$FORGE_CONF" | tail -n 1 | cut -d= -f2- || true)
 
 STATE_FILE="$VAULT_PATH/_shared/calendar-sync-state.json"
-WELLNESS_PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
-[ -f "$WELLNESS_PREFS" ] || WELLNESS_PREFS="$COPILOT_DIR/wellness-preferences.json"
-
 check_calendar_enabled() {
+  python3 "$COPILOT_DIR/skills/wellness-coach/hooks/wellness_location.py" consented >/dev/null 2>&1 || return 1
+  local WELLNESS_PREFS
+  WELLNESS_PREFS=$(python3 "$COPILOT_DIR/skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json) || return 1
   # Exit 0 if calendar_enabled: true in wellness-preferences.json. Exit 1 otherwise.
   [ -f "$WELLNESS_PREFS" ] || return 1
   WP="$WELLNESS_PREFS" python3 -c "

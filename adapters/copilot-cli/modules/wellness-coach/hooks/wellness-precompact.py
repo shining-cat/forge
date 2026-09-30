@@ -17,6 +17,7 @@ import sys
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PLUGIN_DIR)
 
+from wellness_location import consented
 from preferences import read_prefs, minutes_since, is_wellness_enabled
 
 
@@ -27,7 +28,7 @@ def main():
         return
 
     prefs = read_prefs()
-    if prefs is None or not prefs.get("wellness_onboarding_complete", False):
+    if not consented() or prefs is None or not prefs.get("wellness_onboarding_complete", False):
         return
 
     coach_name = prefs.get("coach_name", "Coach")

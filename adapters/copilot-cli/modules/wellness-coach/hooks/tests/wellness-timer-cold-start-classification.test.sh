@@ -75,7 +75,7 @@ samples = [
     {'t': off_t,       'display': 'off', 'locked': True},
     {'t': now,         'display': 'on', 'locked': False},
 ]
-with open('$home/.copilot/wellness-idle-log.json', 'w') as f:
+with open('$home/vault/_shared/wellness-idle-log.json', 'w') as f:
     json.dump(samples, f)
 "
   echo "$home"

@@ -2,8 +2,21 @@
 """Activity logging for wellness-coach. Appends timestamped entries and trims old ones."""
 import os
 import time
+from pathlib import Path
+from wellness_location import file_path, location, consented
 
-DEFAULT_ACTIVITY_LOG_PATH = os.path.expanduser("~/.claude/wellness-activity-log.md")
+
+def activity_log_path(prefs):
+    default = file_path("wellness-activity-log.md")
+    override = prefs.get("activity_log_path")
+    if not override:
+        return str(default)
+    candidate = Path(override)
+    if not candidate.is_absolute():
+        candidate = location() / candidate
+    if not candidate.resolve().is_relative_to(location().resolve()):
+        raise ValueError("activity_log_path escapes wellness destination")
+    return str(candidate)
 
 
 def log_event(prefs, event_type, description, changes=None):
@@ -13,7 +26,12 @@ def log_event(prefs, event_type, description, changes=None):
     description: one-line summary
     changes: dict of {field: "old → new"} or None
     """
-    log_path = prefs.get("activity_log_path", DEFAULT_ACTIVITY_LOG_PATH)
+    try:
+        log_path = activity_log_path(prefs)
+        if not consented():
+            return
+    except (OSError, ValueError):
+        return
     timestamp = time.strftime("%Y-%m-%d %H:%M")
 
     entry = f"\n### {timestamp} — {event_type}\n{description}\n"
@@ -22,6 +40,7 @@ def log_event(prefs, event_type, description, changes=None):
         entry += f"- **Changed:** {items}\n"
 
     try:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(entry)
     except OSError:
@@ -33,6 +52,8 @@ def log_event(prefs, event_type, description, changes=None):
 def _maybe_trim_log(log_path):
     """Remove entries older than 24h. Checked once per day via sidecar marker."""
     trim_marker = log_path + ".trimmed"
+    if not Path(trim_marker).resolve().is_relative_to(location().resolve()):
+        return
     today = time.strftime("%Y-%m-%d")
     try:
         with open(trim_marker, "r") as f:

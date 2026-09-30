@@ -72,7 +72,7 @@ assert_sampled() {
 #                        writes =false. Only meaningful when $2 is "yes".
 mk_sandbox() {
   local with_conf="$1" with_vault_path="$2" wellness="${3:-yes}"
-  local home; home=$(mktemp -d)
+  local home; home=$(mktemp -d "$SCRIPT_DIR/../../../../../.wellness-sampler-test.XXXXXX")
   mkdir -p "$home/.copilot/bin"
   # Fake screen_state binary: always reports display=on,locked=0
   cat > "$home/.copilot/bin/screen_state" <<'EOF'
@@ -91,6 +91,8 @@ EOF
         [ "$wellness" = "no" ] && echo "WELLNESS_ENABLED=false" \
                                || echo "WELLNESS_ENABLED=true"
       } > "$home/.copilot/forge.conf"
+      HOME="$home" COPILOT_HOME="$home/.copilot" python3 "$SCRIPT_DIR/../../hooks/wellness_location.py" prepare --consent --old-tooling-stopped >/dev/null
+      printf '{"wellness_onboarding_complete":true}\n' > "$vault/_shared/wellness-coach/wellness-preferences.json"
     else
       echo "FORGE_REPO=/nope" > "$home/.copilot/forge.conf"
     fi
@@ -104,7 +106,7 @@ run_sampler() {
 }
 
 # Convenience: locate the idle log under a sandbox HOME.
-log_path() { echo "$1/.copilot/wellness-idle-log.json"; }
+log_path() { echo "$1/vault/_shared/wellness-coach/wellness-idle-log.json"; }
 
 # Convenience: write a marker file with arbitrary content.
 write_marker() {
@@ -202,7 +204,7 @@ rm -rf "$HOME_DIR"
 echo ""
 echo "Check 10 — setup incomplete → no-op (active marker present)"
 HOME_DIR=$(mk_sandbox yes yes)
-printf '{"wellness_onboarding_complete":false}\n' > "$HOME_DIR/vault/_shared/wellness-preferences.json"
+printf '{"wellness_onboarding_complete":false}\n' > "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json"
 write_marker "$HOME_DIR" '{"session_id":"abc","project":"demo"}'
 run_sampler "$HOME_DIR"
 assert_no_sample "setup incomplete" "$(log_path "$HOME_DIR")"

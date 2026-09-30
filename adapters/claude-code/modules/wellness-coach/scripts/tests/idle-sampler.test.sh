@@ -72,7 +72,7 @@ assert_sampled() {
 #                        writes =false. Only meaningful when $2 is "yes".
 mk_sandbox() {
   local with_conf="$1" with_vault_path="$2" wellness="${3:-yes}"
-  local home; home=$(mktemp -d)
+  local home; home=$(mktemp -d "$SCRIPT_DIR/../../../../../.wellness-sampler-test.XXXXXX")
   mkdir -p "$home/.claude/bin"
   # Fake screen_state binary: always reports display=on,locked=0
   cat > "$home/.claude/bin/screen_state" <<'EOF'
@@ -85,11 +85,14 @@ EOF
     if [ "$with_vault_path" = "yes" ]; then
       local vault="$home/vault"
       mkdir -p "$vault/_shared"
+      printf '{"wellness_onboarding_complete":true}\n' > "$vault/_shared/wellness-preferences.json"
       {
         echo "VAULT_PATH=$vault"
         [ "$wellness" = "no" ] && echo "WELLNESS_ENABLED=false" \
                                || echo "WELLNESS_ENABLED=true"
       } > "$home/.claude/forge.conf"
+      HOME="$home" CLAUDE_HOME="$home/.claude" python3 "$SCRIPT_DIR/../../hooks/wellness_location.py" prepare --consent --old-tooling-stopped >/dev/null
+      printf '{"wellness_onboarding_complete":true}\n' > "$vault/_shared/wellness-coach/wellness-preferences.json"
     else
       echo "FORGE_REPO=/nope" > "$home/.claude/forge.conf"
     fi
@@ -103,7 +106,7 @@ run_sampler() {
 }
 
 # Convenience: locate the idle log under a sandbox HOME.
-log_path() { echo "$1/.claude/wellness-idle-log.json"; }
+log_path() { echo "$1/vault/_shared/wellness-coach/wellness-idle-log.json"; }
 
 # Convenience: write a marker file with arbitrary content.
 write_marker() {

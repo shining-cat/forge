@@ -45,7 +45,7 @@ grep -q 'wellness-timer.py' ~/.claude/settings.json 2>/dev/null && echo "HOOKS_W
    - `Bash(~/.claude/skills/wellness-coach/scripts/*)` and `Bash(<HOME>/.claude/skills/wellness-coach/scripts/*)`
    - Where `<HOME>` is the user's actual home directory (e.g. `/Users/<your-username>`)
 
-   Wellness preferences live at `${VAULT_PATH}/_shared/wellness-preferences.json` — covered by the existing vault allowlist, no per-file permission needed.
+   Wellness preferences live at the explicitly consented subpath selected by `${VAULT_PATH}/_shared/wellness-location.json` (default `_shared/wellness-coach/wellness-preferences.json`); no wellness writes or enforcement occur before storage consent.
 3. Add these hooks if not present:
    - PreToolUse: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5)
    - Stop: `python3 ~/.claude/skills/wellness-coach/hooks/wellness-timer.py` (timeout: 5) — supplemental tick on assistant turn-end; covers Pattern A workflows where the user is mostly reading agent output and PreToolUse fires too rarely

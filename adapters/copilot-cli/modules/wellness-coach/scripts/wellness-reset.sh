@@ -77,22 +77,13 @@ fi
 export FULL_RESET
 export IF_COLD_START
 
-# Resolve preferences path from forge.conf VAULT_PATH (see preferences.py).
-# Falls back to legacy $COPILOT_DIR/ location with a warning if forge.conf is missing.
-LEGACY_PREFS="$COPILOT_DIR/wellness-preferences.json"
-FORGE_CONF="$COPILOT_DIR/forge.conf"
-if [ -f "$FORGE_CONF" ]; then
-  VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2- | tr -d '[:space:]')
-  if [ -n "$VAULT_PATH" ]; then
-    PREFS_FILE="$VAULT_PATH/_shared/wellness-preferences.json"
-  else
-    echo "[wellness-reset] VAULT_PATH not set in forge.conf — using $LEGACY_PREFS" >&2
-    PREFS_FILE="$LEGACY_PREFS"
-  fi
-else
-  echo "[wellness-reset] forge.conf not found — using $LEGACY_PREFS" >&2
-  PREFS_FILE="$LEGACY_PREFS"
+python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" directory >/dev/null || exit 1
+if ! python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented >/dev/null 2>&1; then
+  [ "$IF_COLD_START" = true ] && exit 0
+  echo "[wellness-reset] Storage consent is required before modifying wellness state." >&2
+  exit 1
 fi
+PREFS_FILE=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-preferences.json) || exit 1
 
 if [ ! -f "$PREFS_FILE" ]; then
   echo "No wellness preferences found. Nothing to reset."

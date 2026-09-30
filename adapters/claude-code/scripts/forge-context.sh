@@ -320,10 +320,13 @@ reconcile_marker() {
 # coordination deadlock loop". Fail-open: if wellness file is missing or
 # unreadable, treat as not-on-strike (wellness-disabled installs unaffected).
 is_wellness_strike_active() {
-  local prefs="${VAULT_PATH}/_shared/wellness-preferences.json"
+  python3 "$HOME_DIR/.claude/skills/wellness-coach/hooks/wellness_location.py" consented >/dev/null 2>&1 || return 1
+  local prefs runtime strike
+  prefs=$(python3 "$HOME_DIR/.claude/skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json) || return 1
+  runtime=$(python3 "$HOME_DIR/.claude/skills/wellness-coach/hooks/wellness_location.py" file wellness-runtime.json) || return 1
   [ -f "$prefs" ] || return 1
-  local strike
   strike="$(jq -r '.strike_active // false' "$prefs" 2>/dev/null)"
+  [ -f "$runtime" ] && strike="$(jq -r '.strike_active // false' "$runtime" 2>/dev/null)"
   [ "$strike" = "true" ]
 }
 
@@ -2741,7 +2744,7 @@ EOF
 #
 # Reads:
 #   - $MARKER mtime as session-age proxy (when /forge entered)
-#   - $VAULT_PATH/_shared/wellness-preferences.json for preferred_end_of_day (HH:MM)
+#   - the resolved wellness preferences for preferred_end_of_day (HH:MM)
 #   - $EOW_DAY (loaded from forge.conf at startup, defaults to 5 = Friday)
 #
 # Petra consults this from her SKILL.md "wrap-up state awareness" rule before
@@ -2770,8 +2773,9 @@ do_wrap_up_state() {
     return 0
   fi
 
-  # EOD window — needs preferred_end_of_day from wellness prefs
-  local prefs="$VAULT_PATH/_shared/wellness-preferences.json"
+  # EOD window — needs consented wellness preferences.
+  python3 "$HOME_DIR/.claude/skills/wellness-coach/hooks/wellness_location.py" consented >/dev/null 2>&1 || { echo "mid_session"; return 0; }
+  local prefs; prefs=$(python3 "$HOME_DIR/.claude/skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json) || return 1
   if [ ! -f "$prefs" ]; then
     echo "mid_session"
     return 0

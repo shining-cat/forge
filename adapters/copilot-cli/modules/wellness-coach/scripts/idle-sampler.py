@@ -19,7 +19,11 @@ import sys
 import time
 from pathlib import Path
 
-LOG_PATH = Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot"))) / "wellness-idle-log.json"
+import os
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
+from wellness_location import file_path, safe_sidecar, consented
+
 BINARY_PATH = Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot"))) / "bin" / "screen_state"
 FORGE_CONF_PATH = Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot"))) / "forge.conf"
 MAX_AGE_SECONDS = 7200  # 2 hours
@@ -53,16 +57,18 @@ def is_wellness_enabled():
     if not FORGE_CONF_PATH.is_file():
         return False
     try:
+        if not consented():
+            return False
         vault = get_vault_path()
         if vault is None:
             return False
-        prefs = json.loads((vault / "_shared" / "wellness-preferences.json").read_text())
-        if prefs.get("wellness_onboarding_complete") is not True:
+        prefs = json.loads(file_path("wellness-preferences.json").read_text())
+        if not isinstance(prefs, dict) or prefs.get("wellness_onboarding_complete") is not True:
             return False
         for line in FORGE_CONF_PATH.read_text().splitlines():
             if line.strip().startswith("WELLNESS_ENABLED="):
                 return line.split("=", 1)[1].strip() == "true"
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError):
         return False
     return False
 
@@ -153,18 +159,19 @@ def main():
 
     # Read existing log
     samples = []
-    if LOG_PATH.exists():
+    log_path = file_path("wellness-idle-log.json")
+    if log_path.exists():
         try:
-            data = json.loads(LOG_PATH.read_text())
+            data = json.loads(log_path.read_text())
             if isinstance(data, list):
                 samples = data
             else:
                 print(f"Idle log is not a JSON array, resetting", file=sys.stderr)
         except json.JSONDecodeError as e:
             # Back up corrupt log for diagnostics
-            corrupt_path = LOG_PATH.with_suffix(f".corrupt.{int(now)}")
+            corrupt_path = safe_sidecar(log_path.with_suffix(f".corrupt.{int(now)}"))
             try:
-                LOG_PATH.rename(corrupt_path)
+                log_path.rename(corrupt_path)
                 print(f"Idle log corrupt ({e}), backed up to {corrupt_path.name}",
                       file=sys.stderr)
             except OSError:
@@ -184,10 +191,10 @@ def main():
     samples = [s for s in samples if isinstance(s, dict) and s.get("t", 0) > cutoff]
 
     # Write atomically
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = LOG_PATH.with_suffix(".tmp")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = safe_sidecar(log_path.with_suffix(".tmp"))
     tmp.write_text(json.dumps(samples))
-    tmp.replace(LOG_PATH)
+    tmp.replace(log_path)
 
 
 if __name__ == "__main__":

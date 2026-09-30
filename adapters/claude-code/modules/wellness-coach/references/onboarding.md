@@ -4,6 +4,12 @@ Load when the startup check returns `NO_PREFS` (no `wellness-preferences.json` e
 
 Auto-triggers when no preferences file exists. Show all 8 questions upfront as a progress card, then ask one at a time.
 
+## Storage consent (before any wellness write or monitor installation)
+
+Resolve and display the proposed full destination: `python3 "$HOME/.claude/skills/wellness-coach/hooks/wellness_location.py" propose` (or `propose --directory RELATIVE_SUBPATH` to validate an override). Ask for explicit permission to store wellness answers and generated data there, or for another relative subpath under the configured vault `_shared`. The `directory` subcommand instead reports the **current** location, including legacy flat storage; do not mistake it for the proposed default. Do not write a preference, runtime, cache, log, locator or install the monitor until they agree. Declining leaves setup incomplete and causes no new wellness writes. Never offer a home-directory destination.
+
+If flat legacy `_shared/wellness-preferences.json` exists, explain that it stays intact. **Stop all old Claude/Copilot CLI sessions and both wellness LaunchAgents before cutover**, including old processes with old code loaded; confirm this with the user and complete the migration while old tooling is inactive. No background old writer may run during copy/publish. Run `python3 "$HOME/.claude/skills/wellness-coach/hooks/wellness_location.py" prepare --directory wellness-coach --consent --old-tooling-stopped` (replace directory with their approved relative subpath). This copies existing flat wellness files without deleting them, disables onboarding and activity monitoring in the copied preferences until confirmed setup, and atomically publishes the locator last. If old tooling cannot be stopped, keep flat legacy support, do not publish a locator, and defer setup. Restart CLI sessions/reinstall sampler from updated source after cutover; old tooling must remain stopped until then. If the resolver or migration fails, report the error and stop; do not activate the coach. Add `**/wellness-runtime.json`, `**/wellness-runtime.tmp`, `**/wellness-idle-log.json`, `**/wellness-idle-sampler.log`, `**/wellness-calendar-cache.json`, `**/wellness-activity-log.md`, `**/wellness-activity-log.md.trimmed`, `**/wellness-preferences.lock`, `**/wellness-preferences.tmp`, `**/wellness-idle-log.*`, and `**/wellness-runtime.json.*` to the **vault's** `.gitignore` (not here). Track preferences and locator in vault git; if you override `activity_log_path`, ignore that file and its `.trimmed` sidecar as well.
+
 ## Intro message
 
 > I'm your wellness coach! I'll help you take better breaks while you work. Let me set up your preferences — 8 quick questions. You can change any answer at any step, and update your preferences anytime later.
@@ -167,7 +173,10 @@ After all 8 questions are answered, write the preferences file:
 # Build prefs dict from answers, merged with DEFAULT_PREFS
 # Run: date +"%Y-%m-%dT%H:%M:%S" to get actual system time
 # Set last_break_timestamp and last_micro_break_timestamp to date output
-# Write to ${VAULT_PATH}/_shared/wellness-preferences.json
+# Use preferences.read_modify_write() at the resolved destination; keep
+# wellness_onboarding_complete false until fresh runtime timestamps are stored,
+# then set it true in a separate write. Leave activity monitoring off until
+# a fresh sampler sample is verified.
 ```
 
 Confirm in the chosen persona tone.

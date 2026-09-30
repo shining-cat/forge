@@ -11,44 +11,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from wellness_location import location, file_path, shared_dir, safe_sidecar, consented
 
 def _resolve_shared_dir() -> Path:
-    """Resolve the vault's _shared/ directory (or legacy ~/.claude/ fallback).
-
-    Reads VAULT_PATH from ~/.claude/forge.conf and returns {VAULT_PATH}/_shared.
-    Falls back to ~/.claude/ (with a stderr warning) if forge.conf is missing or
-    VAULT_PATH is unset, so the wellness-coach module remains usable standalone.
-    """
-    legacy = Path.home() / ".claude"
-    forge_conf = Path.home() / ".claude" / "forge.conf"
-    if not forge_conf.is_file():
-        print(
-            "[wellness-coach] forge.conf not found — using legacy path "
-            f"{legacy}/wellness-preferences.json (install Forge to silence prompts).",
-            file=sys.stderr,
-        )
-        return legacy
-    vault_path = ""
-    try:
-        for raw in forge_conf.read_text().splitlines():
-            line = raw.strip()
-            if line.startswith("VAULT_PATH="):
-                vault_path = line.split("=", 1)[1].strip()
-                break
-    except OSError as e:
-        print(
-            f"[wellness-coach] Could not read forge.conf ({e}) — using legacy path {legacy}.",
-            file=sys.stderr,
-        )
-        return legacy
-    if not vault_path:
-        print(
-            "[wellness-coach] VAULT_PATH not set in forge.conf — using legacy "
-            f"path {legacy}.",
-            file=sys.stderr,
-        )
-        return legacy
-    return Path(vault_path) / "_shared"
+    """Use the validated locator; absent locator retains flat vault compatibility."""
+    return location()
 
 
 def _read_forge_conf_value(key, conf_path=None):
@@ -57,7 +24,7 @@ def _read_forge_conf_value(key, conf_path=None):
     Returns the stripped value string, or None when the file is missing/
     unreadable or the key is absent. ``conf_path`` is overridable for tests.
     """
-    conf_path = Path(conf_path) if conf_path else Path.home() / ".claude" / "forge.conf"
+    conf_path = Path(conf_path) if conf_path else Path(os.environ.get("CLAUDE_HOME", str(Path.home() / ".claude"))) / "forge.conf"
     if not conf_path.is_file():
         return None
     try:
@@ -84,9 +51,16 @@ def is_wellness_enabled(conf_path=None):
     return _read_forge_conf_value("WELLNESS_ENABLED", conf_path) == "true"
 
 
-_SHARED_DIR = _resolve_shared_dir()
-PREFS_PATH = _SHARED_DIR / "wellness-preferences.json"
-RUNTIME_PATH = _SHARED_DIR / "wellness-runtime.json"
+def _paths():
+    return file_path("wellness-preferences.json"), file_path("wellness-runtime.json")
+
+
+# Kept for callers that inspect these constants; I/O resolves afresh to reject
+# a malformed locator even if one is published after module import.
+try:
+    PREFS_PATH, RUNTIME_PATH = _paths()
+except (OSError, ValueError, json.JSONDecodeError):
+    PREFS_PATH = RUNTIME_PATH = None
 
 # Fields that live in wellness-runtime.json (auto-modified by the coach during
 # normal operation — gitignored to keep vault commits signal-only). Everything
@@ -103,6 +77,7 @@ RUNTIME_FIELDS = frozenset({
 })
 
 DEFAULT_PREFS = {
+    "wellness_onboarding_complete": False,
     "persona": "playful",
     "interruption_level": "escalating_strike",
     "break_interval_minutes": 60,
@@ -139,7 +114,10 @@ DEFAULT_PREFS = {
     "real_break_lock_threshold_minutes": 15
 }
 
-IDLE_LOG_PATH = Path.home() / ".claude" / "wellness-idle-log.json"
+try:
+    IDLE_LOG_PATH = file_path("wellness-idle-log.json")
+except (OSError, ValueError, json.JSONDecodeError):
+    IDLE_LOG_PATH = None
 IDLE_LOG_MAX_AGE_MINUTES = 120  # log is stale if no sample in this window
 
 # Defaults for tiered lock-duration detection. User-configurable via the
@@ -156,10 +134,11 @@ def read_prefs():
     Returns None if the prefs file doesn't exist (onboarding needed).
     Missing/corrupt runtime file degrades gracefully (no fields from it).
     """
-    if not PREFS_PATH.exists():
+    prefs_path, runtime_path = _paths()
+    if not prefs_path.exists():
         return None
     try:
-        with open(PREFS_PATH, "r") as f:
+        with open(prefs_path, "r") as f:
             merged = json.load(f)
     except json.JSONDecodeError as e:
         print(f"WARNING: wellness preferences file is corrupt: {e}", file=sys.stderr)
@@ -169,12 +148,15 @@ def read_prefs():
     except IOError as e:
         print(f"WARNING: cannot read wellness preferences: {e}", file=sys.stderr)
         return None
+    if not isinstance(merged, dict):
+        print(f"WARNING: wellness preferences must be a JSON object: {PREFS_PATH}", file=sys.stderr)
+        return None
     # Merge runtime fields if the runtime file exists. Runtime values override
     # any matching keys in prefs (handles the migration window where a field
     # still exists in both files — runtime is authoritative for runtime fields).
-    if RUNTIME_PATH.exists():
+    if runtime_path.exists():
         try:
-            with open(RUNTIME_PATH, "r") as f:
+            with open(runtime_path, "r") as f:
                 runtime = json.load(f)
             if isinstance(runtime, dict):
                 merged.update(runtime)
@@ -186,7 +168,7 @@ def read_prefs():
 def _atomic_write_json(path: Path, data: dict) -> None:
     """Write JSON to path atomically (temp file + rename)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(".tmp")
+    tmp_path = safe_sidecar(path.with_suffix(".tmp"))
     try:
         with open(tmp_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -205,9 +187,12 @@ def write_prefs(combined):
     """
     runtime_data = {k: combined[k] for k in RUNTIME_FIELDS if k in combined}
     prefs_data = {k: v for k, v in combined.items() if k not in RUNTIME_FIELDS}
-    _atomic_write_json(PREFS_PATH, prefs_data)
+    prefs_path, runtime_path = _paths()
+    if not consented():
+        raise ValueError("wellness storage consent required before writing preferences")
+    _atomic_write_json(prefs_path, prefs_data)
     if runtime_data:
-        _atomic_write_json(RUNTIME_PATH, runtime_data)
+        _atomic_write_json(runtime_path, runtime_data)
 
 
 def minutes_since(timestamp_str):
@@ -234,18 +219,23 @@ def _lock_timeout_handler(signum, frame):
 def read_modify_write(modifier_fn):
     """Read prefs, apply modifier, write back — with file lock for multi-terminal safety.
     Lock acquisition times out after 3 seconds to prevent deadlock."""
-    PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = PREFS_PATH.with_suffix(".lock")
+    prefs_path, _ = _paths()
+    if not consented():
+        raise ValueError("wellness storage consent required before writing preferences")
+    prefs_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = safe_sidecar(prefs_path.with_suffix(".lock"))
     with open(lock_path, "w") as lock_fd:
+        old_handler = signal.signal(signal.SIGALRM, _lock_timeout_handler)
         try:
-            old_handler = signal.signal(signal.SIGALRM, _lock_timeout_handler)
             signal.alarm(3)
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except TimeoutError:
+            raise TimeoutError("Could not acquire preferences lock within 3s")
+        finally:
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old_handler)
-        except TimeoutError:
-            print("WARNING: Could not acquire preferences lock within 3s. "
-                  "Proceeding without lock.", file=sys.stderr)
+        if prefs_path.exists() and read_prefs() is None:
+            raise ValueError("invalid wellness preferences; refusing to overwrite")
         prefs = read_prefs() or dict(DEFAULT_PREFS)
         result = modifier_fn(prefs)
         if result is not None:
@@ -255,10 +245,11 @@ def read_modify_write(modifier_fn):
 
 def read_idle_log():
     """Read idle log. Returns list of samples or empty list if unavailable/stale."""
-    if not IDLE_LOG_PATH.exists():
+    idle_path = file_path("wellness-idle-log.json")
+    if not idle_path.exists():
         return []
     try:
-        data = json.loads(IDLE_LOG_PATH.read_text())
+        data = json.loads(idle_path.read_text())
         if not isinstance(data, list) or not data:
             return []
         # Validate structure: each sample needs "t", "display"
@@ -368,7 +359,7 @@ def get_system_boot_time():
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(epoch))
 
 
-SCREEN_STATE_BINARY = Path.home() / ".claude" / "bin" / "screen_state"
+SCREEN_STATE_BINARY = Path(os.environ.get("CLAUDE_HOME", str(Path.home() / ".claude"))) / "bin" / "screen_state"
 
 
 def get_current_screen_state():

@@ -2,11 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d "$ROOT/.calendar-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/home" "$tmp/vault/_shared" "$tmp/vault/PERSO/calendar-test" "$tmp/bin"
 printf 'calendar-test\n' > "$tmp/vault/_shared/forge-active"
-printf '{"calendar_enabled":true}\n' > "$tmp/vault/_shared/wellness-preferences.json"
+mkdir -p "$tmp/vault/_shared/wellness-coach"
+printf '{"directory":"wellness-coach"}\n' > "$tmp/vault/_shared/wellness-location.json"
+printf '{"calendar_enabled":true}\n' > "$tmp/vault/_shared/wellness-coach/wellness-preferences.json"
 cat > "$tmp/bin/gws" <<'SH'
 #!/bin/sh
 printf 'called\n' >> "$CALENDAR_CALL_LOG"
@@ -18,14 +20,22 @@ case "$GWS_MODE" in
 esac
 SH
 chmod +x "$tmp/bin/gws"
+cat > "$tmp/bin/mktemp" <<'SH'
+#!/bin/sh
+exec /usr/bin/mktemp "$CALENDAR_TEST_DIR/scratch.XXXXXX"
+SH
+chmod +x "$tmp/bin/mktemp"
+export CALENDAR_TEST_DIR="$tmp"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 for adapter in claude-code copilot-cli; do
   script="$ROOT/adapters/$adapter/scripts/forge-calendar.sh"
   context="$ROOT/adapters/$adapter/scripts/forge-context.sh"
   if [ "$adapter" = claude-code ]; then install_dir="$tmp/home/.claude"; else install_dir="$tmp/home/.copilot"; fi
-  mkdir -p "$install_dir/scripts"
+  mkdir -p "$install_dir/scripts" "$install_dir/skills/wellness-coach/hooks"
   ln -sf "$script" "$install_dir/scripts/forge-calendar.sh"
+  ln -sf "$ROOT/adapters/$adapter/modules/wellness-coach/hooks/wellness_location.py" \
+    "$install_dir/skills/wellness-coach/hooks/wellness_location.py"
   state="$tmp/vault/_shared/calendar-sync-state.json"
   calls="$tmp/calls"
   config="$tmp/forge.conf"
@@ -110,11 +120,11 @@ for adapter in claude-code copilot-cli; do
       fail "$adapter $command accepted an API error as an empty calendar"
   done
 
-  printf '{"calendar_enabled":false}\n' > "$tmp/vault/_shared/wellness-preferences.json"
+  printf '{"calendar_enabled":false}\n' > "$tmp/vault/_shared/wellness-coach/wellness-preferences.json"
   rm -f "$calls"
   run entry-fetch
   [ "$rc" -eq 0 ] && [ ! -e "$calls" ] ||
     fail "$adapter disabled calendar contacted Google"
-  printf '{"calendar_enabled":true}\n' > "$tmp/vault/_shared/wellness-preferences.json"
+  printf '{"calendar_enabled":true}\n' > "$tmp/vault/_shared/wellness-coach/wellness-preferences.json"
   echo "PASS: $adapter calendar provider gating"
 done

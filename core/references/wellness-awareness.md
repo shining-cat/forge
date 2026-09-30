@@ -12,7 +12,7 @@ Concretely: wellness reads `wellness-preferences.json`, NOT the `forge-active` m
 
 ## What Forge Reads
 
-If `wellness-preferences.json` exists at `${VAULT_PATH}/_shared/` (or legacy `~/.claude/`), Forge reads two fields to calculate time until next break:
+After storage consent and complete wellness onboarding, Forge resolves `wellness-preferences.json` through the adapter’s `wellness_location.py` and reads it together with `wellness-runtime.json` (which holds the break timestamp). Without a locator, legacy flat `_shared` data is read-only and does not activate wellness. A malformed locator is an error, never a home-directory fallback. Forge uses two fields to calculate time until next break:
 - `last_break_timestamp` — when the user last took a real break
 - `real_break_interval_minutes` — the user's configured break interval
 

@@ -61,8 +61,8 @@ if [ "${1:-}" = "--diagnose" ]; then
         exit 1
     fi
 
-    PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
-    RUNTIME="$VAULT_PATH/_shared/wellness-runtime.json"
+    PREFS=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-preferences.json) || exit 1
+    RUNTIME=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-runtime.json) || exit 1
     if [ -f "$PREFS" ]; then
         pass "Preferences file:" "$PREFS"
     else
@@ -70,6 +70,16 @@ if [ "${1:-}" = "--diagnose" ]; then
         hint "Wellness onboarding hasn't run. Invoke the wellness-coach skill in Claude."
         echo; echo "Cannot continue diagnostic without preferences."
         exit 1
+    fi
+    if python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented >/dev/null 2>&1; then
+        pass "Vault storage consent:" "recorded"
+    else
+        fail "Vault storage consent:" "not recorded (legacy preferences read-only; hooks inactive)"
+    fi
+    if [ "$(jq -r '.wellness_onboarding_complete == true' "$PREFS" 2>/dev/null)" = true ]; then
+        pass "Interactive setup:" "complete"
+    else
+        fail "Interactive setup:" "incomplete (coach will not intervene)"
     fi
 
     echo
@@ -144,7 +154,7 @@ if [ "${1:-}" = "--diagnose" ]; then
 
     echo
     echo "Idle log"
-    IDLE_LOG="$HOME/.claude/wellness-idle-log.json"
+    IDLE_LOG=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-idle-log.json) || exit 1
     if [ -f "$IDLE_LOG" ]; then
         pass "Idle log:" "$IDLE_LOG"
         # Newest sample timestamp (jq picks max .t from the array)
@@ -161,7 +171,7 @@ if [ "${1:-}" = "--diagnose" ]; then
             else
                 fail "Last sample:" "${AGE}s ago (stale — exceeds 2h cutoff, hook will ignore)"
                 hint "Check launchd: launchctl print gui/\$(id -u)/${PLIST_LABEL}"
-                hint "Check log: tail ~/.claude/wellness-idle-sampler.log"
+                hint "Check log: $(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-idle-sampler.log)"
             fi
         else
             fail "Last sample:" "log empty or unreadable"
@@ -209,14 +219,20 @@ if [ "${1:-}" = "--state" ]; then
         exit 1
     fi
 
-    PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
-    RUNTIME="$VAULT_PATH/_shared/wellness-runtime.json"
-    ACTIVITY_LOG="$HOME/.claude/wellness-activity-log.md"
+    PREFS=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-preferences.json) || exit 1
+    RUNTIME=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-runtime.json) || exit 1
+    ACTIVITY_LOG=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-activity-log.md) || exit 1
 
     if [ ! -f "$PREFS" ]; then
         echo "Preferences file missing: $PREFS" >&2
         echo "Wellness onboarding hasn't run." >&2
         exit 1
+    fi
+
+    ACTIVITY_LOG=$(WELLNESS_PREFS="$PREFS" PYTHONPATH="$(cd "$(dirname "$0")/../hooks" && pwd)" python3 -c 'import json, os; from activity_log import activity_log_path; print(activity_log_path(json.load(open(os.environ["WELLNESS_PREFS"]))))') || exit 1
+
+    if ! python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented >/dev/null 2>&1; then
+        echo "Legacy preferences are read-only; storage not consented and hooks inactive."
     fi
 
     NOW_EPOCH=$(date +%s)
@@ -363,9 +379,10 @@ FORGE_CONF="$HOME/.claude/forge.conf"
 VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" | cut -d= -f2-)
 [ -n "$VAULT_PATH" ] || exit 0
 
-PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
-RUNTIME="$VAULT_PATH/_shared/wellness-runtime.json"
+PREFS=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-preferences.json) || exit 1
+RUNTIME=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-runtime.json) || exit 1
 [ -f "$PREFS" ] || exit 0
+python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented >/dev/null 2>&1 || exit 0
 
 # Read all needed fields. Prefs fields (intervals) come from PREFS; runtime
 # fields (timestamps, strike_active) come from RUNTIME if present, else fall

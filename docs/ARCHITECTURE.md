@@ -74,7 +74,7 @@ are separate adapters over the same role-neutral core.
 | `~/.claude/skills/wellness-coach/` | Wellness coach module (skill, hooks, scripts) — installed by Forge when the user opts in during onboarding |
 | `~/.claude/settings.json` | Hook configuration, permissions, plugin enablement. Install defaults `teammateMode` to `"auto"` (Pattern A agent teams open as tmux split-panes) only when the key is absent — a deliberate user value is never clobbered |
 | `~/.claude/forge-teammate-notice-shown` | Sentinel for the one-time Pattern A split-panes notice. Created by `forge-context.sh teammate-notice` the first time the panes notice fires; its presence keeps the notice silent forever after |
-| `${VAULT_PATH}/_shared/wellness-preferences.json` | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |
+| `${VAULT_PATH}/_shared/wellness-coach/wellness-preferences.json` (or a consented `_shared` subpath selected by `wellness-location.json`) | Wellness coach runtime state — vault location to avoid `~/.claude/` sensitive-zone permission prompts |
 | `~/.claude/forge.conf` | Per-install configuration (vault path, repo path, model assignments) |
 | `~/.claude/forge-shell-init.sh` | Shell wrapper sourced by the user's `~/.zshrc` / `~/.bashrc`. Wraps interactive `claude` invocations in tmux so Pattern A agent teams can spawn as panes without user pre-setup. Auto-bypasses when not interactive, already inside tmux, or tmux is missing. Manual bypass: `FORGE_NO_TMUX_WRAP=1` |
 | `~/.claude/forge-tmux.conf` | tmux config consumed by `forge-shell-init.sh` via `tmux -f`. Sources the user's own `~/.tmux.conf` first (if any) then forces `set -g mouse on` so wheel/trackpad events scroll tmux's own buffer — without it, xterm-family terminals translate wheel events to arrow keys on the alt-screen, which Claude Code receives as junk input |
@@ -125,8 +125,10 @@ Skills reference capabilities from these marketplaces:
 │   ├── friction-classified.json   ← machine-readable friction (pattern + recurrence)
 │   ├── forge-active                ← session marker (JSON when active, empty when off)
 │   ├── wind-down-phrases.json      ← learned personal end-of-day vocabulary
-│   ├── wellness-preferences.json   ← wellness coach config (when enabled)
-│   ├── wellness-runtime.json       ← wellness runtime state (gitignored)
+│   ├── wellness-location.json      ← consented wellness subpath (tracked)
+│   ├── wellness-coach/             ← default, overrideable wellness subpath
+│   │   ├── wellness-preferences.json ← user answers (tracked)
+│   │   └── wellness-runtime.json   ← runtime state (gitignored)
 │   ├── calendar-sync-state.json    ← updatedMin token for cheap calendar delta-checks
 │   ├── decisions/                  ← decisions that span projects
 │   ├── patterns/                   ← cross-project codebase wisdom (rare)
@@ -150,7 +152,7 @@ Skills reference capabilities from these marketplaces:
 
 Cross-project synthesis (a former `_shared/OVERVIEW.md` + `_shared/current-checkpoint.md`) was explicitly removed per decision `2026-06-01-petra-single-project-scope`. Petra's day-to-day attention is bounded to one project; cross-project work happens at the weekly wrap, on-demand at user request, or via direct vault folder browsing.
 
-Forge install state lives in `~/.claude/` (forge.conf, settings backup). The `forge-active` runtime marker lives in the vault at `${VAULT_PATH}/_shared/forge-active` instead — `~/.claude/` is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5), and the marker needs silent writes on every Forge entry/exit. Wellness preferences (`${VAULT_PATH}/_shared/wellness-preferences.json`) follow the same relocation pattern, for the same reason.
+Forge install state lives in `~/.claude/` (forge.conf, settings backup). The `forge-active` runtime marker lives in the vault at `${VAULT_PATH}/_shared/forge-active` instead — `~/.claude/` is a Claude Code sensitive zone where allowlist patterns can't suppress prompts (see `core/references/permission-patterns.md` pitfall #5), and the marker needs silent writes on every Forge entry/exit. Wellness preferences live under the consented `_shared` subpath selected by `wellness-location.json` (default `_shared/wellness-coach/`).
 
 The full set of `~/.claude/settings.json` permissions that `install.sh` writes — every script, hook, vault path, and conditional wellness pattern Forge needs — is catalogued in `core/references/forge-permissions.md`. That file is the source of truth for the install-time baseline; `forge-permission-lint.sh` validates the baked patterns at install end (fail-closed).
 
@@ -278,7 +280,7 @@ Optional Forge module — bundled with Forge but disabled unless the user opts i
   - `wellness-precompact.py` (PreCompact) — break suggestion during compaction
 - **Daemon:** `idle-sampler.py` (launchd, 60s interval) — samples screen state when activity monitor is enabled. Marker-gated: reads `${VAULT_PATH}/_shared/forge-active` each tick and exits early when no Forge session is active. Aligns with the principle "Forge should not behave as if it monitors when not running."
 - **Scripts:** `weather.sh`, `wellness-reset.sh`, `wellness-status.sh`, `wellness-stale-clear-guard.sh`, `install-monitor.sh` + `uninstall-monitor.sh`, `notify.sh`
-- **Runtime state:** `${VAULT_PATH}/_shared/wellness-preferences.json` (user config, tracked) + `${VAULT_PATH}/_shared/wellness-runtime.json` (auto-modified, gitignored — `last_break_timestamp`, `strike_active`, etc.)
+- **Runtime state:** preferences (tracked) and runtime/log/cache files (gitignored) under the consented `_shared` subpath (default `wellness-coach/`); flat `_shared` remains read-only for legacy installations until migration.
 
 Petra uses wellness state for break-aware work planning (steer away from deep work near interruptions) and end-of-day wrap-up (quiet time via timestamp reset).
 
@@ -296,3 +298,5 @@ This is project-specific — only affects projects that declare a KB. No impact 
 ## Model capability catalog
 
 Core owns catalog persistence/path resolution, normalized model identity, evidence, neutral tiers, and deterministic resolution. Runtime adapters only acquire runtime data and dispatch bindings; no adapter ranking logic is shared with core. See `core/references/model-catalog.md`.
+
+Wellness storage is resolved by the shared `wellness_location.py` helper in both adapters. Before explicit consent, no new wellness storage is created. Missing locator preserves read-only flat `_shared` legacy files; malformed locators or escaping subpaths fail closed. Migration copies flat data while old CLI/sampler writers are stopped, disables setup in the copied preferences, and publishes the locator last; runtime, cache and logs stay gitignored in the vault. Screen-state binary and LaunchAgent plist remain OS artifacts outside the vault.

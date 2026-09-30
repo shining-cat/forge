@@ -204,3 +204,7 @@ forge-vault-symlinks.sh check      # lint: fail on any tracked symlink or non-po
 ```
 
 Run `forge-vault-symlinks.sh check` before a vault commit (or wire it into your pre-commit / session flow) to keep the rule enforced.
+
+### Wellness data in the vault
+
+`_shared/wellness-location.json` records the consented relative destination (normally `wellness-coach`). The selected folder tracks `wellness-preferences.json`; `wellness-runtime.json`, idle samples, sampler stderr, calendar cache, activity log and its `.trimmed` marker are transient and should be ignored by vault git. Without a locator, existing flat `_shared` wellness data stays read-only and hooks remain inactive. Python hooks, shell readers, and the installed sampler share one validated resolver; binaries and LaunchAgent plist remain outside the vault.

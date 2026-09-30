@@ -46,24 +46,25 @@ This aligns with the user principle *"Forge should not behave as if it monitors 
 ### Verification recipe
 
 ```bash
+IDLE_LOG=$(python3 "$HOME/.claude/skills/wellness-coach/hooks/wellness_location.py" file wellness-idle-log.json) || exit 1
 # 1. Marker absent → no sampling (cleanest test: while Forge is off)
 NOW=$(date +%s); sleep 90
 jq --argjson now "$NOW" '[.[] | select(.t > $now)] | length' \
-  ~/.claude/wellness-idle-log.json
+  "$IDLE_LOG"
 # Expect: 0  (or "file not found" if it's never been written)
 
 # 2. Marker active → sampling
 ~/.claude/scripts/forge-context.sh set-marker active forge
 NOW=$(date +%s); sleep 90
 jq --argjson now "$NOW" '[.[] | select(.t > $now)] | length' \
-  ~/.claude/wellness-idle-log.json
+  "$IDLE_LOG"
 # Expect: >= 1
 
 # 3. Marker __pending__ → no sampling (regression guard for the disambiguation window)
 ~/.claude/scripts/forge-context.sh set-marker pending
 NOW=$(date +%s); sleep 90
 jq --argjson now "$NOW" '[.[] | select(.t > $now)] | length' \
-  ~/.claude/wellness-idle-log.json
+  "$IDLE_LOG"
 # Expect: 0
 ```
 

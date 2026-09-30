@@ -8,7 +8,7 @@
 - Adapt over time if the pattern shifts
 
 **Entering wrap-up:**
-- If the wellness-coach module is enabled, reset the break timer to buy quiet time for wind-down. Run `date +"%Y-%m-%dT%H:%M:%S"` and set `last_break_timestamp` in `${VAULT_PATH}/_shared/wellness-preferences.json` (or `~/.claude/` legacy) to that value. This is not a real break — it just silences reminders during wrap-up.
+- If the wellness-coach module is enabled, reset the break timer to buy quiet time for wind-down. Run the installed `wellness-reset.sh` only after destination consent and completed setup; its preferences helper updates the resolved runtime file under the vault. This is not a real break — it just silences reminders during wrap-up.
 
 **Wrap-up flow (light):**
 - Checkpoint the day's work

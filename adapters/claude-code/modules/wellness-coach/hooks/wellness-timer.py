@@ -28,6 +28,7 @@ from activity_log import log_event
 from context import get_context_lines
 from formatting import format_box, center_block, try_reminder_lock
 from personas import get_persona_messages, get_welcome_back_lines
+from wellness_location import consented
 from preferences import (
     read_prefs, read_modify_write, minutes_since, now_iso,
     read_idle_log, find_last_screen_off_break, get_system_wake_time,
@@ -293,7 +294,7 @@ def main():
         sys.exit(0)
 
     prefs = read_prefs()
-    if prefs is None:
+    if not consented() or prefs is None or prefs.get("wellness_onboarding_complete") is not True:
         sys.exit(0)
 
     coach_name = prefs.get("coach_name", "Wellness Coach")

@@ -10,6 +10,8 @@ PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 SAMPLER_SRC="$PLUGIN_DIR/scripts/idle-sampler.py"
 BINARY_SRC="$PLUGIN_DIR/src/screen_state.c"
 
+python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented || exit 1
+SAMPLER_LOG=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-idle-sampler.log) || exit 1
 echo "Installing wellness-coach activity monitor..."
 
 # 1. Create bin directory
@@ -28,6 +30,7 @@ cc -O2 -framework CoreGraphics -framework CoreFoundation \
 
 # 3. Copy sampler script
 cp "$SAMPLER_SRC" "$BIN_DIR/idle-sampler.py"
+cp "$PLUGIN_DIR/hooks/wellness_location.py" "$BIN_DIR/wellness_location.py"
 chmod +x "$BIN_DIR/idle-sampler.py"
 
 # 4. Find python3 path (use absolute path in plist)
@@ -55,7 +58,7 @@ cat > "$PLIST_PATH" << EOF
     <key>RunAtLoad</key>
     <true/>
     <key>StandardErrorPath</key>
-    <string>${HOME}/.claude/wellness-idle-sampler.log</string>
+    <string>${SAMPLER_LOG}</string>
     <key>StandardOutPath</key>
     <string>/dev/null</string>
 </dict>
@@ -68,7 +71,7 @@ launchctl bootout "gui/$(id -u)/${PLIST_NAME}" 2>/dev/null || true
 if ! launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"; then
     echo "Error: Failed to load LaunchAgent. Cleaning up..."
     rm -f "$BIN_DIR/screen_state"
-    rm -f "$BIN_DIR/idle-sampler.py"
+    rm -f "$BIN_DIR/idle-sampler.py" "$BIN_DIR/wellness_location.py"
     rm -f "$PLIST_PATH"
     rmdir "$BIN_DIR" 2>/dev/null || true
     exit 1
@@ -79,37 +82,4 @@ echo "  Binary: $BIN_DIR/screen_state"
 echo "  Sampler: $BIN_DIR/idle-sampler.py"
 echo "  LaunchAgent: $PLIST_PATH"
 
-# 7. Flip the prefs flag so the hook actually reads from the idle log.
-# Without this, the hook silently ignores the daemon's samples because
-# `activity_monitor_enabled` defaults to false. This step makes the install
-# self-sufficient: the script can be run standalone (not via skill onboarding)
-# and still produce a working setup.
-FORGE_CONF="$HOME/.claude/forge.conf"
-if [ -f "$FORGE_CONF" ]; then
-    VAULT_PATH=$(grep '^VAULT_PATH=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)
-    PREFS_FILE="${VAULT_PATH}/_shared/wellness-preferences.json"
-    if [ -n "${VAULT_PATH:-}" ] && [ -f "$PREFS_FILE" ]; then
-        if command -v jq &>/dev/null; then
-            TMP="${PREFS_FILE}.tmp"
-            if jq '.activity_monitor_enabled = true | .activity_monitor_installed = true' \
-                "$PREFS_FILE" > "$TMP" 2>/dev/null; then
-                mv "$TMP" "$PREFS_FILE"
-                echo "  Prefs flag: activity_monitor_enabled=true (in $PREFS_FILE)"
-            else
-                rm -f "$TMP"
-                echo "  Warning: could not update prefs flag. Set manually:"
-                echo "    jq '.activity_monitor_enabled = true | .activity_monitor_installed = true' $PREFS_FILE"
-            fi
-        else
-            echo "  Warning: jq not found. Set the prefs flag manually:"
-            echo "    Edit $PREFS_FILE and add: \"activity_monitor_enabled\": true, \"activity_monitor_installed\": true"
-        fi
-    else
-        # Prefs not yet created — wellness onboarding hasn't run.
-        # The skill will set both flags when it writes the prefs file.
-        echo "  Prefs flag: will be set when wellness onboarding runs (no prefs file yet)"
-    fi
-fi
-
-echo ""
-echo "To uninstall: run $(dirname "$0")/uninstall-monitor.sh"
+echo "Preferences unchanged; verify a fresh sample after consenting to storage and onboarding."

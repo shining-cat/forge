@@ -2,10 +2,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d "$ROOT/.wellness-install-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home" COPILOT_HOME="$tmp/copilot"
 mkdir -p "$HOME/Library/LaunchAgents" "$COPILOT_HOME" "$tmp/vault/_shared" "$tmp/bin"
+export WELLNESS_TEST_ROOT="$tmp"
+cat > "$tmp/bin/mktemp" <<'SH'
+#!/bin/sh
+exec /usr/bin/mktemp "$WELLNESS_TEST_ROOT/scratch.XXXXXX"
+SH
+chmod +x "$tmp/bin/mktemp"
+export PATH="$tmp/bin:$PATH"
 printf 'VAULT_PATH=%s\nWELLNESS_ENABLED=true\n' "$tmp/vault" > "$COPILOT_HOME/forge.conf"
 printf '{"wellness_onboarding_complete":false,"activity_monitor_enabled":false,"activity_monitor_installed":false}\n' \
   > "$tmp/vault/_shared/wellness-preferences.json"
@@ -39,6 +46,10 @@ if "$COPILOT_HOME/skills/wellness-coach/scripts/wellness-status.sh" --diagnose >
 fi
 grep -q 'Interactive setup:.*incomplete' "$tmp/diagnose"
 grep -q 'Wellness hooks:.*registered' "$tmp/diagnose"
+# Consent and old-writer shutdown are simulated explicitly; no real vault is touched.
+python3 "$COPILOT_HOME/skills/wellness-coach/hooks/wellness_location.py" prepare \
+  --directory wellness-coach --consent --old-tooling-stopped >/dev/null
+prefs="$tmp/vault/_shared/wellness-coach/wellness-preferences.json"
 
 cat > "$tmp/bin/cc" <<'SH'
 #!/usr/bin/env bash
@@ -67,15 +78,17 @@ grep -q 'sampler self-check passed' "$tmp/install-output"
 test -x "$COPILOT_HOME/bin/screen_state"
 test -x "$COPILOT_HOME/bin/idle-sampler.py"
 grep -q "$COPILOT_HOME" "$HOME/Library/LaunchAgents/com.copilot.wellness-idle-sampler.plist"
+grep -Fq "$tmp/vault/_shared/wellness-coach/wellness-idle-sampler.log" \
+  "$HOME/Library/LaunchAgents/com.copilot.wellness-idle-sampler.plist"
 jq -e '.activity_monitor_enabled == false and .activity_monitor_installed == false' \
-  "$tmp/vault/_shared/wellness-preferences.json" >/dev/null
+  "$prefs" >/dev/null
 printf '{"session_id":"test","project":"demo"}\n' > "$tmp/vault/_shared/forge-active"
 jq '.wellness_onboarding_complete = true | .activity_monitor_installed = true' \
-  "$tmp/vault/_shared/wellness-preferences.json" \
-  > "$tmp/prefs" && mv "$tmp/prefs" "$tmp/vault/_shared/wellness-preferences.json"
+  "$prefs" \
+  > "$tmp/prefs" && mv "$tmp/prefs" "$prefs"
 python3 "$COPILOT_HOME/bin/idle-sampler.py"
 jq -e --argjson now "$(date +%s)" 'length > 0 and .[-1].t > ($now - 60)' \
-  "$COPILOT_HOME/wellness-idle-log.json" >/dev/null
+  "$tmp/vault/_shared/wellness-coach/wellness-idle-log.json" >/dev/null
 cat > "$tmp/bin/sysctl" <<'SH'
 #!/bin/sh
 echo "{ sec = 1000000000, usec = 0 }"
@@ -88,9 +101,9 @@ SH
 chmod +x "$tmp/bin/sysctl" "$tmp/bin/osascript"
 export NOTIFY_LOG="$tmp/notifications"
 jq '.interruption_level = "suggest" | .calendar_enabled = false' \
-  "$tmp/vault/_shared/wellness-preferences.json" > "$tmp/prefs" &&
-  mv "$tmp/prefs" "$tmp/vault/_shared/wellness-preferences.json"
-python3 - "$tmp/vault/_shared/wellness-runtime.json" <<'PY'
+  "$prefs" > "$tmp/prefs" &&
+  mv "$tmp/prefs" "$prefs"
+python3 - "$tmp/vault/_shared/wellness-coach/wellness-runtime.json" <<'PY'
 import json
 import sys
 import time

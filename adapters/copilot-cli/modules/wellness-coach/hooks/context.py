@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 
 from formatting import BOX_TEXT_WIDTH
 from preferences import minutes_since, now_iso
+from wellness_location import file_path, consented
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 COPILOT_DIR = os.environ.get("COPILOT_HOME", os.path.expanduser("~/.copilot"))
-CALENDAR_CACHE_PATH = os.path.join(COPILOT_DIR, "wellness-calendar-cache.json")
 CALENDAR_CACHE_TTL_MINUTES = 15
 
 
@@ -34,14 +34,16 @@ def fetch_weather(city):
 def _read_stale_cache():
     """Read calendar cache regardless of age."""
     try:
-        with open(CALENDAR_CACHE_PATH) as f:
+        with open(file_path("wellness-calendar-cache.json")) as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
         return None
 
 
 def fetch_or_read_calendar_cache():
     """Read calendar cache if fresh (< 15 min), fetch live if stale."""
+    if not consented():
+        return None
     cache = _read_stale_cache()
     if cache and cache.get("fetched_at"):
         if minutes_since(cache["fetched_at"]) < CALENDAR_CACHE_TTL_MINUTES:
@@ -104,7 +106,7 @@ def fetch_or_read_calendar_cache():
             "events_today": events_today,
         }
         try:
-            with open(CALENDAR_CACHE_PATH, "w") as f:
+            with open(file_path("wellness-calendar-cache.json"), "w") as f:
                 json.dump(new_cache, f)
         except OSError:
             pass

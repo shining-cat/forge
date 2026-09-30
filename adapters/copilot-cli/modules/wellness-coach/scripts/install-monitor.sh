@@ -11,8 +11,11 @@ PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 SAMPLER_SRC="$PLUGIN_DIR/scripts/idle-sampler.py"
 BINARY_SRC="$PLUGIN_DIR/src/screen_state.c"
 
+python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented || exit 1
+SAMPLER_LOG=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-idle-sampler.log) || exit 1
 echo "Installing wellness-coach activity monitor..."
 mkdir -p "$(dirname "$PLIST_PATH")"
+mkdir -p "$(dirname "$SAMPLER_LOG")"
 
 # 1. Create bin directory
 mkdir -p "$BIN_DIR"
@@ -34,6 +37,7 @@ fi
 
 # 3. Copy sampler script
 cp "$SAMPLER_SRC" "$BIN_DIR/idle-sampler.py"
+cp "$PLUGIN_DIR/hooks/wellness_location.py" "$BIN_DIR/wellness_location.py"
 chmod +x "$BIN_DIR/idle-sampler.py"
 
 # 4. Find python3 path (use absolute path in plist)
@@ -70,7 +74,7 @@ cat > "$PLIST_PATH" << EOF
         <string>${COPILOT_DIR}</string>
     </dict>
     <key>StandardErrorPath</key>
-    <string>${COPILOT_DIR}/wellness-idle-sampler.log</string>
+    <string>${SAMPLER_LOG}</string>
     <key>StandardOutPath</key>
     <string>/dev/null</string>
 </dict>
@@ -83,7 +87,7 @@ launchctl bootout "gui/$(id -u)/${PLIST_NAME}" 2>/dev/null || true
 if ! launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"; then
     echo "Error: Failed to load LaunchAgent. Cleaning up..."
     rm -f "$BIN_DIR/screen_state"
-    rm -f "$BIN_DIR/idle-sampler.py"
+    rm -f "$BIN_DIR/idle-sampler.py" "$BIN_DIR/wellness_location.py"
     rm -f "$PLIST_PATH"
     rmdir "$BIN_DIR" 2>/dev/null || true
     exit 1
@@ -91,7 +95,7 @@ fi
 if ! launchctl print "gui/$(id -u)/${PLIST_NAME}" >/dev/null; then
     echo "Error: Activity sampler did not remain loaded." >&2
     launchctl bootout "gui/$(id -u)/${PLIST_NAME}" 2>/dev/null || true
-    rm -f "$BIN_DIR/screen_state" "$BIN_DIR/idle-sampler.py" "$PLIST_PATH"
+    rm -f "$BIN_DIR/screen_state" "$BIN_DIR/idle-sampler.py" "$BIN_DIR/wellness_location.py" "$PLIST_PATH"
     exit 1
 fi
 

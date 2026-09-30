@@ -68,7 +68,7 @@ Run AFTER the step-0 config existence check but BEFORE step 0b catalog reads, st
 
 The script self-gates on `WELLNESS_ENABLED` + `WELLNESS_COLD_START_HOURS`. Surface stdout verbatim before the step-6 summary if non-empty. For why this is step 0a (not step 2.5), the strike-exemption interaction, and the shell-to-shell gap-script note, see `references/wellness-cold-start.md`.
 
-If `WELLNESS_ENABLED=true`, check `${VAULT_PATH}/_shared/wellness-preferences.json` for `wellness_onboarding_complete: true`. A file inherited from another runtime or a partial setup does **not** count as completed onboarding. If absent or false, invoke the wellness-coach skill and offer its eight-question interactive setup before treating the coach as active. If the user defers, continue Forge with wellness enforcement inactive; do not silently mark setup complete.
+If `WELLNESS_ENABLED=true`, resolve wellness preferences through `wellness_location.py` and check both storage consent and `wellness_onboarding_complete: true`. A file inherited from another runtime or a partial setup does **not** count as completed onboarding. If absent or false, invoke the wellness-coach skill and offer its eight-question interactive setup before treating the coach as active. If the user defers, continue Forge with wellness enforcement inactive; do not silently mark setup complete.
 
 ### 0b. Model Coverage and First-Run Routing
 
@@ -218,7 +218,7 @@ Threshold parity with Step 2.5 is intentional: same "you've been away long enoug
 PR sync results (from step 3) are shown first, then the context summary, then the time window check.
 
 **Time window check:** Check for upcoming interruptions to gauge available deep-work time. The **next interruption** is the soonest of:
-- Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — typically `${VAULT_PATH}/_shared/`, or `$COPILOT_DIR/` legacy) (see `references/wellness-awareness.md`)
+- Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — selected by `${VAULT_PATH}/_shared/wellness-location.json`; flat vault legacy is read-only) (see `references/wellness-awareness.md`)
 - Next calendar meeting — when `calendar_enabled: true` in `wellness-preferences.json`, **MUST run** `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-calendar.sh" entry-fetch`. Not optional, not deferrable. With `CALENDAR_PROVIDER=gws` in `forge.conf`, the script fetches today's remaining events (skipping declined) and persists a `last_fetch_at` timestamp for `delta-check`. With no configured provider or an unsupported one, it reports calendar unavailable without calling Google; surface that gap, not "no meetings." If a configured GWS fetch fails, report the error; do not retry the same unconfigured or failing provider via the Google Workspace skill.
 
 **Honest reporting (never fill with false comfort):** If a check is skipped or fails for any reason — calendar API down, gws-auth scope missing, wellness prefs absent, etc. — REPORT THE GAP, never synthesize a comforting default. Wrong: *"Next interruption: nothing scheduled (haven't checked calendar)"*. Right: *"Next interruption: wellness break in 25min. Calendar not yet checked — invoking gws-calendar now."* OR *"Calendar check failed (403 — gws-auth scopes missing). Run `/gws-auth` to refresh, otherwise meeting awareness is unavailable this session."*

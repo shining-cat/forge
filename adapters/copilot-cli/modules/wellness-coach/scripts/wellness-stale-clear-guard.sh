@@ -13,10 +13,9 @@
 set -euo pipefail
 COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 
-VAULT_PATH=$(grep '^VAULT_PATH=' "$COPILOT_DIR/forge.conf" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
-SHARED_DIR="${VAULT_PATH:+$VAULT_PATH/_shared}"
-[ -z "$SHARED_DIR" ] && SHARED_DIR="$COPILOT_DIR"
-RUNTIME="$SHARED_DIR/wellness-runtime.json"
+python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" directory >/dev/null || exit 1
+python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" consented >/dev/null 2>&1 || exit 0
+RUNTIME=$(python3 "$(cd "$(dirname "$0")/../hooks" && pwd)/wellness_location.py" file wellness-runtime.json) || exit 1
 
 [ -f "$RUNTIME" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
@@ -42,7 +41,8 @@ needs_fix=$(jq -r --arg now "$now_string" '
 
 [ "$needs_fix" = "yes" ] || exit 0
 
-tmp=$(mktemp)
+tmp=$(mktemp "${RUNTIME}.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
 jq '.last_break_timestamp = .strike_cleared_at
     | .last_micro_break_timestamp = .strike_cleared_at' \
    "$RUNTIME" > "$tmp" && mv "$tmp" "$RUNTIME"
