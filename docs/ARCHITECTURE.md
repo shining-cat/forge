@@ -56,7 +56,7 @@ are separate adapters over the same role-neutral core.
 | `forge-gap-since-last-signal.sh` | Script | Unified gap detection across checkpoints / marker / braindumps / vault git. Underpins cold-start logic |
 | `forge-permission-lint.sh` | Script | Fails install when `settings.json` permissions match known anti-patterns; also surfaced via `/forge-audit-permissions` |
 | `forge-shell-init.sh` | Shell wrapper | Auto-wraps interactive `claude` in tmux for agent-team substrate |
-| `statusline.sh` | Script (statusline) | Status bar showing session state, drift, next break, next meeting |
+| `statusline.sh` | Script (statusline) | Status bar showing session state, drift, next break, next meeting; Copilot adapter omits estimated cost (native AI Credits are authoritative) |
 | `settings.json` | Config | Hook wiring, permissions, plugin enablement |
 | `forge-tmux.conf` | Config | tmux config consumed by `forge-shell-init.sh` (mouse-on for scroll-buffer correctness) |
 
