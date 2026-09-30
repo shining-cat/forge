@@ -173,7 +173,7 @@ Example response (character): "You've been at it for 35 minutes. Next micro-brea
 
 ### Calendar queries
 
-If `calendar_enabled` is true, check Google Calendar (via Google Workspace plugin if available):
+If `calendar_enabled` is true, use `~/.claude/scripts/forge-calendar.sh` for calendar queries. Only `CALENDAR_PROVIDER=gws` in `~/.claude/forge.conf` enables Google Workspace; when unset or unsupported, report that calendar is not configured, not that there are no meetings. If configured GWS fails, report the error rather than an empty schedule.
 
 - Upcoming meetings today
 - Time until next meeting

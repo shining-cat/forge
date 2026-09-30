@@ -75,9 +75,9 @@ Branch on the result:
 - **Command not found** (`gws: command not found` or similar) → "Calendar awareness needs the Google Workspace plugin. Install it first, then say 'enable calendar awareness' to re-enable. Setting calendar to OFF for now."
 - **Output contains `403`, `PERMISSION_DENIED`, `insufficient`, or `invalid_grant`** → "Calendar awareness needs the `https://www.googleapis.com/auth/calendar.readonly` scope on your gws-auth token. Run `/gws-auth` to refresh with that scope, then say 'enable calendar awareness'. Setting calendar to OFF for now."
 - **Other error** → surface the first 1-2 lines, set OFF, point to `/gws-auth` as the most common remedy.
-- **Success** (events list or "no upcoming events") → set `calendar_enabled: true`.
+- **Success** (events list or "no upcoming events") → set `calendar_enabled: true` in wellness preferences and `CALENDAR_PROVIDER=gws` in this runtime's `forge.conf`.
 
-This keeps the answered-question state honest: `calendar_enabled` is true ONLY when the scope check just passed. Users who opt in but lack the scope get told now, not via a mystery 403 mid-session.
+This keeps the answered-question state honest: `calendar_enabled` is true ONLY when the scope check just passed. Users who opt in but lack the scope get told now, not via a mystery 403 mid-session. For opt-out, set `calendar_enabled: false` and remove `CALENDAR_PROVIDER` (or leave it unset); `m365` is not yet supported.
 
 ### 6. Weather & location — Should I check weather for outdoor break suggestions?
 

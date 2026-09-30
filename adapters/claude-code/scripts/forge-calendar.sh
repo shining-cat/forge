@@ -37,6 +37,7 @@ if [ -z "$VAULT_PATH" ]; then
   echo "[forge-calendar] ERROR: VAULT_PATH not set in $FORGE_CONF" >&2
   exit 1
 fi
+CALENDAR_PROVIDER=$(grep '^CALENDAR_PROVIDER=' "$FORGE_CONF" | tail -n 1 | cut -d= -f2- || true)
 
 STATE_FILE="$VAULT_PATH/_shared/calendar-sync-state.json"
 WELLNESS_PREFS="$VAULT_PATH/_shared/wellness-preferences.json"
@@ -53,6 +54,15 @@ try:
 except Exception:
     sys.exit(1)
 "
+}
+
+skip_unconfigured_provider() {
+  case "$CALENDAR_PROVIDER" in
+    gws) return 1 ;;
+    "") echo "# calendar not configured (set CALENDAR_PROVIDER=gws to opt in)" ;;
+    *) echo "# calendar unavailable: unsupported provider '$CALENDAR_PROVIDER'" ;;
+  esac
+  return 0
 }
 
 now_eod_today() {
@@ -78,11 +88,12 @@ gws_list_events() {
     rm -f "$errfile"
     printf '%s' "$resp"
     return 0
+  else
+    rc=$?
+    echo "[forge-calendar] gws call failed: $(cat "$errfile")" >&2
+    rm -f "$errfile"
+    return "$rc"
   fi
-  rc=$?
-  echo "[forge-calendar] gws call failed: $(cat "$errfile")" >&2
-  rm -f "$errfile"
-  return "$rc"
 }
 
 print_events_and_save_state() {
@@ -97,6 +108,9 @@ try:
     resp = json.loads(raw)
 except json.JSONDecodeError:
     print(f"[forge-calendar] non-JSON response (auth issue?): {raw[:200]}", file=sys.stderr)
+    sys.exit(2)
+if not isinstance(resp, dict) or not isinstance(resp.get('items'), list):
+    print("[forge-calendar] invalid events response", file=sys.stderr)
     sys.exit(2)
 
 items = resp.get('items', [])
@@ -152,6 +166,7 @@ do_entry_fetch() {
     echo "[forge-calendar] calendar disabled (or wellness-preferences.json missing) — skipping" >&2
     return 0
   fi
+  if skip_unconfigured_provider; then return 0; fi
 
   local now_iso eod_iso today
   { read -r now_iso; read -r eod_iso; read -r today; } < <(now_eod_today)
@@ -178,6 +193,7 @@ do_delta_check() {
     echo "[forge-calendar] calendar disabled — skipping" >&2
     return 0
   fi
+  if skip_unconfigured_provider; then return 0; fi
 
   if [ ! -f "$STATE_FILE" ]; then
     echo "[forge-calendar] no saved state — run 'forge-calendar.sh entry-fetch' first" >&2
@@ -235,13 +251,13 @@ do_reset() {
 do_next_meeting() {
   # Print the next non-declined meeting starting within $1 minutes, or nothing.
   # Output format (single line): HH:MM|title|minutes_until
-  # Silent (no output, exit 0) when calendar disabled, no events in window,
-  # or fetch fails — caller treats absence as "nothing imminent". Errors that
-  # need surfacing go to stderr.
+  # Silent (no output, exit 0) when calendar disabled, provider unconfigured,
+  # or no events in window. Configured fetch failures return non-zero.
   local window_min="${1:-30}"
   if ! check_calendar_enabled; then
     return 0
   fi
+  [ "$CALENDAR_PROVIDER" = gws ] || return 0
 
   local now_iso end_iso
   { read -r now_iso; read -r end_iso; } < <(WIN="$window_min" python3 -c "
@@ -266,7 +282,7 @@ print(json.dumps({
 }))")
 
   local resp
-  resp=$(gws_list_events "$params") || return 0
+  resp=$(gws_list_events "$params") || return $?
 
   RESP="$resp" NOW_ISO="$now_iso" python3 - <<'PYEOF'
 import json, os, sys, datetime
@@ -275,7 +291,11 @@ now_iso = os.environ['NOW_ISO']
 try:
     resp = json.loads(raw)
 except json.JSONDecodeError:
-    sys.exit(0)
+    print("[forge-calendar] non-JSON response", file=sys.stderr)
+    sys.exit(2)
+if not isinstance(resp, dict) or not isinstance(resp.get('items'), list):
+    print("[forge-calendar] invalid events response", file=sys.stderr)
+    sys.exit(2)
 
 now = datetime.datetime.fromisoformat(now_iso)
 for e in resp.get('items', []):
@@ -302,8 +322,8 @@ PYEOF
 do_in_meeting() {
   # Print the currently-in-progress (non-declined) meeting, or nothing.
   # Output format (single line): title|minutes_remaining
-  # Silent (no output, exit 0) when calendar disabled, no event spans now,
-  # or fetch fails — caller treats absence as "user is free right now".
+  # Silent (no output, exit 0) when calendar disabled, provider unconfigured,
+  # or no event spans now. Configured fetch failures return non-zero.
   #
   # Distinct from next-meeting which only reports UPCOMING events
   # (skips events with negative minutes_until). This subcommand is the
@@ -319,6 +339,7 @@ do_in_meeting() {
   if ! check_calendar_enabled; then
     return 0
   fi
+  [ "$CALENDAR_PROVIDER" = gws ] || return 0
 
   local now_iso start_iso end_iso
   { read -r now_iso; read -r start_iso; read -r end_iso; } < <(python3 -c "
@@ -342,7 +363,7 @@ print(json.dumps({
 }))")
 
   local resp
-  resp=$(gws_list_events "$params") || return 0
+  resp=$(gws_list_events "$params") || return $?
 
   RESP="$resp" NOW_ISO="$now_iso" python3 - <<'PYEOF'
 import json, os, sys, datetime
@@ -351,7 +372,11 @@ now_iso = os.environ['NOW_ISO']
 try:
     resp = json.loads(raw)
 except json.JSONDecodeError:
-    sys.exit(0)
+    print("[forge-calendar] non-JSON response", file=sys.stderr)
+    sys.exit(2)
+if not isinstance(resp, dict) or not isinstance(resp.get('items'), list):
+    print("[forge-calendar] invalid events response", file=sys.stderr)
+    sys.exit(2)
 
 now = datetime.datetime.fromisoformat(now_iso)
 for e in resp.get('items', []):

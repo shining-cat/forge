@@ -13,7 +13,7 @@
 #   2. in-meeting empty, next-meeting <5min returns content → defer=True, reason mentions imminent
 #   3. both empty                       → defer=False
 #   4. forge-calendar.sh missing        → defer=False (graceful)
-#   5. calendar script timeout / crash  → defer=False (graceful)
+#   5. calendar script crash             → defer=False, error reported
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,7 +108,7 @@ wt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(wt)
 defer, reason = wt.should_defer_for_meeting()
 print(f'{defer}|{reason}')
-" 2>/dev/null
+" 2>"$home/calendar-error"
 }
 
 echo "=== wellness-timer should_defer_for_meeting ==="
@@ -150,12 +150,13 @@ out=$(run_helper "$HOME_DIR")
 assert_eq "defer flag" "False" "${out%%|*}"
 rm -rf "$HOME_DIR"
 
-# ── 5 — script crashes (e.g. gws auth expired) → defer=False (graceful) ─
+# ── 5 — script crashes (e.g. gws auth expired) → no defer, visible error ─
 echo ""
 echo "Check 5 — script exits non-zero → defer=False"
 HOME_DIR=$(mk_sandbox crashing)
 out=$(run_helper "$HOME_DIR")
 assert_eq "defer flag" "False" "${out%%|*}"
+assert_contains "failure is reported" "gws auth expired" "$(cat "$HOME_DIR/calendar-error")"
 rm -rf "$HOME_DIR"
 
 echo ""

@@ -16,7 +16,7 @@ Cleanly wraps up a Forge session with a final checkpoint and session summary.
 `/forge-exit` IS the user stepping away from work — treat it as an explicit "break taken" signal. If wellness-coach is installed, run:
 
 ```bash
-WELLNESS_RESET="$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh"
+WELLNESS_RESET="${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/scripts/wellness-reset.sh"
 [ -x "$WELLNESS_RESET" ] && "$WELLNESS_RESET" --full-reset
 ```
 
@@ -62,7 +62,7 @@ Next session starts with:
 
 After the session summary, surface a forward-looking view of tomorrow so the user knows what they're walking into when they next open Forge. Pulls two things:
 
-- **Calendar (if `calendar_enabled: true` in `wellness-preferences.json`):** invoke skill `google-workspace:gws-calendar` for tomorrow's events. List by time. Skip events where `responseStatus: "declined"`. Identify the **first focus block** (a contiguous gap of ≥ 90 min with no meetings, between `working_hours_start` if known and the first meeting).
+- **Calendar (if `calendar_enabled: true` in `wellness-preferences.json` and `CALENDAR_PROVIDER=gws` in `forge.conf`):** invoke skill `google-workspace:gws-calendar` for tomorrow's events. List by time. Skip events where `responseStatus: "declined"`. Identify the **first focus block** (a contiguous gap of ≥ 90 min with no meetings, between `working_hours_start` if known and the first meeting). If the provider is unset or unsupported, do not invoke Google; report "Calendar not configured" or "Calendar provider unsupported" instead.
 - **Carry-forward** from this session's "Next session starts with" line and any open tasks marked `next:` in current-checkpoint.
 
 Same honesty rule as the `/forge` entry: never fill with false comfort. If the calendar check is skipped or fails, REPORT THE GAP — don't claim "no meetings tomorrow" without verification.
@@ -92,7 +92,7 @@ If calendar is disabled or empty: say so explicitly (*"Calendar disabled."* or *
 Before proceeding to Step 3 (Deactivate), check both gates:
 
 ```bash
-$COPILOT_DIR/scripts/forge-context.sh weekly-wrap-due    # must return "due"
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" weekly-wrap-due    # must return "due"
 date +%u                                              # must match EOW_DAY in $COPILOT_DIR/forge.conf (default 5 = Friday)
 ```
 
@@ -123,14 +123,14 @@ If it returns a project name, the session hopped away from it and never returned
 
 > *"{parked-project} is still parked ({reason}) — resume and close it out, or drop it?"*
 
-- **resume / close it out** → run `$COPILOT_DIR/scripts/forge-context.sh resume`, scoped-load the restored project (read its `current-checkpoint.md` + `git -C <path> status`), have Keeper write and verify its final checkpoint, then proceed to Step 3.
+- **resume / close it out** → run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" resume`, scoped-load the restored project (read its `current-checkpoint.md` + `git -C <path> status`), have Keeper write and verify its final checkpoint, then proceed to Step 3.
 - **drop / leave it** → proceed to Step 3. The parked project's return-ticket checkpoint (written at park time) already records where it stood; nothing is lost.
 
 This is the concrete form of the channel-me-back guarantee: an excursion can never quietly become the abandoned main thread.
 
 ### 3. Deactivate
 
-- Clear the forge-active marker: use the **Edit** tool to replace the project name in `${VAULT_PATH}/_shared/forge-active` with a single newline (the file already exists from the `/forge` entry, so Edit is the right tool — Write would require a prior Read in this session). Do NOT use `rm` — it's denied by the global `Bash(rm:*)` rule. The empty-marker convention is recognized by `forge-context.sh` and `forge-compaction.sh` as "Forge deactivated" (same effect as deletion, no permission friction). Resolve `VAULT_PATH` from `$COPILOT_DIR/forge.conf`.
+- Clear the forge-active marker: use the **Edit** tool to replace the project name in `${VAULT_PATH}/_shared/forge-active` with a single newline (the file already exists from the `/forge` entry, so Edit is the right tool — Write would require a prior Read in this session). Do NOT use `rm` — it's denied by the global `Bash(rm:*)` rule. The empty-marker convention is recognized by `forge-context.sh` and `forge-compaction.sh` as "Forge deactivated" (same effect as deletion, no permission friction). Resolve `VAULT_PATH` from `${COPILOT_HOME:-$HOME/.copilot}/forge.conf`.
 - Stop using `[Forge | {PROJECT}]` prefix
 - Stop proactive Keeper/Refiner behavior
 - Session returns to normal mode

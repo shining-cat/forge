@@ -4621,15 +4621,19 @@ do_wind_down_list() {
 # minutes (loaded from forge.conf at startup, default 30).
 #
 # Output: a single line `HH:MM|title|minutes_until`, or no output when nothing
-# is imminent / calendar disabled / fetch failed. Petra chains this with
+# is imminent / calendar disabled / provider unconfigured. Fetch failures
+# return non-zero so they cannot be mistaken for an empty calendar. Petra chains this with
 # `wrap-up-state` at wrap-up moments so she paces against both EOD and any
 # imminent meeting interruption.
 #
 # Delegates to forge-calendar.sh next-meeting which owns the gws call.
 do_next_meeting() {
   local calendar_sh="$HOME_DIR/.claude/scripts/forge-calendar.sh"
-  [ -x "$calendar_sh" ] || return 0
-  "$calendar_sh" next-meeting "$MEETING_WINDOW_MIN" 2>/dev/null || true
+  if [ ! -x "$calendar_sh" ]; then
+    echo "[forge-context] calendar script not found at $calendar_sh" >&2
+    return 1
+  fi
+  "$calendar_sh" next-meeting "$MEETING_WINDOW_MIN"
 }
 
 # ── Subcommand: substrate-check ───────────────────────────────────────

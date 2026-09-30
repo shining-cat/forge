@@ -167,6 +167,28 @@ custom agents into `agents/`, skills into `skills/`, runtime scripts into
 Existing Forge-owned files are backed up before replacement; unrelated Copilot
 configuration is not rewritten.
 
+Forge skill commands resolve `${COPILOT_HOME:-$HOME/.copilot}` directly, so
+`COPILOT_DIR` does not need to be set for them. If you prefer `$COPILOT_DIR` in
+your own terminal commands, optionally add this line to `~/.zshrc` or
+`~/.bashrc` before starting Copilot CLI (it also respects a custom
+`COPILOT_HOME`):
+
+```bash
+export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
+```
+
+The installer does not edit shell startup files.
+
+Calendar checks are opt-in: set `calendar_enabled: true` in the vault's
+`_shared/wellness-preferences.json` **and** `CALENDAR_PROVIDER=gws` in the
+active runtime's `forge.conf` after confirming Google Calendar access.
+Omitting `CALENDAR_PROVIDER` or setting it to an unsupported value (including
+`m365`, pending its integration) skips Google calls and reports that the
+calendar is unavailable rather than claiming there are no meetings.
+Configured `gws` authentication errors are reported; they are not treated as
+an empty calendar. To opt out, set `calendar_enabled: false` and remove the
+provider setting.
+
 After installation, restart Copilot CLI and run `/skills reload`. Forge roles
 are available through `/agent` and the Forge entry skill is available in the
 normal Copilot skill picker.

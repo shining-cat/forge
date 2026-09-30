@@ -202,10 +202,8 @@ def should_defer_for_meeting():
     """Check the calendar for in-progress or imminent meetings.
 
     Returns (True, reason_str) if a real-break nag should be deferred;
-    (False, '') otherwise. Silent on calendar disabled / fetch failure /
-    script missing — treated as 'not deferring' so the wellness hook
-    falls through to normal behavior rather than gaming itself off the
-    nag path when the calendar layer is unavailable.
+    (False, '') otherwise. Calendar failures do not defer the reminder,
+    but are reported to stderr instead of being mistaken for no meetings.
 
     Two checks via forge-calendar.sh:
       - in-meeting       : presence-only; non-empty output → currently in a meeting
@@ -219,29 +217,35 @@ def should_defer_for_meeting():
         return False, ""
     try:
         # In-progress check (no parameter)
-        out = subprocess.run(
+        result = subprocess.run(
             ["bash", calendar_sh, "in-meeting"],
             capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
+        )
+        if result.returncode:
+            print(f"[wellness] calendar in-meeting failed (exit {result.returncode}): {result.stderr.strip()}", file=sys.stderr)
+            return False, ""
+        out = result.stdout.strip()
         if out:
             parts = out.split("|")
             if len(parts) == 2:
                 return True, f"in meeting '{parts[0]}' ({parts[1]} min remaining)"
             return True, "in meeting"
         # Imminent check (next WELLNESS_MEETING_IMMINENT_MIN minutes)
-        out = subprocess.run(
+        result = subprocess.run(
             ["bash", calendar_sh, "next-meeting", str(WELLNESS_MEETING_IMMINENT_MIN)],
             capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
+        )
+        if result.returncode:
+            print(f"[wellness] calendar next-meeting failed (exit {result.returncode}): {result.stderr.strip()}", file=sys.stderr)
+            return False, ""
+        out = result.stdout.strip()
         if out:
             parts = out.split("|")
             if len(parts) == 3:
                 return True, f"meeting '{parts[1]}' starting in {parts[2]} min"
             return True, "meeting imminent"
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
-        # Calendar layer unavailable — treat as "no meeting" so the wellness
-        # hook falls through to normal behavior. Don't silently defer; that
-        # would game the user out of nags whenever gws auth flakes.
+        print("[wellness] calendar check unavailable", file=sys.stderr)
         return False, ""
     return False, ""
 

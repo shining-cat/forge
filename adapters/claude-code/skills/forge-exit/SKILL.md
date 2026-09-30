@@ -62,7 +62,7 @@ Next session starts with:
 
 After the session summary, surface a forward-looking view of tomorrow so the user knows what they're walking into when they next open Forge. Pulls two things:
 
-- **Calendar (if `calendar_enabled: true` in `wellness-preferences.json`):** invoke skill `google-workspace:gws-calendar` for tomorrow's events. List by time. Skip events where `responseStatus: "declined"`. Identify the **first focus block** (a contiguous gap of ≥ 90 min with no meetings, between `working_hours_start` if known and the first meeting).
+- **Calendar (if `calendar_enabled: true` in `wellness-preferences.json` and `CALENDAR_PROVIDER=gws` in `forge.conf`):** invoke skill `google-workspace:gws-calendar` for tomorrow's events. List by time. Skip events where `responseStatus: "declined"`. Identify the **first focus block** (a contiguous gap of ≥ 90 min with no meetings, between `working_hours_start` if known and the first meeting). If the provider is unset or unsupported, do not invoke Google; report "Calendar not configured" or "Calendar provider unsupported" instead.
 - **Carry-forward** from this session's "Next session starts with" line and any open tasks marked `next:` in current-checkpoint.
 
 Same honesty rule as the `/forge` entry: never fill with false comfort. If the calendar check is skipped or fails, REPORT THE GAP — don't claim "no meetings tomorrow" without verification.

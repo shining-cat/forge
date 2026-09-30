@@ -111,7 +111,7 @@ Escalation depth is configurable:
 
 ## Calendar & Weather
 
-Both are optional. Calendar uses the Google Calendar plugin if available. Weather uses wttr.in (free, no API key needed).
+Both are optional. Calendar uses Google Workspace only when wellness `calendar_enabled` is true and `CALENDAR_PROVIDER=gws` is set in the runtime `forge.conf`; otherwise calendar checks are skipped. Weather uses wttr.in (free, no API key needed).
 
 - Nice weather → "17°C and sunny — go for a walk?"
 - Bad weather → "Raining — stretch at your desk"
