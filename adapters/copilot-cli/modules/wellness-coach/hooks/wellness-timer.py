@@ -161,16 +161,11 @@ def emit_deny(short_reason, detail_message):
     }))
     sys.exit(2)
 
-def emit_stop_message(message):
-    """Force one assistant turn so the reminder appears in the conversation."""
-    print(json.dumps({
-        "decision": "block",
-        "reason": (
-            "Send the following wellness message to the user in one concise "
-            "normal assistant reply. Do not call tools or repeat the previous "
-            "reply:\n" + message
-        ),
-    }))
+def emit_stop_progress(coach_name, lines):
+    """Show the reminder in the CLI timeline without a synthetic user turn."""
+    message = f"{coach_name}: " + " ".join(line.strip() for line in lines if line.strip())
+    print(json.dumps({"type": "progress", "message": message}), flush=True)
+    print(json.dumps({"decision": "allow"}))
     sys.exit(0)
 
 
@@ -485,26 +480,26 @@ def main():
         log_event(prefs, "reminder",
             f"Micro-break reminder. {int(elapsed)} min since last break."
             + (" [via Stop]" if IS_STOP else ""))
-        box = format_box(coach_name, content_lines, "micro")
         notify(coach_name, notif_body)
         if IS_STOP:
-            emit_stop_message(center_block(box))
+            emit_stop_progress(coach_name, content_lines)
+        box = format_box(coach_name, content_lines, "micro")
         emit_allow(center_block(box))
 
-    # Strike — short reason in the tool error, full box in the forced reply.
+    # Strike — short reason in the tool error, full reminder in the timeline.
     # Under Stop, we can't deny (no permission to deny on a turn that's already
     # ending) — set strike_active in state (already done by update_prefs above)
-    # and force a chat turn. The NEXT PreToolUse will see the strike flag
+    # and show a timeline line. The NEXT PreToolUse will see the strike flag
     # and emit the actual block.
     if level == "strike":
         log_event(prefs, "strike",
             f"Strike triggered. {int(elapsed)} min without break."
             + (" [via Stop — next PreToolUse will enforce]" if IS_STOP else ""),
             {"strike_active": "false → true"})
-        box = format_box(coach_name, content_lines, "strike")
         notify(coach_name, notif_body)
         if IS_STOP:
-            emit_stop_message(center_block(box))
+            emit_stop_progress(coach_name, content_lines)
+        box = format_box(coach_name, content_lines, "strike")
         emit_deny(
             f"On strike — {int(elapsed)} min without a break",
             center_block(box),
@@ -517,12 +512,12 @@ def main():
         + (" [via Stop]" if IS_STOP else ""))
     context = get_context_lines(prefs)
     all_lines = content_lines + context
-    box = format_box(coach_name, all_lines, "break")
-    centered = center_block(box)
     if IS_STOP:
         if notif_body:
             notify(coach_name, notif_body)
-        emit_stop_message(centered)
+        emit_stop_progress(coach_name, all_lines)
+    box = format_box(coach_name, all_lines, "break")
+    centered = center_block(box)
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -624,9 +619,8 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real",
 
     `is_stop` selects the welcome-back emit shape: Stop hooks can't carry
     `permissionDecision` (the turn already ended), so under Stop we route to
-    `emit_stop_message()` instead of `emit_allow()`. Mirrors the if/else at
-    lines 481-482 and 497. Without this branch, a Stop hook firing
-    welcome-back emitted PreToolUse-shaped JSON and surfaced as
+    `emit_stop_progress()` instead of `emit_allow()`. Without this branch,
+    a Stop hook firing welcome-back emitted PreToolUse-shaped JSON and surfaced as
     `"Hook returned incorrect event name: expected 'Stop' but got 'PreToolUse'"`
     (user-reported 2026-06-08; collateral of PR #82 which fixed only the
     strike-escalation Stop path).
@@ -697,7 +691,7 @@ def _credit_auto_break(prefs, auto_break, last_break, coach_name, tier="real",
                     f"Welcome-back shown ({tier}) — user returned from "
                     f"auto-detected break.")
                 if is_stop:
-                    emit_stop_message(center_block(box))
+                    emit_stop_progress(coach_name, wb_lines)
                 emit_allow(center_block(box))
     except (ValueError, TypeError, OverflowError):
         pass

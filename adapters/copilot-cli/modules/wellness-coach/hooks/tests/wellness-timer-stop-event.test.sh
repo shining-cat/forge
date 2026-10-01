@@ -14,8 +14,8 @@
 #   1. is_stop_event({"hook_event_name": "Stop"}) → True
 #   2. is_stop_event({"tool_name": "Bash"}) → False (PreToolUse)
 #   3. is_stop_event({}) → False (defensive)
-#   4. emit_stop_message forces a chat turn with the reminder in reason
-#   5. emit_stop_message output has no PreToolUse-specific fields
+#   4. emit_stop_progress displays a timeline message without a user turn
+#   5. emit_stop_progress explicitly allows Stop after the progress line
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,47 +67,47 @@ echo "Check 3 — is_stop_event({}) → False (defensive)"
 out=$(run_py "print(wt.is_stop_event({}))")
 assert_eq "empty input not flagged Stop" "False" "$out"
 
-# ── 4 — Stop forces one additional assistant turn ───────────────────────
+# ── 4 — Stop displays a persistent progress message ─────────────────────
 echo ""
-echo "Check 4 — emit_stop_message returns decision:block with reminder"
+echo "Check 4 — emit_stop_progress emits a Pip timeline message"
 out=$(run_py "
 import sys, json, io
 buf = io.StringIO()
 sys.stdout = buf
 try:
-    wt.emit_stop_message('hello from stop')
+    wt.emit_stop_progress('Coach', ['hello from stop', 'take a break'])
 except SystemExit:
     pass
 sys.stdout = sys.__stdout__
-parsed = json.loads(buf.getvalue())
-print(parsed.get('decision', 'MISSING'))
-print('hello from stop' in parsed.get('reason', ''))
-print('has_hookSpecificOutput:', 'hookSpecificOutput' in parsed)
+parsed = [json.loads(line) for line in buf.getvalue().splitlines()]
+print(parsed[0].get('type', 'MISSING'))
+print(parsed[0].get('message', ''))
+print(parsed[1].get('decision', 'MISSING'))
 ")
-decision=$(echo "$out" | head -1)
-reason=$(echo "$out" | sed -n '2p')
-has_hso=$(echo "$out" | tail -1)
-assert_eq "forced continuation"       "block"                         "$decision"
-assert_eq "reminder preserved"        "True"                          "$reason"
-assert_eq "no hookSpecificOutput key" "has_hookSpecificOutput: False" "$has_hso"
+assert_eq "progress event" "progress" "$(echo "$out" | head -1)"
+assert_eq "complete reminder" "Coach: hello from stop take a break" "$(echo "$out" | sed -n '2p')"
+assert_eq "no forced continuation" "allow" "$(echo "$out" | tail -1)"
 
-# ── 5 — Stop output is minimal ───────────────────────────────────────────
+# ── 5 — only a progress event and Stop decision remain ───────────────────
 echo ""
-echo "Check 5 — emit_stop_message has only decision and reason"
+echo "Check 5 — emit_stop_progress has no synthetic user prompt"
 out=$(run_py "
 import sys, json, io
 buf = io.StringIO()
 sys.stdout = buf
 try:
-    wt.emit_stop_message('check')
+    wt.emit_stop_progress('Coach', ['check'])
 except SystemExit:
     pass
 sys.stdout = sys.__stdout__
-parsed = json.loads(buf.getvalue())
-keys = sorted(parsed.keys())
-print('keys:', ','.join(keys))
+parsed = [json.loads(line) for line in buf.getvalue().splitlines()]
+print('count:', len(parsed))
+print('keys:', ','.join(sorted(parsed[0])))
+print('keys:', ','.join(sorted(parsed[1])))
 ")
-assert_eq "only Stop decision fields" "keys: decision,reason" "$out"
+assert_eq "one progress and one decision" "count: 2" "$(echo "$out" | head -1)"
+assert_eq "progress fields" "keys: message,type" "$(echo "$out" | sed -n '2p')"
+assert_eq "no reason field" "keys: decision" "$(echo "$out" | tail -1)"
 
 echo ""
 echo "Pass: $PASS  Fail: $FAIL"

@@ -117,7 +117,8 @@ PY
 printf '%s\n' '{"hook_event_name":"Stop"}' |
   PATH="$tmp/bin:$PATH" python3 "$COPILOT_HOME/skills/wellness-coach/hooks/wellness-timer.py" \
     > "$tmp/output"
-jq -e '.decision == "block" and (.reason | contains("Send the following wellness message"))' \
+jq -s -e 'length == 2 and .[0].type == "progress" and
+  (.[0].message | contains("break")) and .[1].decision == "allow"' \
   "$tmp/output" >/dev/null
 test -s "$NOTIFY_LOG"
 mkdir -p "$tmp/vault/PERSO/demo"
