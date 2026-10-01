@@ -23,8 +23,9 @@ printf '{"wellness_onboarding_complete":false,"activity_monitor_enabled":false,"
 hooks="$COPILOT_HOME/hooks/forge.json"
 jq -e '
   (.hooks.PreToolUse | map(select((.bash // "") | contains("/wellness-timer.py"))) | length == 1) and
-  (.hooks.PostToolUse | map(select((.bash // "") | contains("/wellness-timer.py"))) | length == 1) and
+  (.hooks.PostToolUse | map(select((.bash // "") | contains("/wellness-timer.py"))) | length == 0) and
   (.hooks.Stop | map(select((.bash // "") | contains("/wellness-timer.py"))) | length == 1) and
+  (.hooks.Stop[-1].bash | contains("/wellness-timer.py")) and
   (.hooks.PreCompact | map(select((.bash // "") | contains("/wellness-precompact.py"))) | length == 1)
 ' "$hooks" >/dev/null
 grep -q '^WELLNESS_ENABLED=true$' "$COPILOT_HOME/forge.conf"
@@ -113,11 +114,15 @@ with open(sys.argv[1], "w") as f:
     json.dump({"last_break_timestamp": past, "last_micro_break_timestamp": past,
                "last_reminder_timestamp": past, "strike_active": False}, f)
 PY
-printf '%s\n' '{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"}}' |
+printf '%s\n' '{"hook_event_name":"Stop"}' |
   PATH="$tmp/bin:$PATH" python3 "$COPILOT_HOME/skills/wellness-coach/hooks/wellness-timer.py" \
     > "$tmp/output"
-jq -e '.additionalContext | contains("Wellness coach reminder for the user")' \
+jq -e '.decision == "block" and (.reason | contains("Send the following wellness message"))' \
   "$tmp/output" >/dev/null
 test -s "$NOTIFY_LOG"
+mkdir -p "$tmp/vault/PERSO/demo"
+printf '%s\n' '{"hook_event_name":"Stop","stop_hook_active":true}' |
+  "$COPILOT_HOME/scripts/forge-context.sh" stop > "$tmp/output"
+test ! -s "$tmp/output"
 
 echo "PASS: Copilot wellness hook wiring, setup gate, and monitor install"

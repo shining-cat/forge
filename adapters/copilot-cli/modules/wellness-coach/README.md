@@ -99,7 +99,7 @@ Has a name and personality. Catchphrases, running jokes, dramatic flair. Strike 
 
 ## Escalation Ladder
 
-1. **Micro-nudge** — in-conversation only, skippable, no notification
+1. **Micro-nudge** — in-conversation and native notification, skippable
 2. **Break suggestion** — in-conversation + macOS notification, one snooze allowed
 3. **Insistent** — references ignored earlier suggestion, no more snoozes
 4. **Strike** — blocks all tool execution until you take a break
@@ -125,7 +125,7 @@ All instances share the preferences file selected by `_shared/wellness-location.
 
 **Master switch — `WELLNESS_ENABLED` in `~/.copilot/forge.conf`.** This flag is the single source of truth for the entire coach. It is read strictly: the coach is active **only** when `WELLNESS_ENABLED=true`; any other value — `false`, empty, an absent key, or a missing `forge.conf` — reads as **disabled**, and every enforcement surface becomes a clean no-op (no breaks, no strikes, no blocking, no suggestions, no sampling). Toggle it in conversation ("disable the wellness coach") or by editing `forge.conf`; the change takes effect on the next tool call — no restart needed.
 
-Enforcement also waits for `wellness_onboarding_complete: true` in preferences. Copying scripts or inheriting a preferences file does not activate an unconfirmed strike policy. The installer registers PreToolUse (strike gate), PostToolUse (in-conversation reminders), Stop (timer ticks), and PreCompact (compaction notifications); a CLI restart is required to load the new manifest.
+Enforcement also waits for `wellness_onboarding_complete: true` in preferences. Copying scripts or inheriting a preferences file does not activate an unconfirmed strike policy. The installer registers PreToolUse (strike gate), Stop (timer ticks and one-shot assistant replies for reminders), and PreCompact (compaction notifications); a CLI restart is required to load the new manifest. Copilot's PostToolUse `additionalContext` reaches the model, not the user's chat, so reminders instead use Stop's forced continuation. This costs one extra assistant turn per reminder. The wellness Stop hook runs after the Forge checkpoint hook so a simultaneous reminder is not replaced by a checkpoint nudge; forced follow-up turns skip further Stop nags.
 
 Every consumer honors the flag:
 

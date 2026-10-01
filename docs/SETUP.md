@@ -180,7 +180,7 @@ export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 The installer does not edit shell startup files.
 
 Wellness requires more than copied scripts: the Copilot installer registers
-PreToolUse, PostToolUse, Stop, and PreCompact hooks, and the eight-question wellness setup
+PreToolUse, Stop, and PreCompact hooks, and the eight-question wellness setup
 sets `wellness_onboarding_complete: true` only after answers are confirmed.
 Until then, the hooks do not send reminders or enforce strikes, even if shared
 preferences from another runtime exist. Restart Copilot CLI after installing

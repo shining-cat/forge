@@ -20,10 +20,8 @@
 # assert the emit shape matches the context.
 #
 # Two assertions:
-#   1. is_stop=True  + welcome-back credit → Stop-shaped (top-level
-#      systemMessage only, NO hookSpecificOutput, NO permissionDecision)
+#   1. is_stop=True  + welcome-back credit → one forced chat turn
 #   2. is_stop=False + welcome-back credit → Copilot PreToolUse allow
-#   3. is_post=True + welcome-back credit → PostToolUse additionalContext
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,7 +45,6 @@ assert_eq() {
 # `_credit_auto_break` with isolated side effects.
 run_credit_capture() {
   local is_stop_literal="$1"  # "True" or "False"
-  local is_post_literal="${2:-False}"
   python3 -c "
 import importlib.util, sys, json, io, time
 
@@ -84,7 +81,7 @@ buf = io.StringIO()
 sys.stdout = buf
 try:
     wt._credit_auto_break(prefs, auto_break, None, 'Coach',
-                          tier='real', is_stop=$is_stop_literal, is_post=$is_post_literal)
+                          tier='real', is_stop=$is_stop_literal)
 except SystemExit:
     pass
 sys.stdout = sys.__stdout__
@@ -94,7 +91,8 @@ parsed = json.loads(raw)
 print('keys:', ','.join(sorted(parsed.keys())))
 print('has_hso:', 'hookSpecificOutput' in parsed)
 print('has_systemMessage:', 'systemMessage' in parsed)
-print('has_additionalContext:', 'additionalContext' in parsed)
+print('decision:', parsed.get('decision', 'MISSING'))
+print('has_welcome:', '[BOX]' in parsed.get('reason', ''))
 hso = parsed.get('hookSpecificOutput', {}) or {}
 print('hookEventName:', hso.get('hookEventName', 'MISSING'))
 print('permissionDecision:', hso.get('permissionDecision', 'MISSING'))
@@ -103,18 +101,22 @@ print('permissionDecision:', hso.get('permissionDecision', 'MISSING'))
 
 echo "=== wellness-timer welcome-back emit-shape branching ==="
 
-# ── 1 — Stop context: emit is Stop-shaped (top-level systemMessage only) ──
+# ── 1 — Stop context: force a chat turn, not a silent systemMessage ────
 echo ""
-echo "Check 1 — is_stop=True welcome-back → Stop-shaped payload"
+echo "Check 1 — is_stop=True welcome-back → forced chat payload"
 out=$(run_credit_capture "True")
 keys=$(echo   "$out" | grep '^keys:'                | head -1)
 has_hso=$(echo "$out" | grep '^has_hso:'             | head -1)
 has_sm=$(echo  "$out" | grep '^has_systemMessage:'   | head -1)
+decision=$(echo "$out" | grep '^decision:' | head -1)
+welcome=$(echo "$out" | grep '^has_welcome:' | head -1)
 hen=$(echo     "$out" | grep '^hookEventName:'       | head -1)
 pd=$(echo      "$out" | grep '^permissionDecision:'  | head -1)
-assert_eq "only systemMessage key"     "keys: systemMessage"        "$keys"
+assert_eq "only Stop decision fields"  "keys: decision,reason"       "$keys"
 assert_eq "no hookSpecificOutput"      "has_hso: False"             "$has_hso"
-assert_eq "systemMessage present"      "has_systemMessage: True"    "$has_sm"
+assert_eq "no systemMessage"           "has_systemMessage: False"   "$has_sm"
+assert_eq "forced turn"                "decision: block"            "$decision"
+assert_eq "welcome included"           "has_welcome: True"          "$welcome"
 assert_eq "no hookEventName field"     "hookEventName: MISSING"     "$hen"
 assert_eq "no permissionDecision"      "permissionDecision: MISSING" "$pd"
 
@@ -131,15 +133,6 @@ assert_eq "only permission decision"   "keys: permissionDecision"  "$keys"
 assert_eq "no hookSpecificOutput"      "has_hso: False"             "$has_hso"
 assert_eq "no unsupported message"     "has_systemMessage: False"   "$has_sm"
 assert_eq "no hookEventName field"     "hookEventName: MISSING"     "$hen"
-
-# ── 3 — PostToolUse context: welcome back reaches the conversation ────
-echo ""
-echo "Check 3 — is_post=True welcome-back → additionalContext"
-out=$(run_credit_capture "False" "True")
-keys=$(echo "$out" | grep '^keys:' | head -1)
-context=$(echo "$out" | grep '^has_additionalContext:' | head -1)
-assert_eq "only additionalContext key" "keys: additionalContext" "$keys"
-assert_eq "context present" "has_additionalContext: True" "$context"
 
 echo ""
 echo "Pass: $PASS  Fail: $FAIL"

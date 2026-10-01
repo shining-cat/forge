@@ -89,13 +89,14 @@ if [ "${1:-}" = "--diagnose" ]; then
     HOOKS="$COPILOT_DIR/hooks/forge.json"
     if [ -f "$HOOKS" ] && jq -e '
         (.hooks.PreToolUse // [] | any(.[]; (.bash // "") | contains("/wellness-timer.py"))) and
-        (.hooks.PostToolUse // [] | any(.[]; (.bash // "") | contains("/wellness-timer.py"))) and
+        (.hooks.PostToolUse // [] | all(.[]; (.bash // "") | contains("/wellness-timer.py") | not)) and
         (.hooks.Stop // [] | any(.[]; (.bash // "") | contains("/wellness-timer.py"))) and
+        (.hooks.Stop[-1].bash | contains("/wellness-timer.py")) and
         (.hooks.PreCompact // [] | any(.[]; (.bash // "") | contains("/wellness-precompact.py")))
     ' "$HOOKS" >/dev/null 2>&1; then
         pass "Wellness hooks:" "registered (restart Copilot CLI after installation)"
     else
-        fail "Wellness hooks:" "missing PreToolUse, PostToolUse, Stop, or PreCompact"
+        fail "Wellness hooks:" "expected PreToolUse, Stop, PreCompact and no wellness PostToolUse"
         hint "Update Forge tooling and restart Copilot CLI."
     fi
 

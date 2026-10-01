@@ -1169,6 +1169,11 @@ do_gate() {
 
 # ── Subcommand: stop (staleness check on session end) ──────────────────
 do_stop() {
+  # A forced wellness reply (or checkpoint continuation) must not trigger another nag.
+  if echo "$STDIN_JSON" | jq -e '.stop_hook_active == true' >/dev/null 2>&1; then
+    exit 0
+  fi
+
   # Session-isolation gate: don't fire checkpoint nag in sibling GitHub Copilot CLI
   # windows that didn't run /forge themselves. See session_owns_forge().
   session_owns_forge || exit 0

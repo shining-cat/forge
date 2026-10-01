@@ -205,6 +205,15 @@ run_post_hook() {
   printf '%s||%s' "$rc" "$out"
 }
 
+run_stop_hook() {
+  local home="$1" active="${2:-false}"
+  local out rc
+  out=$(printf '{"hook_event_name":"Stop","stop_hook_active":%s}\n' "$active" \
+    | HOME="$home" PATH="$home/bin:$PATH" python3 "$HOOK_FILE" 2>/dev/null)
+  rc=$?
+  printf '%s||%s' "$rc" "$out"
+}
+
 echo ""
 echo "=== B. wellness-timer main() gate (overdue 90-min break) ==="
 
@@ -245,7 +254,7 @@ assert_not_contains "no deny emitted" '"permissionDecision": "deny"' "${res#*||}
 rm -rf "$HOME_DIR"
 
 echo ""
-echo "Check B5 — post-tool gentle reminder reaches Copilot as additionalContext"
+echo "Check B5 — Stop relays gentle reminder; PostToolUse stays inert"
 HOME_DIR=$(mk_home true)
 python3 - "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json" <<'PY'
 import json
@@ -263,11 +272,71 @@ assert_eq "pre-tool allows" "0" "${res%%||*}"
 assert_not_contains "no pre-tool soft reminder" "systemMessage" "${res#*||}"
 res=$(run_post_hook "$HOME_DIR")
 assert_eq "post-tool succeeds" "0" "${res%%||*}"
-assert_contains "in-conversation reminder" '"additionalContext"' "${res#*||}"
+assert_eq "no model-only reminder" "" "${res#*||}"
+res=$(run_stop_hook "$HOME_DIR")
+assert_eq "Stop succeeds" "0" "${res%%||*}"
+assert_contains "forced chat reminder" '"decision": "block"' "${res#*||}"
+res=$(run_stop_hook "$HOME_DIR" true)
+assert_eq "forced-turn Stop succeeds" "0" "${res%%||*}"
+assert_eq "no forced-turn loop" "" "${res#*||}"
+res=$(run_stop_hook "$HOME_DIR")
+assert_eq "cooldown prevents repeat" "" "${res#*||}"
 rm -rf "$HOME_DIR"
 
 echo ""
-echo "Check B6 — invalid preferences shape cannot block all tools"
+echo "Check B6 — micro reminder gets one chat turn without changing real break"
+HOME_DIR=$(mk_home true)
+python3 - "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json" <<'PY'
+import json
+import sys
+import time
+
+path = sys.argv[1]
+with open(path) as f:
+    prefs = json.load(f)
+prefs["last_break_timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+with open(path, "w") as f:
+    json.dump(prefs, f)
+PY
+real_before=$(jq -r '.last_break_timestamp' "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json")
+res=$(run_stop_hook "$HOME_DIR")
+assert_contains "micro forces chat" '"decision": "block"' "${res#*||}"
+assert_contains "micro wording" "stretch" "${res#*||}"
+assert_eq "real-break timer unchanged" "$real_before" \
+  "$(jq -r '.last_break_timestamp' "$HOME_DIR/vault/_shared/wellness-coach/wellness-runtime.json")"
+res=$(run_stop_hook "$HOME_DIR")
+assert_eq "micro cooldown" "" "${res#*||}"
+rm -rf "$HOME_DIR"
+
+echo ""
+echo "Check B7 — overdue strike relays once and still blocks subsequent tools"
+HOME_DIR=$(mk_home true)
+res=$(run_stop_hook "$HOME_DIR")
+assert_contains "strike forces chat" '"decision": "block"' "${res#*||}"
+assert_eq "strike persisted" "true" "$(jq -r '.strike_active' "$HOME_DIR/vault/_shared/wellness-coach/wellness-runtime.json")"
+res=$(run_stop_hook "$HOME_DIR" true)
+assert_eq "strike forced-turn loop prevented" "" "${res#*||}"
+res=$(run_stop_hook "$HOME_DIR")
+assert_eq "active strike not re-announced" "" "${res#*||}"
+res=$(run_hook "$HOME_DIR")
+assert_eq "strike still denies next tool" "2" "${res%%||*}"
+rm -rf "$HOME_DIR"
+
+echo ""
+echo "Check B8 — disabled and incomplete setup cannot force Stop"
+for mode in false absent; do
+  HOME_DIR=$(mk_home "$mode")
+  res=$(run_stop_hook "$HOME_DIR")
+  assert_eq "$mode has no forced chat" "" "${res#*||}"
+  rm -rf "$HOME_DIR"
+done
+HOME_DIR=$(mk_home true false)
+res=$(run_stop_hook "$HOME_DIR")
+assert_eq "incomplete setup has no forced chat" "" "${res#*||}"
+rm -rf "$HOME_DIR"
+
+echo ""
+echo "Check B9 — invalid preferences shape cannot block all tools"
 HOME_DIR=$(mk_home true)
 printf '[]\n' > "$HOME_DIR/vault/_shared/wellness-coach/wellness-preferences.json"
 res=$(run_hook "$HOME_DIR")
