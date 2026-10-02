@@ -58,12 +58,14 @@ You MUST complete all steps in order:
 
 Read `${COPILOT_HOME:-$HOME/.copilot}/forge.conf` with the Read tool. If it does not exist, tell the user to install Forge and stop.
 
+For shell calls, prefer the short `"$COPILOT_DIR/..."` form if `COPILOT_DIR` is inherited, its directory matches `${COPILOT_HOME:-$HOME/.copilot}` (`-ef`), and the requested script is executable (`-x`). Otherwise use the self-contained `"${COPILOT_HOME:-$HOME/.copilot}/..."` form instead. Check the directory once per session; do not prepend an export to each call. The short commands below assume the check passed.
+
 ### 0a. Wellness Cold-Start Check (pre-onboarding)
 
 Run AFTER the step-0 config existence check but BEFORE step 0b catalog reads, step 1, or step 2 recovery:
 
 ```bash
-"${COPILOT_HOME:-$HOME/.copilot}/skills/wellness-coach/scripts/wellness-reset.sh" --if-cold-start
+"$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh" --if-cold-start
 ```
 
 The script self-gates on `WELLNESS_ENABLED` + `WELLNESS_COLD_START_HOURS`. Surface stdout verbatim before the step-6 summary if non-empty. For why this is step 0a (not step 2.5), the strike-exemption interaction, and the shell-to-shell gap-script note, see `references/wellness-cold-start.md`.
@@ -72,7 +74,7 @@ If `WELLNESS_ENABLED=true`, resolve wellness preferences through `wellness_locat
 
 ### 0b. Model Coverage and First-Run Routing
 
-**Independently of `ONBOARDING_COMPLETE`**, run the read-only `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh" onboarding-status --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding copilot-cli --config "${COPILOT_HOME:-$HOME/.copilot}/forge.conf"`. It validates all four bindings for this runtime and reports an `action` and `skip_model_mapping`; never infer coverage from the completion flag.
+**Independently of `ONBOARDING_COMPLETE`**, run the read-only `"$COPILOT_DIR/scripts/forge-model-catalog.sh" onboarding-status --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding copilot-cli --config "$COPILOT_DIR/forge.conf"`. It validates all four bindings for this runtime and reports an `action` and `skip_model_mapping`; never infer coverage from the completion flag.
 
 - `action=continue`: flag and coverage complete; proceed to step 1 without a model prompt.
 - `action=map-models-only`: previously completed onboarding, but coverage missing/incomplete/invalid. Load `references/onboarding.md` and run **only model-mapping subsection (e) and coverage check (f)**; do not repeat wellness, vault, or other first-run steps.
@@ -94,7 +96,7 @@ Load `references/marker-takeover.md` for the staleness check (tmux-pane primary 
 
 #### 1b. Mark Forge as launching (BEFORE disambiguation)
 
-Run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" set-marker pending` via the Bash tool. This writes the literal sentinel `__pending__` to `${VAULT_PATH}/_shared/forge-active`. This MUST happen before any project disambiguation question is asked.
+Run `"$COPILOT_DIR/scripts/forge-context.sh" set-marker pending` via the Bash tool. This writes the literal sentinel `__pending__` to `${VAULT_PATH}/_shared/forge-active`. This MUST happen before any project disambiguation question is asked.
 
 Why: it signals "Forge is launching, no project chosen yet" — distinct from missing (never installed) and empty (deactivated). Hooks suppress brain-dump nags and Keeper warnings during this state. Without this step, an auto-memory hint (e.g., "you were on project-X last time") could prematurely set the marker to the wrong project, causing Keeper hooks to fire against the wrong vault before the user has actually chosen.
 
@@ -110,7 +112,7 @@ Check which project directories exist under the vault to determine valid environ
 
 **Present the choices as a neutral, unordered list — NEVER frame one as "(Recommended)", "last active", "most recent", or otherwise imply recency.** At step 1c the marker, `recover`, and `gap-since-last-signal` have not run yet, so any recency/recommendation claim would be sourced from stale context (e.g. the MEMORY.md "Active:" header) with no evidence behind it. A fabricated default is worse than none — it makes the user wonder what Claude knows that they don't, when the answer is nothing. If a recency-ranked ordering is ever wanted, it must wait until after `gap-since-last-signal` is read (step 2). (Honest-reporting sibling — see step 6.)
 
-Once the project is unambiguously chosen, run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" set-marker active <project>` via the Bash tool. The script captures the current `$COPILOT_SESSION_ID`, current timestamp, and current `$TMUX_PANE` and writes a JSON object to the marker:
+Once the project is unambiguously chosen, run `"$COPILOT_DIR/scripts/forge-context.sh" set-marker active <project>` via the Bash tool. The script captures the current `$COPILOT_SESSION_ID`, current timestamp, and current `$TMUX_PANE` and writes a JSON object to the marker:
 
 ```json
 {
@@ -154,12 +156,12 @@ When the active project is **blocked** (waiting on CI, a local build, external i
 - *"back to `<project>`"* / *"resume"* → return.
 
 **Park flow:**
-1. Petra has Keeper write the current project's **return-ticket checkpoint** FIRST via `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" write-checkpoint` (where it stood + the block reason).
-2. `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" park <target> "<reason>"` — lifts the current project into the `parked` slot and re-points `project` to `<target>`.
+1. Petra has Keeper write the current project's **return-ticket checkpoint** FIRST via `"$COPILOT_DIR/scripts/forge-context.sh" write-checkpoint` (where it stood + the block reason).
+2. `"$COPILOT_DIR/scripts/forge-context.sh" park <target> "<reason>"` — lifts the current project into the `parked` slot and re-points `project` to `<target>`.
 3. **Scoped-load** the target: its `current-checkpoint.md` + `git status` only — oriented, not blind. NOT the full entry ceremony (no PR sync, calendar, friction tail, KB). Full context waits until the target is promoted to a real main project via a proper `/forge` entry.
 
 **Resume flow:**
-1. `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" resume` — pops the `parked` slot back into `project`.
+1. `"$COPILOT_DIR/scripts/forge-context.sh" resume` — pops the `parked` slot back into `project`.
 2. **Scoped-load** the restored project (symmetric: checkpoint + `git status`).
 
 **Invariant — same work session:** `started_at` is preserved across a hop; an excursion is NOT a fresh session. Wellness pacing and the Stop-nag counter keep running as if the work never paused.
@@ -206,7 +208,7 @@ Invoke Keeper via Agent tool with dispatch prompt including vault context and pr
 Petra narrates entry. The greeting branches on vault state AND the gap-since-last-signal primitive — three cases:
 
 1. **No checkpoint at all** (vault never used, or freshly reset) → `Petra: Cold start — fresh vault.`
-2. **Checkpoint exists but Forge has been idle for ≥ `WELLNESS_COLD_START_HOURS`** (default 4h, set in `$COPILOT_DIR/forge.conf`) — read gap from `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-gap-since-last-signal.sh"` (single integer, seconds). Convert to hours, then: `Petra: Cold start — Forge was idle for {N}h. Re-read the checkpoint, don't trust it implicitly.`
+2. **Checkpoint exists but Forge has been idle for ≥ `WELLNESS_COLD_START_HOURS`** (default 4h, set in `$COPILOT_DIR/forge.conf`) — read gap from `"$COPILOT_DIR/scripts/forge-gap-since-last-signal.sh"` (single integer, seconds). Convert to hours, then: `Petra: Cold start — Forge was idle for {N}h. Re-read the checkpoint, don't trust it implicitly.`
 3. **Checkpoint exists and gap < threshold** → `Petra: Anvil's warm. Let's see what we've got.` (default warm-start greeting)
 
 Sentinel: gap of `999999999` means no signals at all — collapse to case 1.
@@ -219,13 +221,13 @@ PR sync results (from step 3) are shown first, then the context summary, then th
 
 **Time window check:** Check for upcoming interruptions to gauge available deep-work time. The **next interruption** is the soonest of:
 - Next wellness break — if `wellness-preferences.json` exists (resolved via `forge.conf` — selected by `${VAULT_PATH}/_shared/wellness-location.json`; flat vault legacy is read-only) (see `references/wellness-awareness.md`)
-- Next calendar meeting — when `calendar_enabled: true` in `wellness-preferences.json`, **MUST run** `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-calendar.sh" entry-fetch`. Not optional, not deferrable. With `CALENDAR_PROVIDER=gws` in `forge.conf`, the script fetches today's remaining events (skipping declined) and persists a `last_fetch_at` timestamp for `delta-check`. With no configured provider or an unsupported one, it reports calendar unavailable without calling Google; surface that gap, not "no meetings." If a configured GWS fetch fails, report the error; do not retry the same unconfigured or failing provider via the Google Workspace skill.
+- Next calendar meeting — when `calendar_enabled: true` in `wellness-preferences.json`, **MUST run** `"$COPILOT_DIR/scripts/forge-calendar.sh" entry-fetch`. Not optional, not deferrable. With `CALENDAR_PROVIDER=gws` in `forge.conf`, the script fetches today's remaining events (skipping declined) and persists a `last_fetch_at` timestamp for `delta-check`. With no configured provider or an unsupported one, it reports calendar unavailable without calling Google; surface that gap, not "no meetings." If a configured GWS fetch fails, report the error; do not retry the same unconfigured or failing provider via the Google Workspace skill.
 
 **Honest reporting (never fill with false comfort):** If a check is skipped or fails for any reason — calendar API down, gws-auth scope missing, wellness prefs absent, etc. — REPORT THE GAP, never synthesize a comforting default. Wrong: *"Next interruption: nothing scheduled (haven't checked calendar)"*. Right: *"Next interruption: wellness break in 25min. Calendar not yet checked — invoking gws-calendar now."* OR *"Calendar check failed (403 — gws-auth scopes missing). Run `/gws-auth` to refresh, otherwise meeting awareness is unavailable this session."*
 
 The first failure mode to refuse is the comforting one. "Nothing here" is a strong claim; if the verification step that produces it has been skipped, the honest output is the gap, never a default. This rule applies to ALL entry-summary lines (PRs, decisions, friction events, vault state, etc.) — defaults belong in code; verifications belong in the entry summary.
 
-**Team substrate check:** Run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" substrate-check` and surface the output line verbatim in the entry summary. The script emits one of:
+**Team substrate check:** Run `"$COPILOT_DIR/scripts/forge-context.sh" substrate-check` and surface the output line verbatim in the entry summary. The script emits one of:
 
 - `Team substrate: ready` — claude is inside tmux, Pattern A available
 - `Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback` — tmux installed but `$TMUX` unset (the `forge-shell-init.sh` wrapper was bypassed: FORGE_NO_TMUX_WRAP set, or claude launched outside the wrapped shell)
@@ -260,9 +262,9 @@ Weekly wrap: {verbatim output of `weekly-wrap-line` — usually empty, omit the 
 Drafts: {verbatim output of `draft-invite-line` — empty when no drafts waiting, omit the line entirely when so}
 ```
 
-**Weekly-wrap line (deterministic — do NOT compute it yourself).** After the Next interruption line, run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" weekly-wrap-line` and render its output **verbatim**. The subcommand emits the exact nudge line ONLY when the gate is open (wrap-up-state ∈ {`eow_window`, `past_eow`} AND weekly-wrap-due == `due`) and emits **nothing** otherwise — when empty, omit the line entirely. This is a strict on/off gate owned by the script: do NOT call `wrap-up-state`/`weekly-wrap-due` separately and decide yourself, and NEVER narrate the gate condition in prose ("due, but holding" / "due but it's early"). Empty output = no line, no commentary. (The script returning empty when the session just started is correct, not a check you should second-guess — recurrence-4 friction 2026-06-12 was exactly this editorialising.)
+**Weekly-wrap line (deterministic — do NOT compute it yourself).** After the Next interruption line, run `"$COPILOT_DIR/scripts/forge-context.sh" weekly-wrap-line` and render its output **verbatim**. The subcommand emits the exact nudge line ONLY when the gate is open (wrap-up-state ∈ {`eow_window`, `past_eow`} AND weekly-wrap-due == `due`) and emits **nothing** otherwise — when empty, omit the line entirely. This is a strict on/off gate owned by the script: do NOT call `wrap-up-state`/`weekly-wrap-due` separately and decide yourself, and NEVER narrate the gate condition in prose ("due, but holding" / "due but it's early"). Empty output = no line, no commentary. (The script returning empty when the session just started is correct, not a check you should second-guess — recurrence-4 friction 2026-06-12 was exactly this editorialising.)
 
-**Draft invite line (deterministic — do NOT compute it yourself).** After the Weekly-wrap line, run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" draft-invite-line` and render its output **verbatim**. It counts captured drafts across all `tasks/drafts/` folders and emits a one-line INVITE only when ≥1 draft is waiting; emits **nothing** when none — omit the line entirely. This surfaces drafts captured away from the desk (e.g. from mobile) so the user can PLAN a triage pass later. It is an **invite, not a trigger**: do NOT start `/forge-weekly` triage at entry — session start is for starting work, and triage is its own deliberate pass. Do not recompute or narrate the count yourself.
+**Draft invite line (deterministic — do NOT compute it yourself).** After the Weekly-wrap line, run `"$COPILOT_DIR/scripts/forge-context.sh" draft-invite-line` and render its output **verbatim**. It counts captured drafts across all `tasks/drafts/` folders and emits a one-line INVITE only when ≥1 draft is waiting; emits **nothing** when none — omit the line entirely. This surfaces drafts captured away from the desk (e.g. from mobile) so the user can PLAN a triage pass later. It is an **invite, not a trigger**: do NOT start `/forge-weekly` triage at entry — session start is for starting work, and triage is its own deliberate pass. Do not recompute or narrate the count yourself.
 
 If the next interruption is < 30 minutes, Petra notes it: *"Standup in 18 minutes — let's fetch coal, not heat anything up."*
 
@@ -300,11 +302,11 @@ Petra is conversational (`Petra:`). Roles are status tags (`[Role]`). Only attri
   - Load `references/vault-write-protocol.md` for the per-subcommand sketches, the spike receipts, and the verification-discipline mitigations for Tier 2 dispatch.
 - On every checkpoint write: silently reconcile PRs (step 3) and update checkpoint — no output to user
 - After context compression: immediately read `current-checkpoint.md` to reorient (always inline)
-- For brain-dump appends (triggered by the Keeper post-tool nag): dispatch Keeper to use `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" append-braindump "<content>"`. **Do NOT use `cat >> braindump.md <<EOF ... EOF`** — heredoc append isn't allowlisted and adds compound-command risk. The subcommand prepends a blank-line separator and ensures trailing newline; pass the entry content as a single multi-line argument.
+- For brain-dump appends (triggered by the Keeper post-tool nag): dispatch Keeper to use `"$COPILOT_DIR/scripts/forge-context.sh" append-braindump "<content>"`. **Do NOT use `cat >> braindump.md <<EOF ... EOF`** — heredoc append isn't allowlisted and adds compound-command risk. The subcommand prepends a blank-line separator and ensures trailing newline; pass the entry content as a single multi-line argument.
 
 **Delta-aware checkpoint pressure:** The braindump nag, checkpoint nag, and commit gate are **activity-driven, not wall-clock-driven** — they measure work done since the last capture, so returning from a break (coffee, meeting, lunch) no longer triggers a spurious refresh nag or commit denial. Idle gaps longer than `IDLE_GAP_MIN` (default 10 min) between tool calls are banked and subtracted from the nags' "active age"; the commit gate instead counts commits since the checkpoint refresh and denies only at `COMMIT_GATE_MAX_UNLOGGED` (default 5). Both keys are tunable in `$COPILOT_DIR/forge.conf`. Narrate accordingly — don't tell the user a nag fired "because it's been 40 minutes" when the clock is now activity-based.
 
-- **`touch-checkpoint` escape hatch:** when the user returns from a step-away, glances at the checkpoint, and there's genuinely nothing new to log, have Keeper run `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" touch-checkpoint`. It appends a single `_reviewed HH:MM — no new state_` line to the checkpoint and resets the checkpoint nag clock without a full rewrite.
+- **`touch-checkpoint` escape hatch:** when the user returns from a step-away, glances at the checkpoint, and there's genuinely nothing new to log, have Keeper run `"$COPILOT_DIR/scripts/forge-context.sh" touch-checkpoint`. It appends a single `_reviewed HH:MM — no new state_` line to the checkpoint and resets the checkpoint nag clock without a full rewrite.
 
 **Proactive Refiner:** The Refiner skill is always active. When the user corrects or redirects:
 - Identify root cause, propose a fix, log to friction log — all BEFORE continuing with the corrected approach
@@ -318,7 +320,7 @@ Load `references/maintainer-mode.md` for the full suppression list, the script-l
 
 **Verify doubted assumptions against the source of truth:** When a load-bearing or foundational assumption is challenged — by the user, or by your own uncertainty — do NOT double down on logic or re-assert from memory. Go to the authoritative source (official docs, source code, the spec), quote it, and cite the link. This matters most exactly when the user signals skepticism ("that sounds weird", "are you sure?", "wouldn't that be widely known?") or when being wrong is costly (foundational design, irreversible actions). Confirming a doubted claim against ground truth resolves the doubt honestly and *builds* trust; re-arguing from the same unverified assumption erodes it, even when the logic is sound. This is the constructive twin of *Honest reporting*: that rule forbids fabricating an unverified answer; this one requires going and verifying a doubted one instead of defending it. (Origin: 2026-07-11 — a QMK layer-ordering root-cause investigation where the user accepted the logic but doubted the premise; fetching the QMK docs confirmed it verbatim and settled a well-founded doubt. The user asked for this trait to be forged in permanently.)
 
-**Wrap-up state awareness:** Before suggesting "wrap here?" or "good place to stop?" mid-session, call `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" wrap-up-state` AND `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" next-meeting` and let the combined result gate the suggestion. `wrap-up-state` returns one of `too_early` / `mid_session` / `eod_window` / `past_eod` / `eow_window` / `past_eow` / `unknown` — `too_early` blocks, `eod_window`/`past_eod` nudge proactively, and `eow_window`/`past_eow` (Fridays by default) ADDITIONALLY trigger weekly-wrap behavior (retro, friction surface, BACKLOG triage). `next-meeting` returns `HH:MM|title|minutes_until` for any meeting starting within the configured window (default 30 min), or empty — pace the suggestion against an imminent meeting rather than colliding with it. For full per-state behavior, the EOW strictly-stronger rule, the chain pattern, and tuning notes, see `references/wrap-up-state.md`.
+**Wrap-up state awareness:** Before suggesting "wrap here?" or "good place to stop?" mid-session, call `"$COPILOT_DIR/scripts/forge-context.sh" wrap-up-state` AND `"$COPILOT_DIR/scripts/forge-context.sh" next-meeting` and let the combined result gate the suggestion. `wrap-up-state` returns one of `too_early` / `mid_session` / `eod_window` / `past_eod` / `eow_window` / `past_eow` / `unknown` — `too_early` blocks, `eod_window`/`past_eod` nudge proactively, and `eow_window`/`past_eow` (Fridays by default) ADDITIONALLY trigger weekly-wrap behavior (retro, friction surface, BACKLOG triage). `next-meeting` returns `HH:MM|title|minutes_until` for any meeting starting within the configured window (default 30 min), or empty — pace the suggestion against an imminent meeting rather than colliding with it. For full per-state behavior, the EOW strictly-stronger rule, the chain pattern, and tuning notes, see `references/wrap-up-state.md`.
 
 **Prose wind-down trigger:** When the user's message clearly signals "I'm calling it" (winding down for the day, not just finishing a task), silently run `wellness-reset.sh --full-reset` and offer `/forge-exit` once. For the trigger phrase list (canonical seed + personal learned), the canonical/fuzzy classification + branches, the hard-exit escape hatch, and the anti-patterns to skip, see `references/prose-wind-down.md`. The exit invitation — not a checkpoint invitation — is the load-bearing point: closing the forge cleanly at end of day is a wellness practice.
 
@@ -332,7 +334,7 @@ Load `references/maintainer-mode.md` for the full suppression list, the script-l
 
 Load `references/extended-thinking-discipline.md` for the full engage/skip checklists, subagent-prompt pattern, and measurement methodology — load it before a non-trivial turn when unsure whether to think.
 
-**Proactive `/compact` discipline.** On every checkpoint write, invoke `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-snapshot.sh" --json`. When `suggest_compact: true`, append a `/compact` nudge line to the checkpoint body. When false, no addition (no noise on healthy sessions).
+**Proactive `/compact` discipline.** On every checkpoint write, invoke `"$COPILOT_DIR/scripts/forge-cost-snapshot.sh" --json`. When `suggest_compact: true`, append a `/compact` nudge line to the checkpoint body. When false, no addition (no noise on healthy sessions).
 
 Load `references/proactive-compact.md` for the trigger semantics, the exact nudge line template, the rationale (GitHub Copilot CLI auto-compaction is silently unreliable in long sessions, [#31828](https://github.com/anthropics/claude-code/issues/31828)), and ad-hoc CLI invocation — load it when implementing checkpoint writes.
 
@@ -369,7 +371,7 @@ For workflows that genuinely benefit from parallel collaboration with inter-agen
 
 **Background observability.** For in-session background subagent dispatch (regardless of Pattern A / tmux), use `/tasks` to monitor live status, attach to running subagents, or stop them. This is distinct from Agent View (`claude agents` / left-arrow TUI), which observes background *sessions* (full independent GitHub Copilot CLI sessions started with `--bg`), not in-session subagent dispatch.
 
-**First-use panes notice.** Before the first Pattern A team spawn in a session, the one-time split-panes notice is handled via `"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh" teammate-notice` (self-gating; surface stdout verbatim, empty = omit) — see `references/agent-teams-mode.md`.
+**First-use panes notice.** Before the first Pattern A team spawn in a session, the one-time split-panes notice is handled via `"$COPILOT_DIR/scripts/forge-context.sh" teammate-notice` (self-gating; surface stdout verbatim, empty = omit) — see `references/agent-teams-mode.md`.
 
 **Before spawning OR running Pattern A inline — load `references/agent-teams-mode.md`.** That file holds:
 - Pattern A trigger heuristic (weighted score, ≥ 3 → ask the user)

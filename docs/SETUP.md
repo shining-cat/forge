@@ -167,11 +167,11 @@ custom agents into `agents/`, skills into `skills/`, runtime scripts into
 Existing Forge-owned files are backed up before replacement; unrelated Copilot
 configuration is not rewritten.
 
-Forge skill commands resolve `${COPILOT_HOME:-$HOME/.copilot}` directly, so
-`COPILOT_DIR` does not need to be set for them. If you prefer `$COPILOT_DIR` in
-your own terminal commands, optionally add this line to `~/.zshrc` or
-`~/.bashrc` before starting Copilot CLI (it also respects a custom
-`COPILOT_HOME`):
+Forge entry prefers shorter `$COPILOT_DIR/...` commands when the variable is
+inherited and matches the installed directory. Without it, commands fall back
+to `${COPILOT_HOME:-$HOME/.copilot}/...`, so no shell configuration is required.
+For the shorter form, optionally add this line to `~/.zshrc` or `~/.bashrc`
+before starting Copilot CLI (it also respects a custom `COPILOT_HOME`):
 
 ```bash
 export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
