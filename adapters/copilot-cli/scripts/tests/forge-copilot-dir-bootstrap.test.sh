@@ -36,30 +36,47 @@ for name, command in (
 
 skill = (adapter / "skills/forge/SKILL.md").read_text()
 for fragment in (
-    'matches `${COPILOT_HOME:-$HOME/.copilot}` (`-ef`)',
-    'Otherwise use the self-contained `"${COPILOT_HOME:-$HOME/.copilot}/..."`',
+    'test -n "${COPILOT_DIR:-}" && test "$COPILOT_DIR" -ef "${COPILOT_HOME:-$HOME/.copilot}" && test -x "$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh"',
+    'If it fails, use the self-contained `"${COPILOT_HOME:-$HOME/.copilot}/..."`',
     '"$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh" --if-cold-start',
+    'skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json',
     '"$COPILOT_DIR/scripts/forge-context.sh" set-marker pending',
     '"$COPILOT_DIR/scripts/forge-model-catalog.sh" onboarding-status',
+    'read that project\'s `current-checkpoint.md` for its recorded checkout path',
 ):
     if fragment not in skill:
         raise SystemExit(f"forge skill: missing guarded short command: {fragment}")
+
+keeper = (adapter / "agents/forge-keeper.agent.md").read_text()
+for fragment in (
+    "Use the supplied `project_path` for git verification",
+    "read `wellness_preferences_path` as resolved",
+    'Run `forge-calendar.sh entry-fetch` when the resolved preferences enable the calendar',
+    'Treat a failed `review-sync` as an explicit gap',
+):
+    if fragment not in keeper:
+        raise SystemExit(f"keeper: missing entry contract: {fragment}")
 PY
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/default/.copilot/scripts" "$tmp/custom install/scripts"
+mkdir -p "$tmp/default/.copilot/skills/wellness-coach/scripts" "$tmp/custom install/skills/wellness-coach/scripts"
 printf '#!/bin/sh\nprintf "default\\n"\n' > "$tmp/default/.copilot/scripts/forge-context.sh"
 printf '#!/bin/sh\nprintf "custom\\n"\n' > "$tmp/custom install/scripts/forge-context.sh"
-chmod +x "$tmp/default/.copilot/scripts/forge-context.sh" "$tmp/custom install/scripts/forge-context.sh"
+touch "$tmp/default/.copilot/skills/wellness-coach/scripts/wellness-reset.sh" "$tmp/custom install/skills/wellness-coach/scripts/wellness-reset.sh"
+chmod +x "$tmp/default/.copilot/scripts/forge-context.sh" "$tmp/custom install/scripts/forge-context.sh" "$tmp/default/.copilot/skills/wellness-coach/scripts/wellness-reset.sh" "$tmp/custom install/skills/wellness-coach/scripts/wellness-reset.sh"
 short_command='"$COPILOT_DIR/scripts/forge-context.sh"'
 fallback_command='"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh"'
-guarded_command='if [ -n "${COPILOT_DIR:-}" ] && [ "$COPILOT_DIR" -ef "${COPILOT_HOME:-$HOME/.copilot}" ] && [ -x "$COPILOT_DIR/scripts/forge-context.sh" ]; then "$COPILOT_DIR/scripts/forge-context.sh"; else "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh"; fi'
+short_path_check='test -n "${COPILOT_DIR:-}" && test "$COPILOT_DIR" -ef "${COPILOT_HOME:-$HOME/.copilot}" && test -x "$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh"'
 [ "$(env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_command")" = default ]
 [ "$(env -u COPILOT_DIR -u COPILOT_HOME HOME="$tmp/default" bash -c "$fallback_command")" = default ]
 [ "$(env -u COPILOT_DIR HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" bash -c "$fallback_command")" = custom ]
 [ "$(HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/custom install" bash -c "$short_command")" = custom ]
-[ "$(env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$guarded_command")" = default ]
-[ "$(env -u COPILOT_DIR HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" bash -c "$guarded_command")" = custom ]
-[ "$(HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/default/.copilot" bash -c "$guarded_command")" = custom ]
+env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_path_check"
+HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/custom install" bash -c "$short_path_check"
+! env -u COPILOT_DIR HOME="$tmp/default" bash -c "$short_path_check"
+! HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_path_check"
+chmod -x "$tmp/default/.copilot/skills/wellness-coach/scripts/wellness-reset.sh"
+! env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_path_check"
 echo PASS

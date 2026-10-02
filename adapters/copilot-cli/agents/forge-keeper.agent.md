@@ -54,9 +54,12 @@ Implicit acceptance is **not** validated — confirm with the user before loggin
   "project": "project-name",
   "env": "ENV",
   "project_path": "/path/to/git/repo",
+  "wellness_preferences_path": "/path/to/resolved/wellness-preferences.json",
   "wellness_cold_start_output": "..." // optional
 }
 ```
+
+Use the supplied `project_path` for git verification; do not derive the checkout from the vault project name or substitute an older path. For wellness and calendar state, read `wellness_preferences_path` as resolved by `skills/wellness-coach/hooks/wellness_location.py`; never infer a conflicting setting from a flat legacy file or a stale checkpoint. If the dispatch omits the path, resolve it with the helper; if the supplied path is missing or the resolver fails, report the error rather than using a different file. Run `forge-calendar.sh entry-fetch` when the resolved preferences enable the calendar. Treat a failed `review-sync` as an explicit gap, not as "no review documents changed."
 
 **Output (return as JSON only — NO prose):**
 ```json

@@ -58,7 +58,13 @@ You MUST complete all steps in order:
 
 Read `${COPILOT_HOME:-$HOME/.copilot}/forge.conf` with the Read tool. If it does not exist, tell the user to install Forge and stop.
 
-For shell calls, prefer the short `"$COPILOT_DIR/..."` form if `COPILOT_DIR` is inherited, its directory matches `${COPILOT_HOME:-$HOME/.copilot}` (`-ef`), and the requested script is executable (`-x`). Otherwise use the self-contained `"${COPILOT_HOME:-$HOME/.copilot}/..."` form instead. Check the directory once per session; do not prepend an export to each call. The short commands below assume the check passed.
+Check the inherited short path once with a compact boolean command (no inline `if`/`else`, invocation, or success message):
+
+```bash
+test -n "${COPILOT_DIR:-}" && test "$COPILOT_DIR" -ef "${COPILOT_HOME:-$HOME/.copilot}" && test -x "$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh"
+```
+
+If it succeeds, prefer `"$COPILOT_DIR/..."` for installed executable scripts. If it fails, use the self-contained `"${COPILOT_HOME:-$HOME/.copilot}/..."` form throughout entry. Do not repeat the directory check or prepend an export to each call. The short commands below assume the check passed.
 
 ### 0a. Wellness Cold-Start Check (pre-onboarding)
 
@@ -70,7 +76,7 @@ Run AFTER the step-0 config existence check but BEFORE step 0b catalog reads, st
 
 The script self-gates on `WELLNESS_ENABLED` + `WELLNESS_COLD_START_HOURS`. Surface stdout verbatim before the step-6 summary if non-empty. For why this is step 0a (not step 2.5), the strike-exemption interaction, and the shell-to-shell gap-script note, see `references/wellness-cold-start.md`.
 
-If `WELLNESS_ENABLED=true`, resolve wellness preferences through `wellness_location.py` and check both storage consent and `wellness_onboarding_complete: true`. A file inherited from another runtime or a partial setup does **not** count as completed onboarding. If absent or false, invoke the wellness-coach skill and offer its eight-question interactive setup before treating the coach as active. If the user defers, continue Forge with wellness enforcement inactive; do not silently mark setup complete.
+If `WELLNESS_ENABLED=true`, use `python3 "$COPILOT_DIR/skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json` to resolve preferences (or the self-contained path when the short-path check failed). The resolver is in `hooks/`, **not** `scripts/` or `bin/`; do not guess or search for its location. Check storage consent and `wellness_onboarding_complete: true` from the resolved file. A file inherited from another runtime or a partial setup does **not** count as completed onboarding. If absent or false, invoke the wellness-coach skill and offer its eight-question interactive setup before treating the coach as active. If the user defers, continue Forge with wellness enforcement inactive; do not silently mark setup complete. Report resolver errors rather than reading a different preferences file.
 
 ### 0b. Model Coverage and First-Run Routing
 
@@ -140,6 +146,8 @@ Same prompt-bypass rationale as step 1b — DO NOT use the Write tool here eithe
 
 This format enables session-isolated hooks: only the GitHub Copilot CLI window whose `$COPILOT_SESSION_ID` matches `session_id` will receive Forge hook side effects (braindump prompts, commit gates, checkpoint nags). Sibling windows reading the same marker file will see they don't own it and stay silent. (Wellness coach is intentionally exempt — see `wellness-awareness.md` for rationale.)
 
+If the current working directory is outside the chosen project's checkout, read that project's `current-checkpoint.md` for its recorded checkout path and verify it with `git -C <path> rev-parse --show-toplevel` before dispatching Keeper. Do not probe a remembered or guessed checkout path first. If the checkpoint does not identify a usable path, report that gap and resolve the checkout without assuming the vault project name is the repository directory name.
+
 **Marker convention** (used by `forge-context.sh`, `forge-compaction.sh`, `statusline.sh`):
 - File missing → Forge has never been activated on this machine
 - File exists but is empty / whitespace-only → Forge deactivated (set by `/forge-exit`)
@@ -192,7 +200,7 @@ Keeper gathers structured context data and returns JSON. Petra renders it inline
 - **Timeout:** 10 seconds
 - **Error handling:** On failure, Petra rolls back marker to `__pending__` and runs steps 2–6 inline on Sonnet as fallback
 
-Invoke Keeper via Agent tool with dispatch prompt including vault context and project details. Keeper returns structured JSON; Petra parses and renders the entry summary.
+Invoke Keeper via Agent tool with dispatch prompt including vault context, the verified git checkout path, and the resolved wellness preferences path and calendar setting. Keeper returns structured JSON; Petra parses and renders the entry summary. If its calendar status conflicts with the resolved preferences, verify the same resolved file before reporting; do not present a second inferred location as a competing source.
 
 **Fallback on dispatch failure:**
 1. Keeper dispatch times out or fails with error

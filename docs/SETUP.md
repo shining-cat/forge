@@ -170,6 +170,10 @@ configuration is not rewritten.
 Forge entry prefers shorter `$COPILOT_DIR/...` commands when the variable is
 inherited and matches the installed directory. Without it, commands fall back
 to `${COPILOT_HOME:-$HOME/.copilot}/...`, so no shell configuration is required.
+Entry verifies the inherited directory and wellness reset executable with a
+single boolean check; it does not wrap the first invocation in an `if`/`else`
+shell block. The wellness preferences resolver lives under
+`skills/wellness-coach/hooks/wellness_location.py`.
 For the shorter form, optionally add this line to `~/.zshrc` or `~/.bashrc`
 before starting Copilot CLI (it also respects a custom `COPILOT_HOME`):
 
