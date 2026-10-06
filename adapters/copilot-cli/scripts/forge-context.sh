@@ -546,7 +546,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|checkout-state|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
     # No stdin read, no guards. These operate on marker/shared state only.
     # trust-anchor reads only VAULT_PATH + REPO_ROOTS from forge.conf (no
     # marker / active project needed) — install.sh and forge-shell-init.sh
@@ -4656,6 +4656,32 @@ do_substrate_check() {
   fi
 }
 
+# ── Subcommand: checkout-state ────────────────────────────────────────
+# Verify the checkpoint's checkout without requiring a separate git -C
+# approval for each read-only query at Forge entry.
+do_checkout_state() {
+  local checkout="${1:-}" root branch changes
+  if [ -z "$checkout" ] || [ ! -d "$checkout" ]; then
+    echo "[checkout-state] expected an existing checkout directory" >&2
+    return 2
+  fi
+  if ! root="$(git -C "$checkout" rev-parse --show-toplevel)"; then
+    echo "[checkout-state] cannot resolve git root: $checkout" >&2
+    return 1
+  fi
+  branch="$(git -C "$checkout" branch --show-current)"
+  if [ -z "$branch" ]; then
+    branch="detached at $(git -C "$checkout" rev-parse --short HEAD)"
+  fi
+  changes="$(git -C "$checkout" status --short)"
+  printf 'Checkout: %s\nBranch: %s\n' "$root" "$branch"
+  if [ -z "$changes" ]; then
+    echo "Git state: clean"
+  else
+    printf 'Git state: uncommitted changes\n%s\n' "$changes"
+  fi
+}
+
 # ── Subcommand: review-sync ────────────────────────────────────────────
 # Scan tasks/reviews/ for PR-numbered review docs, query gh for each PR's
 # state, and emit one line per doc whose PR is merged or closed-unmerged
@@ -6177,6 +6203,7 @@ case "$SUBCMD" in
   wind-down-list)      do_wind_down_list ;;
   next-meeting)        do_next_meeting ;;
   substrate-check)     do_substrate_check ;;
+  checkout-state)      do_checkout_state "${2:-}" ;;
   review-sync)         do_review_sync "${@:2}" ;;
   repo-gh)             do_repo_gh "${@:2}" ;;
   draft-list)          do_draft_list ;;
@@ -6194,7 +6221,7 @@ case "$SUBCMD" in
   run-tests)               do_run_tests "${@:2}" ;;
   trust-anchor)            do_trust_anchor ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests|trust-anchor}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|checkout-state|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests|trust-anchor}" >&2
     exit 1
     ;;
 esac

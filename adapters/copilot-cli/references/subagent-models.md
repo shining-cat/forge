@@ -55,12 +55,23 @@ Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 
 **Before every Forge subagent dispatch**, including entry Keeper, resolve the
 role's tier with the installed Copilot wrapper. Substitute the actual role
-name in `--role`; do not choose a model from the defaults table or rely on
-the harness default for a configured tier:
+name in `--role`, the literal absolute path to the installed script for the
+executable, and the literal absolute vault path for `--snapshot`. Read these
+paths from `forge.conf` first; do not use shell variables, `~`, inline
+environment assignments, or compound commands in the Bash invocation.
+Saved Copilot CLI approvals match the submitted command form, so the variable
+form can prompt even when the absolute executable is approved. Do not choose
+a model from the defaults table or rely on the harness default for a
+configured tier:
 
 ```bash
-VAULT_PATH=<vault path> "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh" resolve --role keeper
+"/absolute/copilot/directory/scripts/forge-model-catalog.sh" resolve --role keeper --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json"
 ```
+
+Replace the example paths with the real absolute paths before invoking Bash.
+The explicit snapshot avoids needing a `VAULT_PATH=` command prefix. If this
+invocation still prompts, distinguish shell approval from path-access and
+other prompts rather than expanding permissions automatically.
 
 Use the command's JSON `status` **and** exit code:
 

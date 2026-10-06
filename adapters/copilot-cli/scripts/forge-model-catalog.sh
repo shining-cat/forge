@@ -26,7 +26,16 @@ case "${1:-resolve}" in
     [ "${1:-}" = resolve ] && shift
     role=""
     if [ "${1:-}" != "" ] && [[ "${1:-}" != -* ]]; then role="$1"; shift; fi
-    : "${VAULT_PATH:?VAULT_PATH is required}"
+    if [ -z "${VAULT_PATH:-}" ]; then
+      has_snapshot=false
+      for arg in "$@"; do
+        case "$arg" in --snapshot|--snapshot=*) has_snapshot=true ;; esac
+      done
+      if ! "$has_snapshot"; then
+        echo '{"status":"invalid","error":"VAULT_PATH or --snapshot is required"}'
+        exit 3
+      fi
+    fi
     config="${FORGE_CONF:-$COPILOT_DIR/forge.conf}"
     require_local_binding "$@"
     if [ -n "$role" ]; then

@@ -112,6 +112,7 @@ if HOME="$T/home" COPILOT_HOME="$T/home/.copilot" VAULT_PATH="$T/vault" \
    python3 - "$T/vault/_shared/model-catalog/catalog.json" "$T/home/.copilot/forge.conf" "$wrapper" <<'PY'
 import copy
 import json
+import os
 import subprocess
 import sys
 
@@ -150,6 +151,18 @@ def check(role, code, status, model=None, snapshot_path=None):
 
 check("keeper", 0, "resolved", "model-a")
 check("reviewer", 0, "resolved", "reviewer-model")
+without_vault = dict(os.environ)
+without_vault.pop("VAULT_PATH", None)
+literal = subprocess.run(
+    [wrapper, "resolve", "--role", "keeper", "--snapshot", snapshot],
+    env=without_vault, capture_output=True, text=True, check=False)
+assert literal.returncode == 0, literal.stdout + literal.stderr
+assert json.loads(literal.stdout)["dispatch_id"] == "model-a", literal.stdout
+missing = subprocess.run(
+    [wrapper, "resolve", "--role", "keeper"],
+    env=without_vault, capture_output=True, text=True, check=False)
+assert missing.returncode == 3, missing.stdout + missing.stderr
+assert json.loads(missing.stdout)["status"] == "invalid", missing.stdout
 standard["bindings"][0]["active"] = False
 with open(snapshot, "w", encoding="utf-8") as stream:
     json.dump(catalog, stream)

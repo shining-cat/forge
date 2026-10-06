@@ -26,26 +26,33 @@ for folder in ("skills", "references"):
             if executable:
                 raise SystemExit(f"{path}:{number}: command depends on COPILOT_DIR")
 
-for name, command in (
-    ("references/onboarding.md", "skills/forge-setup-models/scripts/forge-setup-models.sh"),
-    ("references/subagent-models.md", "scripts/forge-model-catalog.sh"),
-):
-    text = (adapter / name).read_text()
-    if f'"${{COPILOT_HOME:-$HOME/.copilot}}/{command}"' not in text:
-        raise SystemExit(f"{name}: missing self-contained {command} command")
+text = (adapter / "references/onboarding.md").read_text()
+if '"${COPILOT_HOME:-$HOME/.copilot}/skills/forge-setup-models/scripts/forge-setup-models.sh"' not in text:
+    raise SystemExit("onboarding reference: missing interactive setup command")
+if '"/absolute/copilot/directory/scripts/forge-model-catalog.sh" check-coverage' not in text:
+    raise SystemExit("onboarding reference: coverage check must use literal executable path")
 
 skill = (adapter / "skills/forge/SKILL.md").read_text()
 for fragment in (
-    'test -n "${COPILOT_DIR:-}" && test "$COPILOT_DIR" -ef "${COPILOT_HOME:-$HOME/.copilot}" && test -x "$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh"',
-    'If it fails, use the self-contained `"${COPILOT_HOME:-$HOME/.copilot}/..."`',
-    '"$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh" --if-cold-start',
-    'skills/wellness-coach/hooks/wellness_location.py" file wellness-preferences.json',
-    '"$COPILOT_DIR/scripts/forge-context.sh" set-marker pending',
-    '"$COPILOT_DIR/scripts/forge-model-catalog.sh" onboarding-status',
+    'Use the absolute parent directory of the `forge.conf` file',
+    'never send',
+    'an environment assignment, or a',
+    '"/absolute/copilot/directory/skills/wellness-coach/scripts/wellness-reset.sh" --if-cold-start',
+    'skills/wellness-coach/hooks/wellness_location.py file wellness-preferences.json',
+    '/absolute/copilot/directory/scripts/forge-context.sh set-marker pending',
+    '/absolute/copilot/directory/scripts/forge-model-catalog.sh onboarding-status',
+    '--role keeper --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json',
     'read that project\'s `current-checkpoint.md` for its recorded checkout path',
 ):
     if fragment not in skill:
-        raise SystemExit(f"forge skill: missing guarded short command: {fragment}")
+        raise SystemExit(f"forge skill: missing literal-path entry contract: {fragment}")
+for command in ("set-marker pending", "substrate-check", "weekly-wrap-line", "draft-invite-line"):
+    if f'/absolute/copilot/directory/scripts/forge-context.sh {command}' not in skill:
+        raise SystemExit(f"forge skill: missing literal command: {command}")
+if 'forge-context.sh checkout-state "/absolute/recorded/checkout"' not in skill:
+    raise SystemExit("forge skill: missing read-only checkout verification")
+if re.search(r'`"\$COPILOT_DIR/scripts/forge-(?:context|model-catalog)\.sh" (?:set-marker|resolve|substrate-check|weekly-wrap-line|draft-invite-line)', skill):
+    raise SystemExit("forge skill: variable-based entry command can bypass saved approvals")
 
 entry = skill.split("### 2–6. Load Vault Context & Reconcile (Keeper Dispatch)", 1)[1].split("### 6. Present Context Summary", 1)[0]
 dispatch = skill.split("**Subagent definitions + model tuning:**", 1)[1].split("## Agent-Teams Mode", 1)[0]
@@ -53,7 +60,7 @@ reference = (adapter / "references/subagent-models.md").read_text()
 for label, text, fragments in (
     ("entry Keeper", entry, ("--role keeper", "dispatch_id", "`model`", "keep the", "marker pending", "do not", "inline fallback")),
     ("all Forge roles", dispatch, ("Before **every** Forge role dispatch", "entry Keeper", "team fan-out", "--role {role}", "dispatch_id", "`model`", "no_match", "invalid", "stop")),
-    ("dispatch reference", reference, ('resolve --role keeper', '"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh"', "`resolved`", "`inherit`", "`no_match`", "`invalid`", "Do not dispatch")),
+    ("dispatch reference", reference, ('resolve --role keeper --snapshot', '"/absolute/copilot/directory/scripts/forge-model-catalog.sh"', "`resolved`", "`inherit`", "`no_match`", "`invalid`", "Do not dispatch")),
 ):
     for fragment in fragments:
         if fragment not in text:
@@ -78,6 +85,9 @@ for fragment in (
     "read `wellness_preferences_path` as resolved",
     'Run `forge-calendar.sh entry-fetch` when the resolved preferences enable the calendar',
     'Treat a failed `review-sync` as an explicit gap',
+    "forge-context.sh checkout-state <project_path>",
+    "For a scoped task or note edit, verify the changed file with Read",
+    "Do not use",
 ):
     if fragment not in keeper:
         raise SystemExit(f"keeper: missing entry contract: {fragment}")
@@ -91,17 +101,17 @@ printf '#!/bin/sh\nprintf "default\\n"\n' > "$tmp/default/.copilot/scripts/forge
 printf '#!/bin/sh\nprintf "custom\\n"\n' > "$tmp/custom install/scripts/forge-context.sh"
 touch "$tmp/default/.copilot/skills/wellness-coach/scripts/wellness-reset.sh" "$tmp/custom install/skills/wellness-coach/scripts/wellness-reset.sh"
 chmod +x "$tmp/default/.copilot/scripts/forge-context.sh" "$tmp/custom install/scripts/forge-context.sh" "$tmp/default/.copilot/skills/wellness-coach/scripts/wellness-reset.sh" "$tmp/custom install/skills/wellness-coach/scripts/wellness-reset.sh"
-short_command='"$COPILOT_DIR/scripts/forge-context.sh"'
-fallback_command='"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-context.sh"'
-short_path_check='test -n "${COPILOT_DIR:-}" && test "$COPILOT_DIR" -ef "${COPILOT_HOME:-$HOME/.copilot}" && test -x "$COPILOT_DIR/skills/wellness-coach/scripts/wellness-reset.sh"'
-[ "$(env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_command")" = default ]
-[ "$(env -u COPILOT_DIR -u COPILOT_HOME HOME="$tmp/default" bash -c "$fallback_command")" = default ]
-[ "$(env -u COPILOT_DIR HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" bash -c "$fallback_command")" = custom ]
-[ "$(HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/custom install" bash -c "$short_command")" = custom ]
-env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_path_check"
-HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/custom install" bash -c "$short_path_check"
-! env -u COPILOT_DIR HOME="$tmp/default" bash -c "$short_path_check"
-! HOME="$tmp/default" COPILOT_HOME="$tmp/custom install" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_path_check"
-chmod -x "$tmp/default/.copilot/skills/wellness-coach/scripts/wellness-reset.sh"
-! env -u COPILOT_HOME HOME="$tmp/default" COPILOT_DIR="$tmp/default/.copilot" bash -c "$short_path_check"
+[ "$("$tmp/default/.copilot/scripts/forge-context.sh")" = default ]
+[ "$("$tmp/custom install/scripts/forge-context.sh")" = custom ]
+mkdir -p "$tmp/vault/_shared" "$tmp/project with spaces"
+printf 'VAULT_PATH=%s\n' "$tmp/vault" > "$tmp/forge.conf"
+git -C "$tmp/project with spaces" init -q
+root="$(git -C "$tmp/project with spaces" rev-parse --show-toplevel)"
+script="$ROOT/adapters/copilot-cli/scripts/forge-context.sh"
+state="$(HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" checkout-state "$tmp/project with spaces")"
+[[ "$state" == *"Checkout: $root"* && "$state" == *"Git state: clean"* ]]
+printf 'changed\n' > "$tmp/project with spaces/example.txt"
+state="$(HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" checkout-state "$tmp/project with spaces")"
+[[ "$state" == *"Git state: uncommitted changes"* && "$state" == *"example.txt"* ]]
+! HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" checkout-state "$tmp/vault" >/dev/null 2>&1
 echo PASS

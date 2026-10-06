@@ -20,6 +20,11 @@ approved there, and whether commands are invoked directly or hidden inside
 compound shell commands. Saved approvals do not automatically apply at another
 location. If a script is already listed, do not recommend adding it again.
 Separate shell approval prompts from file-overwrite and path-access prompts.
+Do not equate a saved full-path identifier with a shell-variable invocation
+of that path. At the same location, an actual `"$COPILOT_DIR/scripts/forge-context.sh"`
+call prompted while a literal absolute invocation did not. Prefer literal
+absolute executable paths and inspect the exact prompt before proposing new
+approvals; avoid `git -C` or compound Git checks just to verify a file edit.
 
 Explain any linter findings to the user with brief context for each:
 
