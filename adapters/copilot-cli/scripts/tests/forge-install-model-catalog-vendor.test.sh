@@ -108,6 +108,64 @@ else
 fi
 
 wrapper="$T/home/.copilot/scripts/forge-model-catalog.sh"
+if HOME="$T/home" COPILOT_HOME="$T/home/.copilot" VAULT_PATH="$T/vault" \
+   python3 - "$T/vault/_shared/model-catalog/catalog.json" "$T/home/.copilot/forge.conf" "$wrapper" <<'PY'
+import copy
+import json
+import subprocess
+import sys
+
+snapshot, config, wrapper = sys.argv[1:]
+with open(snapshot, encoding="utf-8") as stream:
+    catalog = json.load(stream)
+minimal = next(record for record in catalog["records"] if record["tier"] == "minimal")
+standard = copy.deepcopy(minimal)
+standard["tier"] = "standard"
+standard["identity"]["id"] = "reviewer-model"
+standard["bindings"][0]["dispatch_id"] = "reviewer-model"
+catalog["records"] = [minimal, standard]
+with open(snapshot, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+def set_tier(tier):
+    with open(config, encoding="utf-8") as stream:
+        lines = stream.readlines()
+    lines = [f"MODEL_TIER_REVIEWER={tier}\n" if line.startswith("MODEL_TIER_REVIEWER=") else line
+             for line in lines]
+    if not any(line.startswith("MODEL_TIER_REVIEWER=") for line in lines):
+        lines.append(f"MODEL_TIER_REVIEWER={tier}\n")
+    with open(config, "w", encoding="utf-8") as stream:
+        stream.writelines(lines)
+
+set_tier("standard")
+def check(role, code, status, model=None, snapshot_path=None):
+    command = [wrapper, "resolve", "--role", role]
+    if snapshot_path:
+        command += ["--snapshot", snapshot_path]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    payload = json.loads(result.stdout)
+    assert (result.returncode, payload["status"]) == (code, status), (result.returncode, payload)
+    if model:
+        assert payload["dispatch_id"] == model, payload
+        assert payload["binding"]["runtime"] == "copilot-cli", payload
+
+check("keeper", 0, "resolved", "model-a")
+check("reviewer", 0, "resolved", "reviewer-model")
+standard["bindings"][0]["active"] = False
+with open(snapshot, "w", encoding="utf-8") as stream:
+    json.dump(catalog, stream)
+check("reviewer", 2, "no_match")
+set_tier("not-a-tier")
+check("reviewer", 3, "invalid")
+set_tier("inherit")
+check("reviewer", 1, "inherit", snapshot_path=snapshot + ".missing")
+PY
+then
+  ok "role tiers resolve independently; absent, invalid, and inherit are distinct"
+else
+  bad "role dispatch resolution" "installed resolver violated the role-tier contract"
+fi
+cp "$T/config-before" "$T/home/.copilot/forge.conf"
+cp "$T/catalog-before" "$T/vault/_shared/model-catalog/catalog.json"
 # A mixed catalog resolves the local dispatch, not the foreign runtime's ID.
 python3 - "$T/vault/_shared/model-catalog/catalog.json" <<'PY'
 import json

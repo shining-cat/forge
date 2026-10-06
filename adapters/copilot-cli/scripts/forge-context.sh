@@ -564,9 +564,7 @@ case "$SUBCMD_PEEK" in
     # skill-budgets reads $FORGE_REPO/core/skill-budgets.conf directly and
     # doesn't need marker context — also future-proofs against pre-commit /
     # `gh pr comment` invocations that won't have a tty.
-    # substrate-check inspects $TMUX env + `command -v tmux` — fully project-
-    # independent; routed through the script so the substrate detection
-    # inherits the existing allowlist instead of prompting on every entry.
+    # substrate-check checks the Copilot executable — project-independent.
     # write-checkpoint / new-task / set-task-status / bump-backlog-header /
     # add-recently-shipped / update-backlog-row — Tier 1 vault-write subcommands
     # (see core/references/vault-write-protocol.md). They resolve project from
@@ -4648,28 +4646,13 @@ do_next_meeting() {
 }
 
 # ── Subcommand: substrate-check ───────────────────────────────────────
-# Detect whether agent-team substrate (tmux + $TMUX env) is available for
-# Pattern A dispatch. Emits a single ready-to-surface line.
-#
-# Output: one of
-#   "Team substrate: ready"
-#   "Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback"
-#   "Team substrate: missing — install tmux (\`brew install tmux\`) and relaunch for Pattern A; inline subagent fallback works either way"
-#
-# Why a subcommand instead of inline Bash at entry: the inline compound
-# (echo + command -v + && / || chain) is not matched by any flat allowlist
-# entry, so it prompts the user on every session start. Routing through
-# forge-context.sh inherits the existing script-level allowlist and stays
-# silent. Petra surfaces the output verbatim in the entry-summary block.
+# Report Copilot CLI's native /fleet availability, independently of tmux.
+# This verifies the executable on PATH, not a live parallel dispatch.
 do_substrate_check() {
-  if [ -n "${TMUX:-}" ]; then
-    echo "Team substrate: ready"
-    return 0
-  fi
-  if command -v tmux >/dev/null 2>&1; then
-    echo "Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback"
+  if command -v copilot >/dev/null 2>&1; then
+    echo "Copilot parallelism: available via /fleet (tmux not required; tmux-pane teams not implied)"
   else
-    echo "Team substrate: missing — install tmux (\`brew install tmux\`) and relaunch for Pattern A; inline subagent fallback works either way"
+    echo "Copilot parallelism: unverified — copilot executable not on PATH; check the CLI launch before parallel dispatch"
   fi
 }
 

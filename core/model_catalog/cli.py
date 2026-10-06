@@ -117,7 +117,8 @@ def main(argv=None):
                 tier = tier_from_config(args.config, args.role)
             else:
                 tier = "inherit"
-        result = resolve(load_snapshot(args.snapshot), tier, args.capability, role=args.role, active_binding=args.binding)
+        result = resolve({} if tier == "inherit" else load_snapshot(args.snapshot),
+                         tier, args.capability, role=args.role, active_binding=args.binding)
         print(json.dumps(result, sort_keys=True)); return EXIT_CODES[result["status"]]
     except (OSError, ValueError, SnapshotError) as exc:
         print(json.dumps({"status": "invalid", "error": str(exc)}))

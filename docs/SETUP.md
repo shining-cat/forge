@@ -90,6 +90,11 @@ If no safe common parent exists (e.g. your vault and repos share only `$HOME`, w
 
 ## Model tiering & cost
 
+The measurements and configuration in this section are **Claude Code-specific**.
+Copilot CLI uses user-selected tier bindings in the model catalog and reports
+locally recorded AI credits separately; see
+`adapters/copilot-cli/references/model-cost-posture.md`.
+
 Forge treats **Opus as a scalpel, not a substrate.** The single largest cost lever is
 the *main interactive loop's* default model — in a measured 30-day profile it was ~94%
 of total spend when set to Opus, while subagent fan-out was ~5%. The posture that
@@ -128,7 +133,7 @@ vendor-neutral principle in `core/references/model-cost-posture.md`.
 
 ## Model Catalog Setup
 
-Forge's tier system is **vendor-neutral** — it maps available models to abstract tiers, independent of which vendor supplies them. Each organization has different models enabled (Anthropic, OpenAI, Google, etc.), so Forge **cannot ship a pre-baked catalog**. Instead, it guides you through discovering your available models and assigning them to tiers.
+Forge's tier system is **vendor-neutral** — it maps available models to abstract tiers, independent of which vendor supplies them. Each organization has different models enabled (Anthropic, OpenAI, Google, etc.), so Forge **cannot ship a pre-baked catalog**. Instead, you supply the models available in your runtime and assign them to tiers explicitly; Forge does not discover models automatically.
 
 ### Tier definitions
 
@@ -141,7 +146,9 @@ Four neutral tiers, ordered by cost and reasoning capability:
 | **standard** | Main-loop reasoning, synthesis, review, debugging (default: Sonnet-level) | claude-sonnet-5, gpt-5.4 |
 | **premium** | Full-strength reasoning, extended-thinking, scalpel work | claude-opus-5, gpt-5.6-luna, gpt-5.6-terra, gpt-5.6-sol |
 
-The tiers exist because every tier costs more to run than the one below it, so Forge routes work to the cheapest tier that can handle it.
+The tiers express the intended cost/capability posture; user-owned bindings
+may map the same model to multiple tiers. Forge does not infer prices or
+automatically route between tiers when a binding is missing.
 
 ### First-time setup
 
@@ -183,6 +190,16 @@ export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 
 The installer does not edit shell startup files.
 
+Copilot CLI stores saved shell approvals per active location in
+`permissions-config.json`, separately from `settings.json`. The installer does
+not add approvals there. A direct Forge script invocation may match a saved
+full-path command identifier for that location; an approval from a different
+working directory or a compound shell command is not equivalent. Run
+`/forge-audit-permissions` to inspect both the settings linter and saved Copilot
+approvals. Its linter's `0 critical, 0 warning` is **not** proof that CLI command
+approvals exist or that file-overwrite/path prompts will not appear. Review
+any proposed permission change before editing the CLI-managed approvals file.
+
 Wellness requires more than copied scripts: the Copilot installer registers
 PreToolUse, Stop, and PreCompact hooks, and the eight-question wellness setup
 sets `wellness_onboarding_complete: true` only after answers are confirmed.
@@ -209,10 +226,14 @@ normal Copilot skill picker.
 
 Copilot lifecycle differences are deliberate: session context is injected by
 `sessionStart`, prompt headers by `userPromptTransformed`, and the shared
-vault/credential guards use Copilot's Claude-compatible `PreToolUse` payload.
-Copilot does not expose an equivalent post-compaction event or identical
-tmux-pane team substrate, so those behaviors use the documented fallback to
-inline subagents.
+vault-plan and credential guards use Copilot's Claude-compatible `PreToolUse` payload.
+Copilot does not expose an equivalent post-compaction event or Claude's
+tmux-pane team substrate. Copilot CLI's native `/fleet` supports parallel
+subagents without tmux; Forge's Copilot entry check reports that capability
+when `copilot` is on `PATH`, without claiming a live fleet run or peer-coordinated
+team. `$TMUX` is not a prerequisite. An unchanged `~/.zshrc` Claude shell
+wrapper only wraps `claude`, not `copilot`; no automatic Copilot tmux wrapper
+is installed.
 
 The runtime-specific implementation is kept in
 `adapters/copilot-cli/install.sh`; the root `install.sh` is a neutral dispatcher.

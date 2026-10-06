@@ -4,14 +4,18 @@ GitHub Copilot CLI binding of the per-role tiering half of the model cost postur
 *why* — cheap orchestrator, premium model as a dispatched scalpel, roles pinned to
 the cheapest tier that meets their judgment bar — is the vendor-neutral principle in
 [`core/references/model-cost-posture.md`](../../../core/references/model-cost-posture.md).
-This file binds it to Claude: the role→model table, the agent-definition paths, and
-the `Agent()` dispatch mechanics.
+This file binds it to Copilot CLI: the role-to-tier table, the agent-definition
+paths, and the subagent dispatch mechanics.
 
-Background for the `**Subagent definitions:**`, `**Model tuning:**`, and `**Conversational model assignment:**` stubs in `forge/SKILL.md` Step 7. The short version is one line — *"each Forge role has an agent definition at `$COPILOT_DIR/agents/forge-{role}.md` and a configurable model in `$COPILOT_DIR/forge.conf`"*. Load this file when dispatching a subagent or reasoning about model selection.
+Background for Forge entry and later role dispatch. Load this file before
+dispatching any Forge subagent, including the entry Keeper.
 
 ## Subagent definitions
 
-Each Forge role has a GitHub Copilot CLI subagent definition at `$COPILOT_DIR/agents/forge-{role}.md` (installed by `install.sh` from `adapters/claude-code/agents/` in the forge repo). Dispatch via `Agent({subagent_type: "forge-{role}", ...})`.
+Each Forge role has a GitHub Copilot CLI subagent definition at
+`${COPILOT_HOME:-$HOME/.copilot}/agents/forge-{role}.agent.md` (installed from
+`adapters/copilot-cli/agents/`). Dispatch via the task tool with
+`agent_type: "forge-{role}"`.
 
 The 8 roles:
 
@@ -28,7 +32,11 @@ The agent-neutral specs live at `core/roles/{role}.md` in the repo (browseable f
 
 ## Model tuning
 
-Role-to-model assignments are **tier-based** (migrated 2026-09-25 — see the model-tiering checkpoint). `$COPILOT_DIR/forge.conf` holds `MODEL_TIER_<ROLE>` keys, each set to one of the 4 tiers (`minimal`, `economy`, `standard`, `premium`, or `inherit`/empty to inherit the session model). The **catalog** (`${VAULT_PATH}/_shared/model-catalog/catalog.json`) is the source of truth for tier→model binding, and is the moving part — re-run `/forge-setup-models` whenever new models become available or you want to change mappings (confirmed manual mappings stay valid until changed; system-sourced snapshots still expire after 24h).
+Role-to-model assignments are **tier-based**. `${COPILOT_HOME:-$HOME/.copilot}/forge.conf`
+holds `MODEL_TIER_<ROLE>` keys, each set to `minimal`, `economy`, `standard`,
+`premium`, or `inherit` (an absent key also inherits the session model). The
+catalog (`${VAULT_PATH}/_shared/model-catalog/catalog.json`) binds tiers to
+runtime models. Re-run `/forge-setup-models` to change model mappings.
 
 Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 
@@ -45,19 +53,34 @@ Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 
 (Read the live values from `${COPILOT_HOME:-$HOME/.copilot}/forge.conf` — the table above is the install-time default, not a substitute for checking.)
 
-**Before every Forge subagent dispatch**, resolve the role's tier to an actual `dispatch_id` — don't skip this and let the harness default silently apply (this exact omission caused a real regression: friction 2026-09-28, session-entry Keeper ran on the default model instead of `minimal`/Haiku):
+**Before every Forge subagent dispatch**, including entry Keeper, resolve the
+role's tier with the installed Copilot wrapper. Substitute the actual role
+name in `--role`; do not choose a model from the defaults table or rely on
+the harness default for a configured tier:
 
 ```bash
 VAULT_PATH=<vault path> "${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh" resolve --role keeper
 ```
 
-This prints the resolved model's `dispatch_id` for the role's configured tier (looked up via `MODEL_TIER_KEEPER` in `forge.conf` against the active `copilot-cli` bindings in the catalog). Pass that value to the Agent/task tool's `model` parameter: `task({ model: "{dispatch_id}", ... })`. If the tier is `inherit`/empty, or the resolve call errors (e.g. stale catalog), omit the `model` parameter and note the fallback rather than silently proceeding as if the tier were honored.
+Use the command's JSON `status` **and** exit code:
 
-The Copilot wrapper packages and invokes `core/model_catalog/`, which owns neutral tiers and catalog policy. It pins `copilot-cli` for resolve and coverage/onboarding checks; a foreign `--binding` is rejected, and foreign-only tiers return `no_match`. The adapter dispatches only the selected Copilot model; manual tier mapping remains user-owned.
+| Exit / status | Dispatch action |
+|---------------|-----------------|
+| `0` / `resolved` with a nonempty `dispatch_id` | Pass that exact ID as the task tool's `model` parameter. |
+| `1` / `inherit` | Omit `model`; this is intentional session-model inheritance. |
+| `2` / `no_match`, `3` / `invalid`, unexpected output/status, or execution error | Do not dispatch that role. Report the role, tier, and resolver error; repair the mapping/config before retrying. |
+
+Do not substitute a model from another runtime or fall back to the harness
+default on resolution failure. For entry Keeper, a resolution failure is not
+the Keeper-execution fallback: stop entry before dispatch and leave the
+pending marker in place until the binding is repaired.
+
+The Copilot wrapper packages and invokes `core/model_catalog/`, which owns neutral tiers and catalog policy. It pins `copilot-cli` for resolve and coverage/onboarding checks; a foreign `--binding` is rejected, and foreign-only tiers return `no_match`. This is a Forge dispatch instruction, not a CLI tool-call interceptor: the orchestrator must pass the selected model. Manual tier mapping remains user-owned.
 
 ## Source of truth per role
 
-Each role's adapter file (`adapters/claude-code/agents/forge-{role}.md` in the repo, installed at `$COPILOT_DIR/agents/forge-{role}.md`) is the source of truth for that role's behavior, tools allowlist, and dispatch contract — including subagent-mode caveats and team-mode notes.
+Each role's adapter file (`adapters/copilot-cli/agents/forge-{role}.agent.md`
+in the repo) defines that role's behavior and tool permissions.
 
 Use subagent dispatch when the operation is **self-contained** (all context can be included in the prompt). Use inline when the operation needs conversation history.
 
@@ -66,10 +89,10 @@ Use subagent dispatch when the operation is **self-contained** (all context can 
 The user can view or change role models at any time:
 
 - *"show model assignments"* / *"which models are the roles using"* → read `forge.conf`, display the table with current values
-- *"set Keeper model to haiku"* / *"change Reviewer to opus"* → update the `MODEL_*` key in `forge.conf`, confirm the change
+- *"set Keeper to minimal"* / *"change Reviewer to premium"* → update the `MODEL_TIER_*` key in `forge.conf`; model-to-tier bindings are changed separately via `/forge-setup-models`
 
 ## See also
 
-- `references/model-cost-posture.md` — the main-loop model posture these per-role defaults compose with (Sonnet orchestrates, Opus dispatched as a scalpel; the Opus-pinned roles above are how a cheap main loop still gets Opus quality). Its vendor-neutral principle is `core/references/model-cost-posture.md`
+- `references/model-cost-posture.md` — why the main-loop model and dispatched role tiers have different cost profiles. Actual Copilot model bindings are user-owned; its vendor-neutral principle is `core/references/model-cost-posture.md`
 - `references/agent-teams-mode.md` — Pattern A / B / C team-mode dispatch (separate concern from per-role model)
-- `adapters/claude-code/agents/forge-{role}.md` — per-role spec (source of truth)
+- `adapters/copilot-cli/agents/forge-{role}.agent.md` — per-role adapter definition

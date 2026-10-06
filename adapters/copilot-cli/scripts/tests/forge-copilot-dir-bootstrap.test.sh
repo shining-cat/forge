@@ -47,6 +47,31 @@ for fragment in (
     if fragment not in skill:
         raise SystemExit(f"forge skill: missing guarded short command: {fragment}")
 
+entry = skill.split("### 2–6. Load Vault Context & Reconcile (Keeper Dispatch)", 1)[1].split("### 6. Present Context Summary", 1)[0]
+dispatch = skill.split("**Subagent definitions + model tuning:**", 1)[1].split("## Agent-Teams Mode", 1)[0]
+reference = (adapter / "references/subagent-models.md").read_text()
+for label, text, fragments in (
+    ("entry Keeper", entry, ("--role keeper", "dispatch_id", "`model`", "keep the", "marker pending", "do not", "inline fallback")),
+    ("all Forge roles", dispatch, ("Before **every** Forge role dispatch", "entry Keeper", "team fan-out", "--role {role}", "dispatch_id", "`model`", "no_match", "invalid", "stop")),
+    ("dispatch reference", reference, ('resolve --role keeper', '"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh"', "`resolved`", "`inherit`", "`no_match`", "`invalid`", "Do not dispatch")),
+):
+    for fragment in fragments:
+        if fragment not in text:
+            raise SystemExit(f"{label}: missing model-tier dispatch contract: {fragment}")
+
+for fragment in (
+    "**Copilot parallelism check:**",
+    "Copilot parallelism: available via /fleet",
+    "Copilot parallelism: unverified",
+    "Do not use `$TMUX` as a Copilot capability gate",
+    "Claude-specific tmux/panes setup",
+    "tmux-missing fallback do not apply to Copilot CLI",
+):
+    if fragment not in skill:
+        raise SystemExit(f"forge skill: missing Copilot-native parallelism contract: {fragment}")
+if "Team substrate: missing" in skill or "forge-context.sh\" teammate-notice" in skill:
+    raise SystemExit("forge skill: stale Claude tmux readiness/notice contract")
+
 keeper = (adapter / "agents/forge-keeper.agent.md").read_text()
 for fragment in (
     "Use the supplied `project_path` for git verification",

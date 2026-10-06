@@ -106,7 +106,7 @@ Run `"$COPILOT_DIR/scripts/forge-context.sh" set-marker pending` via the Bash to
 
 Why: it signals "Forge is launching, no project chosen yet" — distinct from missing (never installed) and empty (deactivated). Hooks suppress brain-dump nags and Keeper warnings during this state. Without this step, an auto-memory hint (e.g., "you were on project-X last time") could prematurely set the marker to the wrong project, causing Keeper hooks to fire against the wrong vault before the user has actually chosen.
 
-**Do NOT use the Write tool for the marker.** The script is fully allowlisted (`Bash($COPILOT_DIR/scripts/forge-context.sh *)`), so the marker write completes silently. The Write tool would trigger GitHub Copilot CLI's overwrite-existing-file confirmation prompt — a separate safety dialog from the permission allowlist that cannot be bypassed.
+**Do NOT use the Write tool for the marker.** A direct script invocation can use a saved Copilot CLI command approval for the current location; do not assume one exists or claim the command will run without a prompt. The Write tool may trigger a separate overwrite-existing-file confirmation even when the shell command is approved.
 
 #### 1c. Disambiguate, then write the project name
 
@@ -184,7 +184,14 @@ When the active project is **blocked** (waiting on CI, a local build, external i
 
 **Dispatch Keeper to gather entry context** (steps 2–6 run on minimal tier):
 
-Keeper gathers structured context data and returns JSON. Petra renders it inline. This keeps Keeper's work lightweight (Haiku, minimal tier) and preserves entry ceremony transparency — output looks identical to user.
+Keeper gathers structured context data and returns JSON. Petra renders it inline. This keeps Keeper's work lightweight (configured minimal tier by default) and preserves entry ceremony transparency — output looks identical to user.
+
+Before dispatching entry Keeper, follow `references/subagent-models.md`: resolve
+`--role keeper` through the installed Copilot wrapper and pass its `dispatch_id`
+as the task tool's explicit `model`. Omit `model` only when resolution returns
+`inherit`. If the configured tier cannot resolve or the command fails, do not
+dispatch Keeper or run the inline fallback; report the error and keep the
+entry marker pending until the binding is repaired.
 
 **Keeper's responsibilities (steps 2–6):**
 1. **Step 2:** Load vault recovery (checkpoint, git state, braindump, commits since checkpoint)
@@ -198,7 +205,7 @@ Keeper gathers structured context data and returns JSON. Petra renders it inline
 - **Input:** Project name, env, vault path, git project path, wellness cold-start output (optional)
 - **Output:** JSON structure (see forge-keeper.agent.md for schema)
 - **Timeout:** 10 seconds
-- **Error handling:** On failure, Petra rolls back marker to `__pending__` and runs steps 2–6 inline on Sonnet as fallback
+- **Error handling:** If Keeper execution fails after successful model resolution, Petra rolls back marker to `__pending__` and runs the read-only steps 2–6 inline as fallback. Model-resolution failures block entry instead.
 
 Invoke Keeper via Agent tool with dispatch prompt including vault context, the verified git checkout path, and the resolved wellness preferences path and calendar setting. Keeper returns structured JSON; Petra parses and renders the entry summary. If its calendar status conflicts with the resolved preferences, verify the same resolved file before reporting; do not present a second inferred location as a competing source.
 
@@ -209,7 +216,7 @@ Invoke Keeper via Agent tool with dispatch prompt including vault context, the v
 4. After inline completion (success), Petra sets marker to active
 5. Petra asks Keeper to log failure to friction log: "Entry ceremony dispatch failed, fell back to inline execution"; if Keeper is unavailable, report and defer the log.
 
-**Note:** The entry ceremony summary that the user sees is identical regardless of dispatch success or fallback — Keeper's output is rendered by Petra's inline summary logic. Only difference: dispatch failure incurs cost penalty (runs on Sonnet instead of Haiku) and logs a friction event for post-session review.
+**Note:** The entry ceremony summary that the user sees is identical regardless of dispatch success or execution fallback — Keeper's output is rendered by Petra's inline summary logic. The inline fallback may use a different model; it logs a friction event for post-session review. This fallback does not apply when model resolution fails.
 
 ### 6. Present Context Summary (Petra Inline)
 
@@ -235,15 +242,14 @@ PR sync results (from step 3) are shown first, then the context summary, then th
 
 The first failure mode to refuse is the comforting one. "Nothing here" is a strong claim; if the verification step that produces it has been skipped, the honest output is the gap, never a default. This rule applies to ALL entry-summary lines (PRs, decisions, friction events, vault state, etc.) — defaults belong in code; verifications belong in the entry summary.
 
-**Team substrate check:** Run `"$COPILOT_DIR/scripts/forge-context.sh" substrate-check` and surface the output line verbatim in the entry summary. The script emits one of:
+**Copilot parallelism check:** Run `"$COPILOT_DIR/scripts/forge-context.sh" substrate-check` and surface the output line verbatim in the entry summary. The script emits one of:
 
-- `Team substrate: ready` — claude is inside tmux, Pattern A available
-- `Team substrate: missing — relaunch in tmux for Pattern A, or accept inline subagent fallback` — tmux installed but `$TMUX` unset (the `forge-shell-init.sh` wrapper was bypassed: FORGE_NO_TMUX_WRAP set, or claude launched outside the wrapped shell)
-- `Team substrate: missing — install tmux (`brew install tmux`) and relaunch for Pattern A; inline subagent fallback works either way` — tmux not installed
+- `Copilot parallelism: available via /fleet (tmux not required; tmux-pane teams not implied)` — the Copilot executable is on `PATH`; native `/fleet` can dispatch parallel subagents even when `$TMUX` is unset. This does not verify a live fleet run or Claude-style peer-coordinated teams.
+- `Copilot parallelism: unverified — copilot executable not on PATH; check the CLI launch before parallel dispatch` — the launch path cannot be checked here; do not assert that native parallel dispatch is ready.
 
-Why a subcommand instead of inline detection at entry: the inline compound (`echo + command -v + && / ||` chain) doesn't match any flat allowlist entry, so it prompted on every session start. Routing through `forge-context.sh substrate-check` inherits the existing script-level allowlist and stays silent.
+Why a subcommand instead of inline detection at entry: the inline compound (`echo + command -v + && / ||` chain) is not the same shell command identifier as the script. Routing through `forge-context.sh substrate-check` can use a saved approval for the direct script invocation when one exists for the current location.
 
-This check makes Petra's substrate-awareness explicit at session entry, so she does not trigger Pattern A and *then* discover the team feature is unavailable. When substrate is missing, Pattern A falls back to inline subagent dispatches per the Pattern A protocol section below.
+Do not use `$TMUX` as a Copilot capability gate. A tmux session changes the terminal layout, not the CLI's `/fleet` availability or hook metadata. When the Copilot executable is not found, confirm the actual runtime before attempting parallel dispatch; sequential role dispatch remains available.
 
 ```
 [Forge: ENV/Project]
@@ -264,7 +270,7 @@ Last project activity: {frontmatter date (Nd ago) · last vault commit (Nd ago);
 Active decisions: {count or "none"}
 Friction events: {count recent or "none"}
 Git state: {clean / N uncommitted changes}
-Team substrate: {ready / missing — Pattern A would fall back to inline}
+Copilot parallelism: {verbatim output of substrate-check}
 Next interruption: {break in Xmin / meeting "Name" in Xmin / none in sight}
 Weekly wrap: {verbatim output of `weekly-wrap-line` — usually empty, omit the line entirely when so}
 Drafts: {verbatim output of `draft-invite-line` — empty when no drafts waiting, omit the line entirely when so}
@@ -358,30 +364,30 @@ Load `references/plan-storage.md` for umbrella layout, cross-project layout, fil
 - Judgment columns (Effort/Impact/Status) are Keeper's call — don't auto-generate
 - Petra references the BACKLOG when prioritizing ("Per BACKLOG, next is X")
 
-**Model cost posture — Opus is the scalpel, not the substrate.** The main interactive loop's default model is the dominant cost driver (measured ~94% of spend when it was Opus); agent fan-out is cheap. So the default posture inverts: **Sonnet orchestrates, Opus is dispatched for genuinely hard work.** Four moves: (1) default main-loop model = Sonnet (set in `settings.json`); (2) enter Opus at the **session boundary, never mid-session** — a mid-session flip busts the prompt cache; for Opus quality from a Sonnet loop, dispatch the Opus-pinned subagents (architect/debugger/refiner/toolsmith) rather than switching; (3) dispatch heavy multi-file churn to Sonnet Builders to keep the main context lean; (4) keep the resident context (MEMORY.md, entry-reads) lean — it taxes ~87% of tokens. The ratios are environment-specific — re-measure with `forge-cost-audit.py --cache-composition`.
+**Model cost posture — keep the main loop lean and dispatch by role tier.** The historical Sonnet/Opus cost and cache ratios came from Claude Code, not Copilot billing. In Copilot CLI the user selects the session model with `/model`, and Forge resolves each role's `MODEL_TIER_<ROLE>` against the Copilot catalog before dispatch. Prefer self-contained subagent work when it saves main-loop context; do not assume a fixed vendor model, a specific AI-credit saving, or a Claude cache-price ratio. Use `forge-cost-audit.py` to inspect locally recorded Copilot AI credits; `--cache-composition` applies only to the optional Anthropic report.
 
-Load `references/model-cost-posture.md` for the full rationale, the measurement commands, and the ruled-out alternatives (1h cache TTL — measured net loss; mid-session flipping) — load it when deciding whether to reach for Opus or when the user asks about cost/model tiering.
+Load `references/model-cost-posture.md` for the tier rationale, provider-specific measurements, and audit commands when considering model costs or role tiering.
 
-**Subagent definitions + model tuning:** 8 Forge roles (`forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`) live at `$COPILOT_DIR/agents/forge-{role}.md`; dispatch via `Agent({subagent_type: "forge-{role}", ...})`. Per-role model is configurable in `$COPILOT_DIR/forge.conf` under `MODEL_*` keys (empty = inherit from session). The defaults already implement the scalpel posture above — Opus for the judgment-heavy roles (architect/debugger/refiner/toolsmith), Sonnet for the mechanical ones (keeper/reviewer/release). Use subagent dispatch when the operation is self-contained; use inline when it needs conversation history.
+**Subagent definitions + model tuning:** The 8 Forge roles (`forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`) live at `${COPILOT_HOME:-$HOME/.copilot}/agents/forge-{role}.agent.md`. Before **every** Forge role dispatch (including entry Keeper, sequential dispatch, and team fan-out), resolve `--role {role}` through `${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-model-catalog.sh`. Pass a resolved nonempty `dispatch_id` explicitly as the task tool's `model`; omit `model` only for `inherit`. For `no_match`, `invalid`, a malformed result, or a command error, stop that dispatch and report the role and resolution error; never fall back to the harness model. Use subagent dispatch when the operation is self-contained; use inline when it needs conversation history.
 
-Load `references/subagent-models.md` for the default model assignments table, the dispatch + model-read snippet, and the conversational model-assignment commands ("show model assignments", "set Keeper model to haiku") — load it when dispatching a subagent or when the user asks about role models.
+Load `references/subagent-models.md` for the default tier assignments, resolution statuses, and model-assignment guidance before dispatching any Forge role or when the user asks about role models.
 
 ## Agent-Teams Mode
 
-For workflows that genuinely benefit from parallel collaboration with inter-agent communication, Petra can spawn an agent team instead of dispatching subagents sequentially. Most Forge work does NOT need this — sequential subagent dispatch is the default.
+For workflows with independent subtasks, Copilot CLI can dispatch subagents in parallel via `/fleet`; work that requires a findings relay remains sequential. Most Forge work does not need parallel dispatch.
 
 **When to consider:**
 - **Pattern A** — Pair of different roles on the same artifact (e.g. Reviewer + Refiner on a PR).
 - **Pattern B** — Multiple instances of the same role with competing hypotheses (e.g. 3-5 Debuggers on an unclear root cause).
 - **Pattern C** — Same role, scope-partitioned (e.g. Reviewers split across security / performance / test coverage).
 
-**Substrate guard.** Parallel work uses GitHub Copilot CLI's supported subagent/fleet surface and, when configured, tmux. If session entry reports "Team substrate: missing", Pattern A still runs as inline sequential subagent dispatches, not parallel teammates. Never assume parallel dispatch is available; fall back explicitly.
+**Parallel dispatch.** Copilot CLI offers native `/fleet` parallel subagents without tmux. The entry check confirms the executable is on `PATH`, not that a live fleet run or Claude-style team coordination has succeeded. If the executable is not found, verify the runtime before parallel dispatch; otherwise use sequential role dispatch. Pattern A's header relay remains sequential where the second role depends on the first role's findings.
 
-**Background observability.** For in-session background subagent dispatch (regardless of Pattern A / tmux), use `/tasks` to monitor live status, attach to running subagents, or stop them. This is distinct from Agent View (`claude agents` / left-arrow TUI), which observes background *sessions* (full independent GitHub Copilot CLI sessions started with `--bg`), not in-session subagent dispatch.
+**Background observability.** For in-session background subagent dispatch, use `/tasks` to monitor status and inspect or stop subagents. Background CLI sessions are a separate feature, not an in-session team substrate.
 
-**First-use panes notice.** Before the first Pattern A team spawn in a session, the one-time split-panes notice is handled via `"$COPILOT_DIR/scripts/forge-context.sh" teammate-notice` (self-gating; surface stdout verbatim, empty = omit) — see `references/agent-teams-mode.md`.
-
-**Before spawning OR running Pattern A inline — load `references/agent-teams-mode.md`.** That file holds:
+**For Pattern A, load `references/agent-teams-mode.md` selectively.** Its
+Claude-specific tmux/panes setup, `teammate-notice`, teammate spawning, and
+tmux-missing fallback do not apply to Copilot CLI. Reuse only:
 - Pattern A trigger heuristic (weighted score, ≥ 3 → ask the user)
 - Tiered dispatch protocol (Tier 1 → Tier 2 header relay → Tier 3, anti-anchoring rationale)
 - Refiner Mode-2 brief constraints
@@ -390,7 +396,8 @@ For workflows that genuinely benefit from parallel collaboration with inter-agen
 - TL;DR strongest-sub-justification rule
 - Limitations, pre-shutdown follow-up gate, cleanup
 
-Same content governs both parallel team dispatch and the inline-subagent fallback — only the dispatch mechanism differs.
+For Copilot CLI, choose native subagent dispatch or a sequential relay based on
+task dependencies; do not claim Claude-style peer communication or pane behavior.
 
 When NOT to use teams: sequential tasks tied to specific tool calls, same-file edits (file conflicts), routine work, quick lookups, single-perspective tasks. For ongoing evaluation, see open task `forge-agent-teams-evaluation` (2026-05-04).
 

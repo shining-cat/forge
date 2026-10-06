@@ -355,8 +355,8 @@ class CatalogTests(unittest.TestCase):
                        rec(name="local", tier="minimal", bindings=[{"runtime": "claude", "active": True, "dispatch_id": "claude-id"}])]
             data = snap(records); data["clock"]["source"] = "manual"; catalog.write_text(json.dumps(data))
             env = {**os.environ, "HOME": str(home), "VAULT_PATH": str(vault), "PYTHONDONTWRITEBYTECODE": "1"}
-            for adapter, runtime, expected, foreign in (("claude-code", "claude", "claude-id", "copilot-id"),
-                                                        ("copilot-cli", "copilot-cli", "copilot-id", "claude-id")):
+            for adapter, runtime, expected in (("claude-code", "claude", "claude-id"),
+                                               ("copilot-cli", "copilot-cli", "copilot-id")):
                 folder = home / (".claude" if runtime == "claude" else ".copilot")
                 folder.mkdir(parents=True)
                 (folder / "forge.conf").write_text("MODEL_TIER_KEEPER=minimal\n")
@@ -379,7 +379,7 @@ class CatalogTests(unittest.TestCase):
                 self.assertEqual(shorthand.returncode, 0, shorthand.stdout + shorthand.stderr)
                 self.assertEqual(json.loads(shorthand.stdout)["dispatch_id"], expected)
                 code, result = call("--tier", "minimal", "--binding", "copilot-cli" if runtime == "claude" else "claude")
-                self.assertEqual((code, result["dispatch_id"]), (0, foreign))
+                self.assertEqual((code, result["status"]), (3, "invalid"))
                 without_local = snap([records[0] if runtime == "claude" else records[1]])
                 without_local["clock"]["source"] = "manual"
                 catalog.write_text(json.dumps(without_local))

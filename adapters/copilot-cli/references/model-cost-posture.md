@@ -2,60 +2,50 @@
 
 GitHub Copilot CLI binding of the vendor-neutral principle in
 [`core/references/model-cost-posture.md`](../../../core/references/model-cost-posture.md).
-That file states *why* Forge tiers its models; this one binds it to Claude's model
-line-up, the GitHub Copilot CLI settings, and the measured Anthropic-pricing ratios.
+That file states *why* Forge tiers its models; this one describes Copilot CLI's
+user-owned model bindings and provider-native usage reporting. Historical
+Anthropic measurements below are context, not Copilot billing evidence.
 
 Load this file (via the `references/model-cost-posture.md` symlink in the forge
-skill) when deciding whether to reach for Opus, when the user asks about cost/model
-tiering, or when tempted to switch the main-loop model mid-session.
+skill) when choosing a role tier, when the user asks about cost/model tiering,
+or when considering a main-loop model change.
 
 Origin: decision `2026-08-10-model-tiering-cost-posture` (in the forge vault). The
 ratios below are **environment- and pricing-specific** — re-measure with
 `forge-cost-audit.py` before treating them as ground truth in a new environment.
 
-## The tiers, bound to Claude models
+## Role tiers in Copilot CLI
 
-| Neutral tier | Claude model | Where it runs |
-|--------------|--------------|---------------|
-| Orchestrator | **Sonnet** | main interactive loop (the daily-driver default) |
-| Scalpel | **Opus** | dispatched subagents (`architect`, `debugger`, `refiner`, `toolsmith`) |
-| $0 script | — | `forge-context.sh` subcommands, hooks (no model) |
+The main-loop model is selected in Copilot CLI (`/model`); Forge does not
+override it. Role tiers (`minimal`, `economy`, `standard`, `premium`, or
+`inherit`) are configured with `MODEL_TIER_<ROLE>` in `forge.conf`. The vault
+model catalog binds each tier to a Copilot `dispatch_id`, chosen by the user
+through `/forge-setup-models`. Forge's Copilot dispatch guidance requires
+resolving the configured tier and passing the resulting model explicitly.
+Only `inherit` deliberately uses the session model; an unresolved configured
+tier blocks that dispatch. See [`subagent-models.md`](subagent-models.md).
 
-**Opus is the scalpel, not the substrate.** In a measured 30-day profile, Opus as
-the default main-loop model was ~94% of total cost; Sonnet subagent fan-out was ~5%
-and Haiku ~0.2%. The spend is the interactive loop's substrate, not the fan-out. So
-**Sonnet orchestrates, Opus is dispatched for genuinely hard work** — the per-role
-defaults in [`subagent-models.md`](subagent-models.md) are how a cheap main loop
-still gets Opus quality on demand.
+The original Claude Code measurement found that an Opus main loop accounted for
+~94% of estimated Anthropic cost in one 30-day profile. That is a motivation
+for tiering, not a claim about Copilot AI-credit costs or which models a user's
+Copilot catalog maps to each tier.
 
 ## The four moves, in GitHub Copilot CLI terms
 
-1. **Default main-loop model = Sonnet.** Set in `$COPILOT_DIR/settings.json`:
+1. **Choose the main-loop model intentionally.** Use Copilot's `/model` for the
+   session and `/config model` for a user default. Forge does not choose it for you.
 
-   ```json
-   { "model": "sonnet" }
-   ```
+2. **Use role tiers rather than changing the main-loop model to run hard,
+   self-contained work.** Resolve each role against the active Copilot catalog;
+   the role model is independent of the main loop. Anthropic cache-write
+   measurements do not establish a Copilot-specific cost for switching models.
 
-   Forge does not flip this for you — it's your daily driver. Opus is reserved for a
-   deliberately-Opus session or for dispatched subagents.
+3. **Dispatch heavy churn when it saves context.** Multi-file work can run in
+   a fresh subagent context. Trivial edits stay inline; compare actual AI-credit
+   usage rather than assuming the Claude pricing profile transfers to Copilot.
 
-2. **Enter Opus at the session boundary, never mid-session.** Switching the main-loop
-   model mid-session invalidates the prompt cache — a full re-write of the resident
-   prefix at Opus's write price. For a hard day, *launch* an Opus session. From a
-   running Sonnet loop, get Opus quality by dispatching the already-Opus-pinned
-   subagents (`architect`, `debugger`, `refiner`, `toolsmith` — see
-   [`subagent-models.md`](subagent-models.md)), whose model is independent of the main
-   loop and carries no cache-bust.
-
-3. **Dispatch heavy churn to Sonnet Builders.** Multi-file, high read-edit-test work
-   runs in a fresh subagent context, keeping the main context lean (cheaper cache-reads
-   for the rest of the session). Trivial edits stay inline — the inline threshold
-   *rises* now that the main loop is cheap, because the reason to dispatch was never
-   just cost, it was context hygiene.
-
-4. **Keep the resident context lean.** `MEMORY.md` and session-entry reads are
-   re-cached and re-read every turn — they tax ~87% of tokens (cache-write +
-   cache-read). A diet on what stays resident cuts that tax across the whole session.
+4. **Keep resident context lean.** Large persistent instructions and entry
+   reads add context overhead on every turn, regardless of role mapping.
 
 ## Measuring your own profile
 
@@ -89,5 +79,7 @@ requires `--provider anthropic`.
   a ~72% ≤60s active-churn bucket that just gets more expensive. Re-run
   `--cache-composition`; only revisit if *your* saveable share clears ~40%.
 
-- **Mid-session model flipping as the tiering mechanism.** Busts the cache (move #2).
+- **Mid-session model flipping as the tiering mechanism.** The original Claude
+  profile found a cache penalty; use Copilot role dispatch for role-specific
+  model selection instead of assuming that pricing result transfers.
   Tier at the session boundary and via subagents instead.

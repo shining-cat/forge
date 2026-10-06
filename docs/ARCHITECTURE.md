@@ -105,6 +105,18 @@ adapters package that core and invoke it through their runtime-specific
 coverage/onboarding to their own runtime binding; foreign binding requests
 fail explicitly rather than selecting another runtime's dispatch ID. Users
 choose model-to-tier mappings manually; adapters dispatch the selected model.
+In Copilot CLI, the Forge skill requires every role dispatch (including entry
+Keeper) to resolve its configured tier via the installed wrapper and pass the
+resulting `dispatch_id` explicitly. An intentional `inherit` uses the session
+model without consulting the catalog; missing or invalid configured bindings
+must block that dispatch with diagnostics rather than silently inheriting.
+This is an orchestrator instruction with resolver checks, not a CLI-level
+tool-call interceptor.
+
+Copilot's entry `substrate-check` reports native `/fleet` availability when the
+Copilot executable is on `PATH`, regardless of `$TMUX`. It does not promise
+Claude-style tmux panes or peer-coordinated teams; those remain separate
+runtime-specific capabilities.
 
 ### External dependencies
 
@@ -187,7 +199,12 @@ Roles are behaviours, not separate agents. Output uses two layers:
 - **Pattern B** — multiple instances of the same role with competing hypotheses (e.g. 3-5 Debuggers on an unclear root cause)
 - **Pattern C** — same role, scope-partitioned (e.g. Reviewers split across security / performance / test coverage)
 
-Most Forge work doesn't need teams — sequential subagent dispatch is the default. Teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Claude Code v2.1.32+) and tmux; falls back to inline sequential dispatch when the substrate is missing. Full pattern protocol: `core/references/agent-teams-mode.md`.
+Most Forge work doesn't need teams — sequential subagent dispatch is the default.
+Claude Code agent teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+(Claude Code v2.1.32+) and tmux for panes; their full protocol lives in
+`core/references/agent-teams-mode.md`. Copilot CLI instead has native `/fleet`
+parallel subagents without tmux; the Copilot skill reuses only the applicable
+role-pairing, relay, and synthesis guidance, not Claude's pane mechanics.
 
 For per-role specifications (proactive flag, vault interaction, etc.), see [ROLES.md](ROLES.md).
 

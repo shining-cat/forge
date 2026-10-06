@@ -41,6 +41,9 @@ splits into three tiers, and only one of them needs the premium model:
 Per-role subagent tiering is the mechanism that makes this work: each role is
 pinned to the *cheapest tier that meets its judgment bar*, so a cheap main loop
 still gets scalpel-tier quality on the work that needs it, on demand.
+An explicit role tier must resolve before dispatch; an unresolved assignment
+must not silently inherit the orchestrator's model. Inheritance is a separate,
+intentional role policy.
 
 ## The four moves
 
