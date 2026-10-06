@@ -170,7 +170,8 @@ cd forge
 
 The installer targets `${COPILOT_HOME:-$HOME/.copilot}`. It installs Forge
 custom agents into `agents/`, skills into `skills/`, runtime scripts into
-`scripts/`, hooks into `hooks/`, and creates `forge.conf` only when absent.
+`scripts/`, hooks into `hooks/`, and core and Copilot-specific Forge skill
+references into `skills/forge/references/`. It creates `forge.conf` only when absent.
 Existing Forge-owned files are backed up before replacement; unrelated Copilot
 configuration is not rewritten.
 

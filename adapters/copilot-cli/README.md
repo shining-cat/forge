@@ -36,6 +36,8 @@ projects continue to use `REPO_ROOTS`. The runtime-specific implementation lives
 neutral `./install.sh --runtime copilot` entry point. It backs up changed
 Forge-owned files with a
 `.pre-update.<timestamp>` suffix. `--dry-run` prints the planned changes.
+Core Forge references linked from the skill are installed alongside the
+Copilot-specific references, so entry and checkpoint instructions resolve.
 
 Forge entry resolves the installed directory once and submits literal absolute
 script paths so saved Copilot CLI command approvals can match. The installer

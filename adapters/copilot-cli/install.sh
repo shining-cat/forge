@@ -152,6 +152,17 @@ while IFS= read -r file; do
   esac
 done < <(find "$ADAPTER/scripts" "$ADAPTER/hooks" "$ADAPTER/modules/wellness-coach" "$ADAPTER/references" -type f -print | sort)
 
+# The Forge skill links these core references by relative path. Adapter-specific
+# references above take precedence where the same name has a Copilot binding.
+for ref in vocabulary wellness-cold-start marker-takeover vault-write-protocol \
+  maintainer-mode wrap-up-state prose-wind-down credential-discipline \
+  extended-thinking-discipline proactive-compact plan-storage agent-teams-mode \
+  lifecycle; do
+  if [[ ! -f "$ADAPTER/references/$ref.md" ]]; then
+    copy_owned "$FORGE_ROOT/core/references/$ref.md" "$COPILOT_DIR/skills/forge/references/$ref.md"
+  fi
+done
+
 # Vendor the core model_catalog Python package into the installed tooling.
 # forge-model-catalog.sh's primary lookup is
 # $COPILOT_DIR/scripts/model_catalog/cli.py (falling back to a PYTHONPATH

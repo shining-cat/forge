@@ -13,6 +13,13 @@ git -C "$TMP/FORGE-TOOLING" init -q
 COPILOT_HOME="$TMP/copilot" "$INSTALL" --vault-path "$TMP/vault" \
   --forge-project-repo "$TMP/FORGE-DEV" >/dev/null
 grep -qx "FORGE_PROJECT_REPO=$TMP/FORGE-DEV" "$TMP/copilot/forge.conf"
+while IFS= read -r reference; do
+  [ -f "$TMP/copilot/skills/forge/$reference" ] || {
+    echo "missing installed Forge reference: $reference" >&2
+    exit 1
+  }
+done < <(grep -oE 'references/[a-z0-9-]+\.md' \
+  "$SCRIPT_DIR/../../skills/forge/SKILL.md" | sort -u)
 
 printf 'CUSTOM_SETTING=preserved\n' >> "$TMP/copilot/forge.conf"
 COPILOT_HOME="$TMP/copilot" "$INSTALL" --vault-path "$TMP/vault" >/dev/null
