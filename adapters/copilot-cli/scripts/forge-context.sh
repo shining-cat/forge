@@ -357,7 +357,9 @@ get_vault_dir() {
   return 1
 }
 
-# Resolve project repo directory by scanning configured REPO_ROOTS.
+# Resolve the Forge project from FORGE_PROJECT_REPO when explicitly configured.
+# This is distinct from FORGE_REPO, which identifies the installed tooling clone.
+# Other projects (and unconfigured Forge installs) use REPO_ROOTS.
 # REPO_ROOTS in forge.conf is a colon-separated list of directories to scan.
 # If unset, falls back to the grandparent of FORGE_REPO (derived from the same
 # forge.conf) — preserves the maintainer's effective behavior for installs that
@@ -371,6 +373,20 @@ get_project_dir() {
   local project="$1"
   local target_lower
   target_lower="$(echo "$project" | tr '[:upper:]' '[:lower:]')"
+
+  if [ "$target_lower" = "forge" ]; then
+    local forge_project_repo repo_root
+    forge_project_repo="$(grep '^FORGE_PROJECT_REPO=' "$FORGE_CONF" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+    if [ -n "$forge_project_repo" ]; then
+      repo_root="$(git -C "$forge_project_repo" rev-parse --show-toplevel 2>/dev/null || true)"
+      if [ -z "$repo_root" ] || [ "$repo_root" != "$(cd "$forge_project_repo" 2>/dev/null && pwd -P)" ]; then
+        echo "[forge-context] invalid FORGE_PROJECT_REPO: $forge_project_repo (expected a Git checkout root)" >&2
+        return 1
+      fi
+      echo "$forge_project_repo"
+      return 0
+    fi
+  fi
 
   local repo_roots
   repo_roots="$(grep '^REPO_ROOTS=' "$FORGE_CONF" 2>/dev/null | cut -d= -f2- || true)"
@@ -4749,7 +4765,7 @@ do_review_sync() {
     # Resolve project's git remote → (host, repo) for gh calls
     local project_dir_for_git project_name
     project_name="$(basename "$scan_dir")"
-    project_dir_for_git="$(get_project_dir "$project_name" 2>/dev/null || true)"
+    project_dir_for_git="$(get_project_dir "$project_name")" || return 1
     [ -d "$project_dir_for_git/.git" ] || continue
 
     local remote host repo

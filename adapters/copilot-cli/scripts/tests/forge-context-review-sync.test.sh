@@ -225,6 +225,30 @@ out=$(FORGE_CONF_OVERRIDE="$CONF" COPILOT_SESSION_ID="test" \
 assert_contains "#555 extracted from filename" "~ #555" "$out"
 rm -rf "$VAULT" "$BINDIR"; rm -f "$CONF" "$FIXTURE"
 
+# ── 6 — Forge project mapped to differently named development clone ───
+echo ""
+echo "Check 6 — Forge review sync uses the development checkout mapping"
+IFS='|' read -r VAULT CONF <<< "$(mk_vault_with_reviews forge '2026-06-01-pr-777-review.md')"
+mv "$VAULT/repos/forge" "$VAULT/repos/FORGE-DEV"
+mkdir -p "$VAULT/repos/FORGE-TOOLING"
+git -C "$VAULT/repos/FORGE-TOOLING" init -q
+printf 'FORGE_PROJECT_REPO=%s\n' "$VAULT/repos/FORGE-DEV" >> "$CONF"
+FIXTURE=$(mktemp)
+printf '777\tMERGED\tForge development PR\n' > "$FIXTURE"
+BINDIR=$(mk_gh_stub "$FIXTURE")
+out=$(FORGE_CONF_OVERRIDE="$CONF" COPILOT_SESSION_ID="test" \
+      PATH="$BINDIR:$PATH" "$SCRIPT" review-sync 2>&1)
+assert_contains "development checkout review synced" "~ #777" "$out"
+printf 'FORGE_PROJECT_REPO=%s\n' "$VAULT/repos/missing" > "$CONF"
+printf 'VAULT_PATH=%s\n' "$VAULT" >> "$CONF"
+if out=$(FORGE_CONF_OVERRIDE="$CONF" COPILOT_SESSION_ID="test" \
+         PATH="$BINDIR:$PATH" "$SCRIPT" review-sync 2>&1); then
+  echo "  ✗ invalid mapping unexpectedly synced"; FAIL=$((FAIL+1))
+else
+  assert_contains "invalid mapping is reported" "invalid FORGE_PROJECT_REPO" "$out"
+fi
+rm -rf "$VAULT" "$BINDIR"; rm -f "$CONF" "$FIXTURE"
+
 echo ""
 echo "Pass: $PASS  Fail: $FAIL"
 [ "$FAIL" -eq 0 ]

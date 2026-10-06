@@ -174,21 +174,27 @@ custom agents into `agents/`, skills into `skills/`, runtime scripts into
 Existing Forge-owned files are backed up before replacement; unrelated Copilot
 configuration is not rewritten.
 
-Forge entry prefers shorter `$COPILOT_DIR/...` commands when the variable is
-inherited and matches the installed directory. Without it, commands fall back
-to `${COPILOT_HOME:-$HOME/.copilot}/...`, so no shell configuration is required.
-Entry verifies the inherited directory and wellness reset executable with a
-single boolean check; it does not wrap the first invocation in an `if`/`else`
-shell block. The wellness preferences resolver lives under
-`skills/wellness-coach/hooks/wellness_location.py`.
-For the shorter form, optionally add this line to `~/.zshrc` or `~/.bashrc`
-before starting Copilot CLI (it also respects a custom `COPILOT_HOME`):
+If the Forge development project checkout uses a distinct name from the
+tooling clone (for example `FORGE-DEV` and `FORGE-TOOLING`), explicitly map
+the project to the development checkout at install time:
 
 ```bash
-export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
+./install.sh --runtime copilot --vault-path "$HOME/Vault" \
+  --forge-project-repo /absolute/path/to/FORGE-DEV
 ```
 
-The installer does not edit shell startup files.
+This sets `FORGE_PROJECT_REPO` in local `forge.conf` only when the option is
+provided; reinstallation without it preserves the mapping. It does not point
+`FORGE_REPO` (the tooling/source checkout) at the development clone or change
+either clone's name. The explicit path must be a Git checkout root; an invalid
+mapping fails rather than falling back to another checkout. Other projects
+still use `REPO_ROOTS`.
+
+Forge entry resolves the installed Copilot directory and invokes scripts
+through literal absolute paths, regardless of shell variables, to match saved
+command identifiers. No shell configuration is required. The wellness
+preferences resolver lives under
+`skills/wellness-coach/hooks/wellness_location.py`.
 
 Copilot CLI stores saved shell approvals per active location in
 `permissions-config.json`, separately from `settings.json`. The installer does

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Forge installer — GitHub Copilot CLI adapter
 #
-# Usage: ./install.sh --runtime copilot [--vault-path PATH] [--dry-run|--preview]
+# Usage: ./install.sh --runtime copilot [--vault-path PATH] [--forge-project-repo PATH] [--dry-run|--preview]
 #
 # Installs the complete Copilot adapter into ${COPILOT_HOME:-$HOME/.copilot}.
 # Runtime files are sourced from adapters/copilot-cli; no Claude adapter files
@@ -13,6 +13,7 @@ FORGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 VAULT_PATH="$HOME/Vault"
 DRY_RUN=false
+FORGE_PROJECT_REPO=""
 
 info() { printf '[forge] %s\n' "$1"; }
 warn() { printf '[forge] warning: %s\n' "$1" >&2; }
@@ -27,6 +28,12 @@ while [[ $# -gt 0 ]]; do
     --vault-path)
       [[ $# -ge 2 ]] || fail "--vault-path requires a value"
       VAULT_PATH="$2"
+      shift 2
+      ;;
+    --forge-project-repo)
+      [[ $# -ge 2 ]] || fail "--forge-project-repo requires a value"
+      [[ -n "$2" ]] || fail "--forge-project-repo requires a nonempty path"
+      FORGE_PROJECT_REPO="$2"
       shift 2
       ;;
     --dry-run|--preview)
@@ -92,6 +99,15 @@ check_prerequisites() {
 }
 
 check_prerequisites
+if [[ -n "$FORGE_PROJECT_REPO" ]]; then
+  [[ "$FORGE_PROJECT_REPO" = /* ]] || fail "--forge-project-repo requires an absolute checkout path"
+  [[ "$FORGE_PROJECT_REPO" != *$'\n'* && "$FORGE_PROJECT_REPO" != *$'\r'* ]] ||
+    fail "--forge-project-repo cannot contain newlines"
+  repo_root="$(git -C "$FORGE_PROJECT_REPO" rev-parse --show-toplevel 2>/dev/null)" ||
+    fail "--forge-project-repo is not a Git checkout: $FORGE_PROJECT_REPO"
+  [[ "$repo_root" == "$(cd "$FORGE_PROJECT_REPO" && pwd -P)" ]] ||
+    fail "--forge-project-repo must point to the checkout root: $FORGE_PROJECT_REPO"
+fi
 info "Installing Copilot CLI adapter into $COPILOT_DIR"
 
 for agent in "$ADAPTER/agents/"*.agent.md; do
@@ -210,6 +226,22 @@ MODEL_DEBUGGER=opus
 MODEL_RELEASE=sonnet
 MODEL_TOOLSMITH=opus
 EOF
+  fi
+fi
+
+if [[ -n "$FORGE_PROJECT_REPO" ]]; then
+  if "$DRY_RUN"; then
+    printf '  would set FORGE_PROJECT_REPO in %s/forge.conf\n' "$COPILOT_DIR"
+  elif grep -q '^FORGE_PROJECT_REPO=' "$COPILOT_DIR/forge.conf"; then
+    tmp="$(mktemp)"
+    awk -v path="$FORGE_PROJECT_REPO" '
+      /^FORGE_PROJECT_REPO=/ { if (!seen++) print "FORGE_PROJECT_REPO=" path; next }
+      { print }
+    ' "$COPILOT_DIR/forge.conf" > "$tmp"
+    cat "$tmp" > "$COPILOT_DIR/forge.conf"
+    rm "$tmp"
+  else
+    printf 'FORGE_PROJECT_REPO=%s\n' "$FORGE_PROJECT_REPO" >> "$COPILOT_DIR/forge.conf"
   fi
 fi
 

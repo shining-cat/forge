@@ -17,18 +17,29 @@ The adapter is installed with:
 ```
 
 The installer writes only below `${COPILOT_HOME:-$HOME/.copilot}` and preserves
-an existing `forge.conf`. The runtime-specific implementation lives at
+an existing `forge.conf` unless explicitly given a configuration option. If
+the Forge development checkout is named differently from the vault project
+(for example `FORGE-DEV` beside a separate `FORGE-TOOLING` updater), map it
+explicitly when installing from the tooling checkout:
+
+```bash
+./install.sh --runtime copilot --vault-path "$HOME/Vault" \
+  --forge-project-repo /absolute/path/to/FORGE-DEV
+```
+
+This sets `FORGE_PROJECT_REPO` in the local Copilot `forge.conf` only; it does
+not rename either clone, copy the development checkout into tooling, or change
+`FORGE_REPO` (the tooling/source clone). The path must be an absolute Git
+checkout root. Without the option, existing mappings are preserved; other
+projects continue to use `REPO_ROOTS`. The runtime-specific implementation lives at
 `adapters/copilot-cli/install.sh`; the repository root exposes it through the
 neutral `./install.sh --runtime copilot` entry point. It backs up changed
 Forge-owned files with a
 `.pre-update.<timestamp>` suffix. `--dry-run` prints the planned changes.
 
-Forge entry uses shorter `$COPILOT_DIR/...` commands when that variable is
-inherited and matches the installed directory; otherwise it uses self-contained
-`${COPILOT_HOME:-$HOME/.copilot}/...` commands. To enable the shorter form,
-optionally add `export COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"` to
-`~/.zshrc` or `~/.bashrc` before launching Copilot CLI. The installer does not
-change shell startup files, and custom `COPILOT_HOME` remains supported.
+Forge entry resolves the installed directory once and submits literal absolute
+script paths so saved Copilot CLI command approvals can match. The installer
+does not change shell startup files, and custom `COPILOT_HOME` remains supported.
 
 The Copilot adapter intentionally differs from Claude in three places:
 

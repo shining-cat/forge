@@ -91,5 +91,33 @@ assert_eq "stdout is nested project path" "$TMP/workspace/PERSO/nestedproj" "$ou
 teardown
 
 echo ""
+echo "Check 5 — explicit Forge development checkout wins over a tooling clone"
+setup
+mkdir -p "$TMP/workspace/FORGE-TOOLING" "$TMP/workspace/PERSO/FORGE-DEV"
+git -C "$TMP/workspace/FORGE-TOOLING" init -q
+git -C "$TMP/workspace/PERSO/FORGE-DEV" init -q
+printf 'FORGE_PROJECT_REPO=%s\n' "$TMP/workspace/PERSO/FORGE-DEV" >> "$TMP_CONF"
+out="$(get_project_dir forge)"
+assert_eq "forge resolves to development checkout" "$TMP/workspace/PERSO/FORGE-DEV" "$out"
+out="$(get_project_dir FORGE)"
+assert_eq "case-insensitive Forge project" "$TMP/workspace/PERSO/FORGE-DEV" "$out"
+teardown
+
+echo ""
+echo "Check 6 — invalid explicit mapping never falls back to a different clone"
+setup
+mkdir -p "$TMP/workspace/forge"
+printf 'FORGE_PROJECT_REPO=%s\n' "$TMP/workspace/missing" >> "$TMP_CONF"
+if out="$(get_project_dir forge 2>"$TMP/error")"; then rc=0; else rc=$?; fi
+assert_eq "invalid mapping fails" "1" "$rc"
+assert_eq "does not select fallback checkout" "" "$out"
+if grep -q 'invalid FORGE_PROJECT_REPO' "$TMP/error"; then
+  echo "  ✓ invalid mapping reports error"; PASS=$((PASS+1))
+else
+  echo "  ✗ invalid mapping did not report error"; FAIL=$((FAIL+1))
+fi
+teardown
+
+echo ""
 echo "── Total: $PASS pass, $FAIL fail ──"
 exit $([ $FAIL -eq 0 ] && echo 0 || echo 1)
