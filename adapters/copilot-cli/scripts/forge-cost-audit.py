@@ -1,36 +1,17 @@
 #!/usr/bin/env python3
-"""forge-cost-audit.py — retrospective cross-session cost profile for GitHub Copilot CLI.
+"""Retrospective provider-native usage: Copilot AI credits and Anthropic estimated USD.
 
-Where forge-cost-snapshot.sh answers "is THIS session getting expensive, should I
-/compact?", this answers "across all my sessions, where does the money actually go?"
-— which model dominates, and how the spend splits across fresh input / output /
-cache-write / cache-read. It's the tool that turns a scary usage number into an
-actionable profile, and it's portable: point it at any machine's logs and re-check
-the ratios that a cost posture was tuned against.
-
-With --cache-composition it buckets one model's cache-writes by the idle gap that
-preceded each write and computes the 1-hour-cache-TTL break-even. That analysis
-settled the model-tiering cost posture (decision 2026-08-10-model-tiering-cost-posture):
-1h TTL only pays off if the "saveable" idle-re-write share clears ~39.5%; below that
-it just makes every active-churn write more expensive.
-
-Usage:
-  forge-cost-audit.py                     Per-model cost profile (human-readable)
-  forge-cost-audit.py --json              Machine-readable JSON
-  forge-cost-audit.py --days 30           Only sessions active in the last N days
-  forge-cost-audit.py --cache-composition Gap-bucket a model's cache-writes + 1h-TTL verdict
-  forge-cost-audit.py --model NAME        Focus model for --cache-composition (default: top-cost)
-  forge-cost-audit.py --root DIR          Log root (default: $COPILOT_DIR/projects)
-  forge-cost-audit.py --help
-
-Pricing is Anthropic list (USD/MTok); Vertex/Bedrock mirror list, and an org may
-have a negotiated discount that lowers the absolute figure — the *ratios* hold.
+Copilot figures cover every locally recorded CLI session in session-store.db, not
+just Forge; other devices and Copilot surfaces are not included. Anthropic figures
+use Claude project logs and list prices. Costs are never added across providers.
 """
 
 import argparse
 import glob
 import json
 import os
+from pathlib import Path
+import sqlite3
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -127,6 +108,8 @@ def aggregate(root, cutoff):
 
 
 def build_report(root, cutoff):
+    if not os.path.isdir(root):
+        raise FileNotFoundError("Anthropic project log directory not found: %s" % root)
     per_model, ts_min, ts_max = aggregate(root, cutoff)
     models = []
     for model, m in per_model.items():
@@ -169,6 +152,9 @@ def build_report(root, cutoff):
         for d in models:
             d["cost_pct"] = round(d["cost_usd"] / g["cost_usd"] * 100, 1)
     return {
+        "provider": "anthropic",
+        "scope": "all local Claude project logs (not Forge-only)",
+        "cost_unit": "estimated USD at Anthropic list prices",
         "root": root,
         "timestamp_range": {
             "min": ts_min.isoformat() if ts_min else None,
@@ -176,6 +162,71 @@ def build_report(root, cutoff):
         },
         "models": models,
         "grand_total": {**g, "cost_pct": cost_pct},
+    }
+
+
+def build_copilot_report(db_path, cutoff):
+    path = Path(db_path).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError("Copilot usage database not found: %s" % path)
+
+    per_model = defaultdict(lambda: {
+        "input": 0, "output": 0, "cache_write": 0, "cache_read": 0,
+        "nano_aiu": 0, "calls": 0,
+    })
+    ts_min = ts_max = None
+    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(assistant_usage_events)")}
+        required = {
+            "model", "input_tokens", "output_tokens", "cache_read_tokens",
+            "cache_write_tokens", "total_nano_aiu", "created_at",
+        }
+        if not required <= columns:
+            raise ValueError("Copilot usage database lacks columns: %s" %
+                             ", ".join(sorted(required - columns)))
+        query = ("SELECT model, input_tokens, output_tokens, cache_read_tokens, "
+                 "cache_write_tokens, total_nano_aiu, created_at "
+                 "FROM assistant_usage_events")
+        for model, inp, out, read, write, nano_aiu, created in conn.execute(query):
+            ts = parse_ts(created)
+            if ts is None:
+                raise ValueError("Invalid Copilot usage timestamp: %r" % created)
+            if cutoff is not None and ts < cutoff:
+                continue
+            if nano_aiu is None:
+                raise ValueError("Copilot usage event has no recorded AI units")
+            m = per_model[model or "unknown"]
+            m["input"] += inp or 0
+            m["output"] += out or 0
+            m["cache_read"] += read or 0
+            m["cache_write"] += write or 0
+            m["nano_aiu"] += nano_aiu
+            m["calls"] += 1
+            ts_min = ts if ts_min is None or ts < ts_min else ts_min
+            ts_max = ts if ts_max is None or ts > ts_max else ts_max
+
+    models = []
+    totals = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0,
+              "total": 0, "nano_aiu": 0, "calls": 0}
+    for model, m in per_model.items():
+        total = sum(m[k] for k in ("input", "output", "cache_write", "cache_read"))
+        row = {"model": model, **m, "total": total,
+               "ai_credits": round(m["nano_aiu"] / 1e9, 6)}
+        models.append(row)
+        for key in totals:
+            totals[key] += row[key]
+    models.sort(key=lambda row: -row["nano_aiu"])
+    return {
+        "provider": "copilot",
+        "scope": "all locally recorded Copilot CLI sessions (not Forge-only; excludes other devices/clients)",
+        "cost_unit": "AI credits (local nano-AI units / 1e9; not full account billing)",
+        "database": str(path),
+        "timestamp_range": {
+            "min": ts_min.isoformat() if ts_min else None,
+            "max": ts_max.isoformat() if ts_max else None,
+        },
+        "models": models,
+        "grand_total": {**totals, "ai_credits": round(totals["nano_aiu"] / 1e9, 6)},
     }
 
 
@@ -251,7 +302,7 @@ def fmt_tok(n):
 
 def print_report(rep):
     rng = rep["timestamp_range"]
-    print("Forge cost audit — %s" % rep["root"])
+    print("Anthropic usage — %s" % rep["scope"])
     if rng["min"]:
         print("window: %s → %s" % (rng["min"][:10], rng["max"][:10]))
     if not rep["models"]:
@@ -275,6 +326,25 @@ def print_report(rep):
             pc["cache_write"], pc["cache_read"], pc["output"], pc["input"]))
 
 
+def print_copilot_report(rep):
+    print("Copilot usage — %s" % rep["scope"])
+    print("Cost: %s" % rep["cost_unit"])
+    if rep["timestamp_range"]["min"]:
+        print("window: %s → %s" % (rep["timestamp_range"]["min"][:10],
+                                  rep["timestamp_range"]["max"][:10]))
+    if not rep["models"]:
+        print("(no local usage records found)")
+        return
+    for row in rep["models"]:
+        print("[%s] %s tok  %.6f AI credits  (%d calls)" %
+              (row["model"], fmt_tok(row["total"]), row["ai_credits"], row["calls"]))
+        print("   input %s  output %s  cache_write %s  cache_read %s" %
+              tuple(fmt_tok(row[k]) for k in ("input", "output", "cache_write", "cache_read")))
+    total = rep["grand_total"]
+    print("=== ALL LOCAL COPILOT CLI SESSIONS: %s tok  %.6f AI credits ===" %
+          (fmt_tok(total["total"]), total["ai_credits"]))
+
+
 def print_composition(c):
     if not c.get("model"):
         print("(no records for cache-composition)")
@@ -296,36 +366,56 @@ def print_composition(c):
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(add_help=True, description="Retrospective GitHub Copilot CLI cost profile.")
+    ap = argparse.ArgumentParser(add_help=True, description="Provider-native, local cross-session usage audit.")
+    ap.add_argument("--provider", choices=("both", "copilot", "anthropic"), default="copilot")
     ap.add_argument(
         "--root",
-        default=os.path.join(
-            os.environ.get("COPILOT_HOME", os.path.expanduser("~/.copilot")),
-            "projects",
-        ),
+        default=os.path.expanduser("~/.claude/projects"),
+        help="Anthropic Claude project logs",
     )
+    ap.add_argument("--copilot-db", default=os.path.join(
+        os.environ.get("COPILOT_HOME", os.path.expanduser("~/.copilot")), "session-store.db"),
+        help="Copilot CLI local session database")
     ap.add_argument("--days", type=int, default=None, help="only sessions active in the last N days")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--cache-composition", action="store_true", dest="cache_composition")
     ap.add_argument("--model", default=None, help="focus model for --cache-composition")
     args = ap.parse_args(argv)
+    if args.cache_composition and args.provider != "anthropic":
+        ap.error("--cache-composition requires --provider anthropic (Copilot has different pricing)")
+    if args.model and not args.cache_composition:
+        ap.error("--model requires --cache-composition")
+    if args.days is not None and args.days < 0:
+        ap.error("--days must be nonnegative")
 
     cutoff = None
     if args.days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
 
-    if args.cache_composition:
-        result = build_cache_composition(args.root, cutoff, args.model)
-        if args.json:
-            print(json.dumps(result, indent=2))
+    try:
+        if args.cache_composition:
+            result = build_cache_composition(args.root, cutoff, args.model)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print_composition(result)
         else:
-            print_composition(result)
-    else:
-        result = build_report(args.root, cutoff)
-        if args.json:
-            print(json.dumps(result, indent=2))
-        else:
-            print_report(result)
+            reports = {}
+            if args.provider in ("both", "copilot"):
+                reports["copilot"] = build_copilot_report(args.copilot_db, cutoff)
+            if args.provider in ("both", "anthropic"):
+                reports["anthropic"] = build_report(args.root, cutoff)
+            if args.json:
+                print(json.dumps(reports, indent=2))
+            else:
+                for name, report in reports.items():
+                    if name == "copilot":
+                        print_copilot_report(report)
+                    else:
+                        print_report(report)
+                    print()
+    except (OSError, sqlite3.DatabaseError, ValueError) as exc:
+        ap.exit(1, "forge-cost-audit: %s\n" % exc)
     return 0
 
 

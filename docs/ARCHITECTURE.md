@@ -52,7 +52,7 @@ are separate adapters over the same role-neutral core.
 | `forge-calendar.sh` | Script | gws-calendar wrapper — `entry-fetch`, `delta-check`, `next-meeting`, `in-meeting`. Underpins Petra meeting-awareness + wellness schedule-aware defer |
 | `forge-classify-friction.sh` | Script | Keyword router: friction shape → pattern slug + action-ref. Powers the Refiner's `append-friction` handoff |
 | `forge-cost-snapshot.sh` | Script | Reads transcript metrics, emits `suggest_compact: true/false` for proactive `/compact` discipline |
-| `forge-cost-audit.py` | Script | Retrospective cross-session cost profile — per-model token/cost breakdown, cost split by type, and `--cache-composition` 1h-cache-TTL break-even. Portable cost-monitoring for the model-tiering posture |
+| `forge-cost-audit.py` | Script | Retrospective cost profile. Claude adapter reads Anthropic log tokens and estimates USD; Copilot adapter additionally reads all locally recorded Copilot CLI sessions (AI credits, not full account billing), reporting the providers separately. `--cache-composition` 1h-cache-TTL analysis applies only to Anthropic |
 | `forge-gap-since-last-signal.sh` | Script | Unified gap detection across checkpoints / marker / braindumps / vault git. Underpins cold-start logic |
 | `forge-permission-lint.sh` | Script | Fails install when `settings.json` permissions match known anti-patterns; also surfaced via `/forge-audit-permissions` |
 | `forge-shell-init.sh` | Shell wrapper | Auto-wraps interactive `claude` in tmux for agent-team substrate |

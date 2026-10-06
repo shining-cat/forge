@@ -1,4 +1,4 @@
-# Model cost posture (GitHub Copilot CLI) — Sonnet main loop, Opus as scalpel
+# Model cost posture (GitHub Copilot CLI) — provider-native usage
 
 GitHub Copilot CLI binding of the vendor-neutral principle in
 [`core/references/model-cost-posture.md`](../../../core/references/model-cost-posture.md).
@@ -59,17 +59,26 @@ still gets Opus quality on demand.
 
 ## Measuring your own profile
 
-The ratios above are specific to one usage pattern and one pricing tier. Re-derive them:
+The Anthropic ratios above are historical and do not describe Copilot billing.
+The Copilot adapter's audit defaults to all locally recorded Copilot CLI
+sessions (**not Forge-project-only**, but not an account-wide billing total
+across devices or other Copilot clients). With `--provider both`, it includes
+local Claude logs and keeps Copilot AI credits and Anthropic estimated USD
+separate:
 
 ```bash
-"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py"                     # per-model cost split, all sessions
-"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --days 30           # windowed
-"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --cache-composition # gap-bucket cache-writes + 1h-TTL break-even
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py"                                # Copilot CLI sessions by default
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --provider both                # both providers, separate totals
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --provider copilot --days 30    # all locally recorded CLI sessions
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-cost-audit.py" --provider anthropic --cache-composition
 ```
 
-The `--cache-composition` view is the one that settles the tiering call: it buckets
-cache-writes by the idle gap that preceded each, so you can see how much of the spend
-is active-work churn (unavoidable) versus idle re-writes (potentially saveable).
+Use `--copilot-db` to select a different Copilot `session-store.db`, or `--root`
+to select a different Claude project-log directory. The audit reads the Copilot
+database without modifying it. Its AI credits are derived from locally recorded
+nano-AI units, not an account billing/quota API; use `/usage` for current-session
+usage. `--cache-composition` applies only to the Anthropic pricing model and
+requires `--provider anthropic`.
 
 ## Ruled out (don't re-propose without new measurement)
 

@@ -79,6 +79,10 @@ Companion scripts:
 ~/.claude/scripts/forge-cost-audit.py              # retrospective cost profile across ALL sessions (which model, cost split)
 ~/.claude/scripts/forge-cost-audit.py --days 30    # limit to sessions active in the last N days
 ~/.claude/scripts/forge-cost-audit.py --cache-composition   # gap-bucket cache-writes + 1h-cache-TTL break-even
+~/.copilot/scripts/forge-cost-audit.py             # all locally recorded Copilot CLI AI credits (default)
+~/.copilot/scripts/forge-cost-audit.py --provider both   # add local Anthropic estimated USD as a separate report
+~/.copilot/scripts/forge-cost-audit.py --provider copilot --days 30   # Copilot only; not Forge-only or full account billing
+~/.copilot/scripts/forge-cost-audit.py --provider anthropic --cache-composition  # Anthropic-only TTL analysis
 ~/.claude/scripts/forge-calendar.sh entry-fetch    # today's agenda (used by /forge entry)
 ~/.claude/scripts/forge-calendar.sh in-meeting     # presence-only: are you in a meeting right now
 ```
