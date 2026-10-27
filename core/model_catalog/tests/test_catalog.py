@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 from model_catalog.cli import main as catalog_main
-from model_catalog.catalog import SnapshotError, catalog_path, load_snapshot, migrate_config, publish_manual, resolve, tier_from_config, write_snapshot
+from model_catalog.catalog import SnapshotError, catalog_path, check_availability, suggest_replacement, load_snapshot, migrate_config, publish_manual, resolve, tier_from_config, write_snapshot
 
 def stamp(seconds=0): return (dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
 def rec(name="model", tier="standard", caps=("reasoning",), bindings=None, evidence=None):
@@ -401,6 +401,36 @@ class CatalogTests(unittest.TestCase):
             first=migrate_config(config); content=open(config).read(); backup=first["backup"]
             self.assertTrue(os.path.exists(backup)); self.assertIn("MODEL_TIER_KEEPER=pending", content); self.assertIn("MODEL_TIER_IMPL=inherit", content); self.assertIn("OTHER=value", content)
             migrate_config(config); self.assertEqual(content, open(config).read()); self.assertEqual(open(backup).read(), "MODEL_KEEPER=sonnet\nMODEL_IMPL=\nOTHER=value\n")
+    def test_suggest_replacement_picks_highest_same_family(self):
+        available = ["gpt-6.1-sol", "gpt-5.6-sol", "gpt-6-luna", "claude-sonnet-5.5", "claude-opus-5.5"]
+        self.assertEqual(suggest_replacement("gpt-6-sol", available), "gpt-6.1-sol")
+        self.assertEqual(suggest_replacement("claude-sonnet-5", available), "claude-sonnet-5.5")
+        self.assertIsNone(suggest_replacement("gpt-6-astra", available))
+        self.assertIsNone(suggest_replacement("not a model", available))
+        self.assertEqual(suggest_replacement("gpt-6.1-sol", available), "gpt-5.6-sol")
+    def test_check_availability_flags_stale_tiers_with_suggestion(self):
+        records = [rec("a", "minimal", bindings=[{"runtime": "r", "active": True, "dispatch_id": "gpt-5.6-luna"}]),
+                   rec("b", "standard", bindings=[{"runtime": "r", "active": True, "dispatch_id": "gpt-6-sol"}])]
+        result = check_availability(snap(records), "r", ["gpt-5.6-luna", "gpt-6.1-sol"])
+        self.assertEqual(result["status"], "stale")
+        self.assertEqual(result["tiers"]["minimal"]["status"], "ok")
+        self.assertEqual(result["tiers"]["standard"], {"status": "stale", "dispatch_id": "gpt-6-sol", "suggestion": "gpt-6.1-sol"})
+        self.assertEqual(result["tiers"]["premium"]["status"], "unresolved")
+        self.assertEqual(check_availability(snap(records[:1]), "r", ["gpt-5.6-luna"])["tiers"]["minimal"]["status"], "ok")
+    def test_resolve_with_available_fails_closed_on_stale_binding(self):
+        records = [rec("b", "standard", bindings=[{"runtime": "r", "active": True, "dispatch_id": "gpt-6-sol"}])]
+        stale = resolve(snap(records), "standard", active_binding="r", available=["gpt-6.1-sol"])
+        self.assertEqual((stale["status"], stale["suggestion"]), ("stale_binding", "gpt-6.1-sol"))
+        self.assertEqual(resolve(snap(records), "standard", active_binding="r", available=["gpt-6-sol"])["status"], "resolved")
+        self.assertEqual(resolve(snap(records), "standard", active_binding="r")["status"], "resolved")
+    def test_cli_check_availability_exit_codes(self):
+        records = [rec(t, t, bindings=[{"runtime": "r", "active": True, "dispatch_id": "gpt-6-sol"}]) for t in ("minimal", "economy", "standard", "premium")]
+        path = self._write(snap(records))
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code = catalog_main(["check-availability", "--snapshot", path, "--binding", "r", "--available", "gpt-6.1-sol"])
+        self.assertEqual(code, 4); self.assertEqual(json.loads(out.getvalue())["tiers"]["standard"]["suggestion"], "gpt-6.1-sol")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(catalog_main(["check-availability", "--snapshot", path, "--binding", "r", "--available", "gpt-6-sol"]), 0)
     def _write(self, data):
         fd,path=tempfile.mkstemp(dir=os.getcwd()); os.close(fd); json.dump(data, open(path,"w")); self.addCleanup(lambda: os.path.exists(path) and os.unlink(path)); return path
 if __name__ == "__main__": unittest.main()

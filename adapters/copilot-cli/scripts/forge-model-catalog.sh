@@ -59,7 +59,7 @@ case "${1:-resolve}" in
       exit 2
     fi
     exec "${CLI[@]}" "${args[@]}" ;;
-  check-coverage|onboarding-status)
+  check-coverage|onboarding-status|check-availability)
     command="$1"; shift
     require_local_binding "$@"
     exec "${CLI[@]}" "$command" "$@" --binding copilot-cli ;;

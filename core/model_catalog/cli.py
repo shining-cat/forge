@@ -4,11 +4,11 @@ import os
 import sys
 import tempfile
 try:
-    from .catalog import EXIT_CODES, SnapshotError, load_snapshot, migrate_config, publish_manual, resolve, tier_from_config, TIERS
+    from .catalog import EXIT_CODES, SnapshotError, load_snapshot, check_availability, migrate_config, publish_manual, resolve, tier_from_config, TIERS
 except ImportError:
     import os
     sys.path.insert(0, os.path.dirname(__file__))
-    from catalog import EXIT_CODES, SnapshotError, load_snapshot, migrate_config, publish_manual, resolve, tier_from_config, TIERS
+    from catalog import EXIT_CODES, SnapshotError, load_snapshot, check_availability, migrate_config, publish_manual, resolve, tier_from_config, TIERS
 
 def _coverage(snapshot_path, binding):
     if not binding.strip():
@@ -18,6 +18,9 @@ def _coverage(snapshot_path, binding):
     missing = [tier for tier in TIERS if tiers[tier] != "resolved"]
     return {"status": "complete" if not missing else "incomplete", "binding": binding,
             "tiers": tiers, "missing_tiers": missing}
+
+def _split(csv):
+    return [item.strip() for item in csv.split(",") if item.strip()]
 
 def _mark_complete(config):
     with open(config, "rb") as stream:
@@ -61,9 +64,14 @@ def main(argv=None):
     resolve_p.add_argument("--config")
     resolve_p.add_argument("--capability", action="append", default=[])
     resolve_p.add_argument("--binding")
+    resolve_p.add_argument("--available")
     coverage = sub.add_parser("check-coverage")
     coverage.add_argument("--snapshot")
     coverage.add_argument("--binding", required=True)
+    avail = sub.add_parser("check-availability")
+    avail.add_argument("--snapshot", required=True)
+    avail.add_argument("--binding", required=True)
+    avail.add_argument("--available", required=True)
     entry = sub.add_parser("onboarding-status")
     entry.add_argument("--snapshot", required=True)
     entry.add_argument("--binding", required=True)
@@ -88,6 +96,10 @@ def main(argv=None):
             result = _coverage(args.snapshot, args.binding)
             print(json.dumps(result, sort_keys=True))
             return 0 if result["status"] == "complete" else EXIT_CODES["no_match"]
+        if args.command == "check-availability":
+            result = check_availability(load_snapshot(args.snapshot), args.binding, _split(args.available))
+            print(json.dumps(result, sort_keys=True))
+            return 0 if result["status"] == "ok" else EXIT_CODES["stale_binding"]
         if args.command == "finish-onboarding":
             result = _coverage(args.snapshot, args.binding)
             if result["status"] != "complete":
@@ -118,7 +130,8 @@ def main(argv=None):
             else:
                 tier = "inherit"
         result = resolve({} if tier == "inherit" else load_snapshot(args.snapshot),
-                         tier, args.capability, role=args.role, active_binding=args.binding)
+                         tier, args.capability, role=args.role, active_binding=args.binding,
+                         available=None if args.available is None else _split(args.available))
         print(json.dumps(result, sort_keys=True)); return EXIT_CODES[result["status"]]
     except (OSError, ValueError, SnapshotError) as exc:
         print(json.dumps({"status": "invalid", "error": str(exc)}))

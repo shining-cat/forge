@@ -65,8 +65,14 @@ a model from the defaults table or rely on the harness default for a
 configured tier:
 
 ```bash
-"/absolute/copilot/directory/scripts/forge-model-catalog.sh" resolve --role keeper --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json"
+"/absolute/copilot/directory/scripts/forge-model-catalog.sh" resolve --role keeper --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json" --available "id1,id2,..."
 ```
+
+`--available` is the comma-separated list of model IDs from the `model`
+parameter enum of your own `task` tool (the live list of available models;
+the Copilot CLI offers no scriptable one). Always pass it: a bound model
+missing from it returns `stale_binding` instead of dispatching on a silent
+fallback.
 
 Replace the example paths with the real absolute paths before invoking Bash.
 The explicit snapshot avoids needing a `VAULT_PATH=` command prefix. If this
@@ -79,6 +85,7 @@ Use the command's JSON `status` **and** exit code:
 |---------------|-----------------|
 | `0` / `resolved` with a nonempty `dispatch_id` | Pass that exact ID as the task tool's `model` parameter. |
 | `1` / `inherit` | Omit `model`; this is intentional session-model inheritance. |
+| `4` / `stale_binding` | Do not dispatch. The bound model is no longer available; report the role, tier, `dispatch_id` and `suggestion`, and ask the user to remap (see `/forge-setup-models`). |
 | `2` / `no_match`, `3` / `invalid`, unexpected output/status, or execution error | Do not dispatch that role. Report the role, tier, and resolver error; repair the mapping/config before retrying. |
 
 Do not substitute a model from another runtime or fall back to the harness

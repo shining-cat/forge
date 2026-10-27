@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import os
+import re
 import shutil
 import tempfile
 
@@ -9,7 +10,8 @@ SCHEMA_VERSION = 1
 FRESHNESS_SECONDS = 24 * 60 * 60
 TIERS = ("minimal", "economy", "standard", "premium")
 EVIDENCE_KINDS = ("declared", "public_benchmark", "passive")
-EXIT_CODES = {"resolved": 0, "inherit": 1, "no_match": 2, "invalid": 3}
+EXIT_CODES = {"resolved": 0, "inherit": 1, "no_match": 2, "invalid": 3, "stale_binding": 4}
+_MODEL_ID = re.compile(r"^(?P<prefix>[a-z]+(?:-[a-z]+)*?)-(?P<version>\d+(?:\.\d+)*)(?:-(?P<suffix>[a-z0-9-]+))?$")
 
 class CatalogError(ValueError):
     pass
@@ -203,7 +205,50 @@ def publish_manual(input_path, output_path=None):
     write_snapshot(data, output_path)
     return data
 
-def resolve(snapshot, tier="inherit", required_capabilities=(), role=None, active_binding=None):
+def _parse_model_id(model_id):
+    match = _MODEL_ID.match(model_id)
+    if not match:
+        return None
+    version = tuple(int(part) for part in match["version"].split("."))
+    return match["prefix"], match["suffix"] or "", version
+
+def suggest_replacement(dispatch_id, available):
+    """Closest available model: same family prefix and suffix, highest version."""
+    wanted = _parse_model_id(dispatch_id)
+    if wanted is None:
+        return None
+    candidates = []
+    for candidate in available:
+        parsed = _parse_model_id(candidate)
+        if candidate != dispatch_id and parsed and parsed[:2] == wanted[:2]:
+            candidates.append((parsed[2], candidate))
+    return max(candidates)[1] if candidates else None
+
+def check_availability(snapshot, active_binding, available):
+    """Compare each tier's bound dispatch id with the live available-model list."""
+    available = set(available)
+    tiers = {}
+    for tier in TIERS:
+        result = resolve(snapshot, tier, active_binding=active_binding)
+        if result["status"] != "resolved":
+            tiers[tier] = {"status": "unresolved"}
+        elif result["dispatch_id"] in available:
+            tiers[tier] = {"status": "ok", "dispatch_id": result["dispatch_id"]}
+        else:
+            tiers[tier] = {"status": "stale", "dispatch_id": result["dispatch_id"],
+                           "suggestion": suggest_replacement(result["dispatch_id"], available)}
+    ok = all(entry["status"] == "ok" for entry in tiers.values())
+    return {"status": "ok" if ok else "stale", "binding": active_binding, "tiers": tiers}
+
+def resolve(snapshot, tier="inherit", required_capabilities=(), role=None, active_binding=None, available=None):
+    result = _resolve(snapshot, tier, required_capabilities, role, active_binding)
+    if available is not None and result["status"] == "resolved" and result["dispatch_id"] not in set(available):
+        return {"status": "stale_binding", "tier": tier, "record": result["record"],
+                "dispatch_id": result["dispatch_id"],
+                "suggestion": suggest_replacement(result["dispatch_id"], available)}
+    return result
+
+def _resolve(snapshot, tier, required_capabilities, role, active_binding):
     if tier == "inherit":
         return {"status": "inherit", "tier": "inherit", "record": None}
     if tier not in TIERS:
