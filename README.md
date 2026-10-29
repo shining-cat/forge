@@ -16,7 +16,7 @@ It's not faster than N parallel windows. It's quieter.
 
 Focus doesn't mean tunnel vision either — Forge holds all your projects in one vault. When a side-thought strikes mid-task, you log it in seconds and keep going. You don't lose the spark to the discipline of staying focused, and you don't break focus to chase the spark.
 
-[I've wrote an article about my journey from starting to use AI agents to building and using the forge, and what I've learnt from this.](https://www.linkedin.com/pulse/what-i-learned-integrating-ai-agents-my-daily-work-shiva-bernhard-yynmf/)
+[I've written an article about my journey from starting to use AI agents to building and using the forge, and what I've learnt from this.](https://www.linkedin.com/pulse/what-i-learned-integrating-ai-agents-my-daily-work-shiva-bernhard-yynmf/)
 
 ---
 
