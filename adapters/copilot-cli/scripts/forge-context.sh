@@ -567,7 +567,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|checkout-state|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|checkout-state|list-projects|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
     # No stdin read, no guards. These operate on marker/shared state only.
     # trust-anchor reads only VAULT_PATH + REPO_ROOTS from forge.conf (no
     # marker / active project needed) — install.sh and forge-shell-init.sh
@@ -4714,6 +4714,33 @@ do_checkout_state() {
   fi
 }
 
+# ── Subcommand: list-projects ──────────────────────────────────────────
+# Entry-picker list: "ENV/project<TAB>YYYY-MM-DD" per real project, grouped by
+# env (alphabetical), most recent activity first within each env. Activity =
+# newer of checkpoint frontmatter date and last vault commit touching the dir.
+# Skips underscore-prefixed dirs and *-template dirs; requires INDEX.md or a checkpoint.
+do_list_projects() {
+  local vault="${VAULT_PATH:-}" env_dir env proj_dir name fm_date git_date act
+  if [ -z "$vault" ] || [ ! -d "$vault" ]; then
+    echo "[list-projects] VAULT_PATH not set or missing" >&2
+    return 2
+  fi
+  for env_dir in "$vault"/*/; do
+    env="$(basename "$env_dir")"
+    case "$env" in _*) continue ;; esac
+    for proj_dir in "$env_dir"*/; do
+      [ -d "$proj_dir" ] || continue
+      name="$(basename "$proj_dir")"
+      case "$name" in _*|*-template) continue ;; esac
+      [ -f "$proj_dir/INDEX.md" ] || [ -f "$proj_dir/current-checkpoint.md" ] || continue
+      fm_date="$(sed -n 's/^date: *\([0-9-]*\).*/\1/p' "$proj_dir/current-checkpoint.md" 2>/dev/null | head -1 || true)"
+      git_date="$(git -C "$proj_dir" log -1 --format=%cs -- . 2>/dev/null || true)"
+      act="$(printf '%s\n%s\n' "$fm_date" "$git_date" | sort | tail -1)"
+      printf '%s\t%s\t%s\n' "$env" "${act:-0000-00-00}" "$name"
+    done
+  done | sort -t$'\t' -k1,1 -k2,2r -k3,3 | awk -F'\t' '{printf "%s/%s\t%s\n", $1, $3, $2}'
+}
+
 # ── Subcommand: review-sync ────────────────────────────────────────────
 # Scan tasks/reviews/ for PR-numbered review docs, query gh for each PR's
 # state, and emit one line per doc whose PR is merged or closed-unmerged
@@ -6236,6 +6263,7 @@ case "$SUBCMD" in
   next-meeting)        do_next_meeting ;;
   substrate-check)     do_substrate_check ;;
   checkout-state)      do_checkout_state "${2:-}" ;;
+  list-projects)       do_list_projects ;;
   review-sync)         do_review_sync "${@:2}" ;;
   repo-gh)             do_repo_gh "${@:2}" ;;
   draft-list)          do_draft_list ;;

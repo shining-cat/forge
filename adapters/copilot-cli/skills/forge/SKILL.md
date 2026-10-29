@@ -116,13 +116,13 @@ Why: it signals "Forge is launching, no project chosen yet" — distinct from mi
 
 #### 1c. Disambiguate, then write the project name
 
-Check which project directories exist under the vault to determine valid environments and projects.
+Get the valid projects from `/absolute/copilot/directory/scripts/forge-context.sh list-projects` (literal directory substituted). It prints `ENV/project<TAB>last-activity-date`, templates and `_*` dirs already excluded, grouped by env with the most recent activity first.
 
 - If the current working directory maps unambiguously to a single known project → use that.
-- If the vault contains exactly one project → use it.
+- If the list contains exactly one project → use it.
 - Otherwise → ask the user which project to activate.
 
-**Present the choices as a neutral, unordered list — NEVER frame one as "(Recommended)", "last active", "most recent", or otherwise imply recency.** At step 1c the marker, `recover`, and `gap-since-last-signal` have not run yet, so any recency/recommendation claim would be sourced from stale context (e.g. the MEMORY.md "Active:" header) with no evidence behind it. A fabricated default is worse than none — it makes the user wonder what Claude knows that they don't, when the answer is nothing. If a recency-ranked ordering is ever wanted, it must wait until after `gap-since-last-signal` is read (step 2). (Honest-reporting sibling — see step 6.)
+**Present the script's list as-is, grouped by env, in the script's order.** Never add "(Recommended)", "last active", or "most recent" labels, and never reorder from memory (e.g. the MEMORY.md "Active:" header): the order is evidence-backed by the script, any other claim is not. If a project is not in the list, the user can still type it.
 
 Once the project is unambiguously chosen, run `/absolute/copilot/directory/scripts/forge-context.sh set-marker active <project>` via the Bash tool. The script captures the current `$COPILOT_AGENT_SESSION_ID`, current timestamp, and current `$TMUX_PANE` and writes a JSON object to the marker:
 
