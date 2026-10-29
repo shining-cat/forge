@@ -9,6 +9,15 @@ Cleanly wraps up a Forge session with a final checkpoint and session summary.
 
 **Announce:** "**[Keeper]** Exiting Forge — writing final checkpoint."
 
+## Scope and time box
+
+Exit is a short, bounded wrap. Its scope is exactly Steps 0–3 below: wellness reset, final checkpoint, safe-subset vault sync, summary, optional Friday weekly-wrap ask, deactivate. Nothing else belongs in an exit.
+
+- **Time box: 10 minutes** from the announce line. Note the start time (from the injected `[Current local time: ...]`, never a guess).
+- **Hard stop:** at the time box, or after Step 3, stop. Do not start historical housekeeping (old tasks, friction-log, decisions curation, BACKLOG grooming, vault hygiene, audits), even when it looks adjacent or useful.
+- **Anything not done** is recorded as deferred in the handoff (Step 1) and shown in the summary. Never imply completion for work that was skipped or cut off.
+- If the user explicitly asks for extra cleanup during exit, do it only after Step 3 as a separate task, not as part of the exit.
+
 ## Steps
 
 ### 0. Credit the break (wellness)
@@ -29,6 +38,23 @@ If wellness-coach isn't installed, the conditional skips silently — proceed to
 ### 1. Final Checkpoint
 
 Execute the full forge-checkpoint process (gather state, have Keeper write and verify checkpoint and decisions). If Keeper cannot complete it, report the failure and do not present a saved-checkpoint confirmation.
+
+The checkpoint MUST include an `## Exit handoff: incomplete` section (omit it only when nothing is deferred). List, one line each:
+- **Deferred sync:** vault changes not committed because they were not touched this session (summarize by path group or count, e.g. "12 older files under tasks/").
+- **Deferred cleanup:** anything skipped or cut off by the time box or hard stop.
+- **Unverified:** anything Keeper could not verify.
+
+Write what is known and stop; do not investigate old drift to fill the section. This keeps enough state for a later follow-up without reopening a full historical review.
+
+### 1b. Safe-subset vault sync
+
+Commit only files this session touched: the checkpoint, tasks, and decisions Keeper wrote or edited this session (known from the session's own writes, not from scanning drift).
+
+- Have Keeper stage those exact paths (`git -C <vault repo> add -- <paths>`), commit, and push. Resolve the correct repo (outer vault vs nested private repo) per path; never mix PRO and PERSO material.
+- Do NOT run `forge-context.sh vault-sync --commit` or `git add -A`/`git add .` at exit: they sweep in unrelated historical drift.
+- If a path's scope is unclear, leave it out and list it under **Deferred sync** instead.
+- If the commit or push fails, report it, list the paths as deferred, and continue to Step 2. Do not retry in a loop.
+- Because the handoff section lives in the checkpoint, write it before this step so it is included in the commit.
 
 ### 2. Session Summary
 
@@ -52,6 +78,9 @@ Friction events:
 Open items:
 - {item 1}
 - {item 2}
+
+Incomplete / deferred (from the checkpoint handoff; "none" only if verified):
+- {deferred sync, deferred cleanup, unverified items}
 
 Next session starts with:
 - {first next step}
