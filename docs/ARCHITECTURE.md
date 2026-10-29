@@ -46,6 +46,7 @@ are separate adapters over the same role-neutral core.
 | `forge-vault-plan-guard.sh` | Hook (PreToolUse on Write/Edit) | Blocks plan content writes outside the vault (e.g. `docs/plans/`) — enforces the single-doc workflow |
 | `forge-vault-write-guard.sh` (Claude Code only) | Hook (PreToolUse on Write/Edit) | Backstop against direct main-session vault edits where `agent_id` is supplied. Copilot CLI does not register it: its documented tool payload lacks subagent identity. Keeper owns all authored vault writes in both adapters, including typed scripts; same-user Bash is not role-enforced. |
 | `forge-credential-guard.sh` | Hook (PreToolUse on Bash) | Asks before a content-printing verb inspects a credential-bearing file — backstop against secret leaks into the transcript. Always-on (not marker-gated) |
+| `forge-role-model-guard.sh` (Copilot CLI only) | Hook (PreToolUse on task, case-insensitive) | Asks when one of the eight Forge roles carries an explicit `model`, which overrides its baked tier binding. Non-matches and parse problems allow silently; always-on. Live task hook envelope unverified. |
 | `forge-session-end.sh` | Hook (SessionEnd) | Clears the `forge-active` marker on session close |
 | `inject-current-time.sh` | Hook (UserPromptSubmit) | Injects authoritative `[Current local time: ...]` + the expected block-header prefix into every prompt |
 | `forge-context.sh` | Script (multi-subcommand) | The runtime workhorse — `recover`, `gate`, `post-tool`, `stop`, `vault-sync`, `review-sync`, `substrate-check`, `framework-budget`, `next-meeting`, `wrap-up-state`, `append-friction`, `resolve-task`, `render-backlog-cell`, `teammate-notice`, `rollback-install`, `vault-rm`, `run-tests` (dev suite runner), etc. ~30 subcommands |
@@ -113,6 +114,15 @@ dispatched with no `model` parameter (an explicit one overrides the binding); an
 intentional `inherit` writes no `model:` line. Entry runs `render-agents --check`
 to surface drift, and a role whose tier cannot resolve is reported and left
 undispatched rather than silently inheriting.
+Layer 4 is the Copilot `forge-role-model-guard.sh` PreToolUse backstop: an
+explicit `model` key on any of the eight Forge roles returns `ask`, reminding
+the caller to omit it unless the user explicitly requested a one-off override.
+It does not compare the override with the baked model or resolve the catalog.
+Other roles, omitted models, non-task tools, and parse problems allow silently
+(exit 0). Session events confirm the task tool and its `agent_type` / `model`
+arguments, but not the live PreToolUse envelope; the hook uses
+`.tool_input.agent_type` / `.tool_input.model` with a case-insensitive task
+matcher. Live hook invocation and confirmation remain to be verified.
 
 Copilot's entry `substrate-check` reports native `/fleet` availability when the
 Copilot executable is on `PATH`, regardless of `$TMUX`. It does not promise

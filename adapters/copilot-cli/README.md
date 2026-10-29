@@ -53,3 +53,21 @@ The Copilot adapter intentionally differs from Claude in three places:
 3. Copilot has no Claude-style post-compaction event or identical pane-team
    substrate. The adapter runs the pre-compaction guard and documents the
    fallback to inline subagents.
+
+## PreToolUse hooks
+
+| Hook | Scope | Behavior |
+|------|-------|----------|
+| `wellness-timer.py` | All tools | Opt-in wellness strike gate |
+| `forge-credential-guard.sh` | Bash | Asks before inspecting credential-bearing files |
+| `forge-role-model-guard.sh` | task (case-insensitive) | Asks when any of the eight Forge roles includes an explicit `model`; omit it unless the user explicitly requested a one-off override |
+| `forge-vault-plan-guard.sh` | Write/Edit | Guards the vault-only plan storage convention |
+
+The role-model guard is always-on for Forge roles and allows silently for other
+agents, missing `model`, non-task tools, or parse problems (exit 0). It flags
+parameter presence, not a difference from the baked model. The installer copies
+hook scripts generically, makes them executable, and merges their registrations.
+Recorded session events confirm `task` with `agent_type` and `model` arguments;
+the live task PreToolUse envelope is **unverified**. The guard assumes the existing
+hooks' `.tool_name` / `.tool_input` envelope and reads `.tool_input.agent_type`
+and `.tool_input.model`. Synthetic tests do not establish live enforcement.

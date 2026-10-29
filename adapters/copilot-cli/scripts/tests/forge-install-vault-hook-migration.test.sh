@@ -29,6 +29,7 @@ jq -e '
   .hooks.PreToolUse as $hooks |
   ([$hooks[] | select(.bash | contains("forge-vault-write-guard.sh"))] | length) == 0 and
   ([$hooks[] | select(.bash | contains("forge-vault-plan-guard.sh"))] | length) == 1 and
+  ([$hooks[] | select(.bash | contains("forge-role-model-guard.sh"))] | length) == 1 and
   ([$hooks[] | select(.bash == "/custom/my-hook.sh")] | length) == 1 and
   .hooks.customEvent[0].bash == "/custom/untouched.sh"
 ' "$installed" > /dev/null
@@ -36,9 +37,24 @@ jq -e '
 expected="$(jq -c '[.hooks.PreToolUse[] | select(.bash | contains("forge-")) | .bash]' "$SOURCE_HOOKS")"
 actual="$(jq -c '[.hooks.PreToolUse[] | select(.bash | contains("forge-")) | .bash]' "$installed")"
 [[ "$expected" == "$actual" ]]
+cmp "$SCRIPT_DIR/../../hooks/forge-role-model-guard.sh" \
+  "$TMP/home/.copilot/hooks/forge-role-model-guard.sh"
+[[ -x "$TMP/home/.copilot/hooks/forge-role-model-guard.sh" ]]
+python3 - "$installed" <<'PY'
+import json
+import re
+import sys
+
+hooks = json.load(open(sys.argv[1]))["hooks"]["PreToolUse"]
+guard = next(h for h in hooks if "forge-role-model-guard.sh" in h["bash"])
+for tool in ("task", "Task", "TASK", "tAsK"):
+    assert re.fullmatch(guard["matcher"], tool), tool
+assert not re.search(guard["matcher"], "Bash")
+PY
 if find "$TMP/home/.copilot/scripts" "$TMP/home/.copilot/skills" -type f -name '*.pyc' -print | grep -q .; then
   echo "installer copied generated Python bytecode" >&2
   exit 1
 fi
 printf '  ✓ retired Copilot vault-write hook; preserved plan guard and unrelated hooks\n'
 printf '  ✓ generated Python bytecode excluded from installed tooling\n'
+printf '  ✓ role-model guard installed executable and registered once with case-tolerant task matcher\n'

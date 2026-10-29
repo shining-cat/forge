@@ -62,6 +62,7 @@ for label, text, fragments in (
     ("entry Keeper", entry, ("agent_type: forge-keeper", "no `model` parameter", "keep the", "marker pending", "do not", "inline fallback")),
     ("all Forge roles", dispatch, ("frontmatter `model:`", "entry Keeper", "team fan-out", "agent_type: forge-{role}", "never pass a `model` parameter", "unresolvable", "must not be dispatched")),
     ("dispatch reference", reference, ('render-agents --check --snapshot', '"/absolute/copilot/directory/scripts/forge-model-catalog.sh"', "`drift`", "`error`", "`ok`", "Do not dispatch", "no `model` parameter")),
+    ("model-override backstop", dispatch + reference, ("forge-role-model-guard.sh", "`ask`", "one-off override")),
 ):
     for fragment in fragments:
         if fragment not in text:

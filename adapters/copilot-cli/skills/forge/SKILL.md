@@ -373,6 +373,8 @@ Load `references/model-cost-posture.md` for the tier rationale, provider-specifi
 
 **Subagent definitions + model tuning:** The 8 Forge roles (`forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`) live under the installed Copilot directory's `agents/`. Each role's tier-resolved model is baked into its installed definition (frontmatter `model:`, rendered by `install.sh` and `/forge-setup-models`). Dispatch every Forge role (including entry Keeper, sequential dispatch, and team fan-out) as `agent_type: forge-{role}` and **never pass a `model` parameter**: an explicit `model` overrides the baked binding. Pass `model` only when the user explicitly asks for a one-off override. A role the entry role-binding check reported as unresolvable must not be dispatched. Use subagent dispatch when the operation is self-contained; use inline when it needs conversation history.
 
+The `forge-role-model-guard.sh` PreToolUse backstop returns `ask` for an explicit `model` on any of these eight roles; omit the parameter unless the user explicitly requested a one-off override. Non-matches and parse problems allow silently. The live task hook envelope remains unverified; see `references/subagent-models.md`.
+
 Load `references/subagent-models.md` for the default tier assignments, resolution statuses, and model-assignment guidance before dispatching any Forge role or when the user asks about role models.
 
 ## Agent-Teams Mode
