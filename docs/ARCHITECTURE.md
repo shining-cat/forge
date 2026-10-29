@@ -105,13 +105,14 @@ adapters package that core and invoke it through their runtime-specific
 coverage/onboarding to their own runtime binding; foreign binding requests
 fail explicitly rather than selecting another runtime's dispatch ID. Users
 choose model-to-tier mappings manually; adapters dispatch the selected model.
-In Copilot CLI, the Forge skill requires every role dispatch (including entry
-Keeper) to resolve its configured tier via the installed wrapper and pass the
-resulting `dispatch_id` explicitly. An intentional `inherit` uses the session
-model without consulting the catalog; missing or invalid configured bindings
-must block that dispatch with diagnostics rather than silently inheriting.
-This is an orchestrator instruction with resolver checks, not a CLI-level
-tool-call interceptor.
+In Copilot CLI the binding is structural: `install.sh` and `/forge-setup-models`
+resolve each role's tier through the wrapper (`render-agents`) and bake the
+resulting `dispatch_id` into the installed agent definition's frontmatter
+`model:`, which Copilot applies whenever a dispatch omits `model`. Roles are
+dispatched with no `model` parameter (an explicit one overrides the binding); an
+intentional `inherit` writes no `model:` line. Entry runs `render-agents --check`
+to surface drift, and a role whose tier cannot resolve is reported and left
+undispatched rather than silently inheriting.
 
 Copilot's entry `substrate-check` reports native `/fleet` availability when the
 Copilot executable is on `PATH`, regardless of `$TMUX`. It does not promise

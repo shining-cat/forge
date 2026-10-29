@@ -63,6 +63,10 @@ case "${1:-resolve}" in
     command="$1"; shift
     require_local_binding "$@"
     exec "${CLI[@]}" "$command" "$@" --binding copilot-cli ;;
+  render-agents)
+    shift
+    require_local_binding "$@"
+    exec "${CLI[@]}" render-agents --config "${FORGE_CONF:-$COPILOT_DIR/forge.conf}" "$@" --binding copilot-cli ;;
   publish|migrate) exec "${CLI[@]}" "$@" ;;
   *) : "${VAULT_PATH:?VAULT_PATH is required}"; require_local_binding "$@"; exec "${CLI[@]}" resolve --config "${FORGE_CONF:-$COPILOT_DIR/forge.conf}" "$@" --binding copilot-cli ;;
 esac

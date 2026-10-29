@@ -53,47 +53,42 @@ Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 
 (Read the live values from `${COPILOT_HOME:-$HOME/.copilot}/forge.conf` — the table above is the install-time default, not a substitute for checking.)
 
-**Before every Forge subagent dispatch**, including entry Keeper, resolve the
-role's tier with the installed Copilot wrapper. Substitute the actual role
-name in `--role`, the literal absolute path to the installed script for the
-executable, and the literal absolute vault path for `--snapshot`. Read these
-paths from `forge.conf` first; do not use shell variables, `~`, inline
-environment assignments, or compound commands in the Bash invocation.
-Saved Copilot CLI approvals match the submitted command form, so the variable
-form can prompt even when the absolute executable is approved. Do not choose
-a model from the defaults table or rely on the harness default for a
-configured tier:
+## How the binding is enforced
+
+Copilot CLI applies an agent definition's frontmatter `model:` when a dispatch
+omits the `model` parameter (verified 2026-10-29: a dispatch with no `model`
+ran on the frontmatter model; an explicit `model` overrode it). Forge uses this
+to make the tier binding structural:
+
+- `install.sh` and `/forge-setup-models` run `forge-model-catalog.sh render-agents`,
+  which resolves each role's `MODEL_TIER_<ROLE>` against the catalog and writes
+  the resulting `dispatch_id` as `model:` into
+  `${COPILOT_HOME:-$HOME/.copilot}/agents/forge-{role}.agent.md`. A role set to
+  `inherit` gets no `model:` line. A role that cannot resolve is left untouched
+  and reported.
+- Copilot loads agents at start, so a re-render takes effect after a restart.
+- **Dispatch rule:** `agent_type: forge-{role}` and **no `model` parameter**.
+  Passing one overrides the baked binding.
+- **Entry check:** `render-agents --check` compares every installed agent with
+  the current mapping. Run it with the literal absolute wrapper path, the
+  literal absolute `--snapshot` and `--src-dir` paths, and `--available` set to
+  the model IDs from your `task` tool's `model` enum (no shell variables, `~`,
+  inline assignments, or compound commands, so saved approvals match):
 
 ```bash
-"/absolute/copilot/directory/scripts/forge-model-catalog.sh" resolve --role keeper --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json" --available "id1,id2,..."
+"/absolute/copilot/directory/scripts/forge-model-catalog.sh" render-agents --check --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json" --src-dir "/absolute/copilot/directory/agents" --available "id1,id2,..."
 ```
 
-`--available` is the comma-separated list of model IDs from the `model`
-parameter enum of your own `task` tool (the live list of available models;
-the Copilot CLI offers no scriptable one). Always pass it: a bound model
-missing from it returns `stale_binding` instead of dispatching on a silent
-fallback.
+| Exit / status | Action |
+|---------------|--------|
+| `0` / `ok` | Bindings match the current mapping. |
+| `5` / `drift` | A remap or tier edit is not rendered yet. Report the roles; on user confirmation re-run without `--check`, then restart Copilot. |
+| `2` / `error` | A role's tier has no match or its bound model is stale (`suggestion` is in the row). Do not dispatch that role; repair via `/forge-setup-models`. |
 
-Replace the example paths with the real absolute paths before invoking Bash.
-The explicit snapshot avoids needing a `VAULT_PATH=` command prefix. If this
-invocation still prompts, distinguish shell approval from path-access and
-other prompts rather than expanding permissions automatically.
-
-Use the command's JSON `status` **and** exit code:
-
-| Exit / status | Dispatch action |
-|---------------|-----------------|
-| `0` / `resolved` with a nonempty `dispatch_id` | Pass that exact ID as the task tool's `model` parameter. |
-| `1` / `inherit` | Omit `model`; this is intentional session-model inheritance. |
-| `4` / `stale_binding` | Do not dispatch. The bound model is no longer available; report the role, tier, `dispatch_id` and `suggestion`, and ask the user to remap (see `/forge-setup-models`). |
-| `2` / `no_match`, `3` / `invalid`, unexpected output/status, or execution error | Do not dispatch that role. Report the role, tier, and resolver error; repair the mapping/config before retrying. |
-
-Do not substitute a model from another runtime or fall back to the harness
-default on resolution failure. For entry Keeper, a resolution failure is not
-the Keeper-execution fallback: stop entry before dispatch and leave the
-pending marker in place until the binding is repaired.
-
-The Copilot wrapper packages and invokes `core/model_catalog/`, which owns neutral tiers and catalog policy. It pins `copilot-cli` for resolve and coverage/onboarding checks; a foreign `--binding` is rejected, and foreign-only tiers return `no_match`. This is a Forge dispatch instruction, not a CLI tool-call interceptor: the orchestrator must pass the selected model. Manual tier mapping remains user-owned.
+`forge-model-catalog.sh resolve --role {role}` remains available for diagnostics.
+The wrapper packages `core/model_catalog/`, which owns neutral tiers and catalog
+policy, and pins `copilot-cli`; a foreign `--binding` is rejected. Manual tier
+mapping remains user-owned.
 
 ## Source of truth per role
 

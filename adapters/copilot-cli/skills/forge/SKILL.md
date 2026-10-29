@@ -92,6 +92,8 @@ If `WELLNESS_ENABLED=true`, use `python3 /absolute/copilot/directory/skills/well
 
 **Availability check (every entry, also when `action=continue`):** run `/absolute/copilot/directory/scripts/forge-model-catalog.sh check-availability --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json --binding copilot-cli --available "id1,id2,..."`, passing the model IDs from your `task` tool's `model` enum (the live list; the CLI has no scriptable one). Exit `0`: all bound models are available. Exit `4`: at least one tier is `stale` (its bound model was renamed or retired). Announce each stale tier with its `dispatch_id` and `suggestion` (the closest available model of the same family; `null` means no candidate), propose the remap, and apply it only after the user confirms, via Keeper and the `/forge-setup-models` flow. Never dispatch a role on a stale tier; `resolve --available` fails closed with `stale_binding`.
 
+**Role-binding check (every entry):** run `/absolute/copilot/directory/scripts/forge-model-catalog.sh render-agents --check --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json --src-dir /absolute/copilot/directory/agents --available "id1,id2,..."` (same live ID list). Each installed `forge-*.agent.md` carries the role's resolved model as frontmatter `model:`, which Copilot applies when a dispatch omits `model`. Exit `0`: every file matches the current tier mapping. Exit `5`: drift (a remap or `MODEL_TIER_*` edit since the last render); report the roles, offer to re-run the same command without `--check` on the user's confirmation, and tell the user a Copilot restart is needed for it to take effect. Exit `2`: a role's tier cannot resolve or is stale; report it and do not dispatch that role until repaired via `/forge-setup-models`.
+
 On deferral or invalid coverage, leave `ONBOARDING_COMPLETE` unchanged and avoid tier-specific dispatch from an unresolved catalog. Model setup never changes role policy or legacy model keys. Existing installs can run `/forge-setup-models` manually.
 
 ### 1. Detect Environment
@@ -192,14 +194,7 @@ When the active project is **blocked** (waiting on CI, a local build, external i
 
 Keeper gathers structured context data and returns JSON. Petra renders it inline. This keeps Keeper's work lightweight (configured minimal tier by default) and preserves entry ceremony transparency — output looks identical to user.
 
-Before dispatching entry Keeper, follow `references/subagent-models.md`: resolve
-`--role keeper --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json`
-through the installed Copilot wrapper using its literal absolute executable path,
-without an inline `VAULT_PATH=` assignment, and pass its `dispatch_id`
-as the task tool's explicit `model`. Omit `model` only when resolution returns
-`inherit`. If the configured tier cannot resolve or the command fails, do not
-dispatch Keeper or run the inline fallback; report the error and keep the
-entry marker pending until the binding is repaired.
+Dispatch entry Keeper as `agent_type: forge-keeper` with **no `model` parameter**: its configured tier is baked into the installed agent definition (see *Role-binding check* in step 0b and `references/subagent-models.md`). If the role-binding check reported Keeper as unresolvable, do not dispatch Keeper or run the inline fallback; report the error and keep the entry marker pending until the binding is repaired.
 
 **Keeper's responsibilities (steps 2–6):**
 1. **Step 2:** Load vault recovery (checkpoint, git state, braindump, commits since checkpoint)
@@ -376,7 +371,7 @@ Load `references/plan-storage.md` for umbrella layout, cross-project layout, fil
 
 Load `references/model-cost-posture.md` for the tier rationale, provider-specific measurements, and audit commands when considering model costs or role tiering.
 
-**Subagent definitions + model tuning:** The 8 Forge roles (`forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`) live under the installed Copilot directory's `agents/`. Before **every** Forge role dispatch (including entry Keeper, sequential dispatch, and team fan-out), resolve `--role {role} --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json` through the literal absolute path to `scripts/forge-model-catalog.sh`. Pass a resolved nonempty `dispatch_id` explicitly as the task tool's `model`; omit `model` only for `inherit`. For `no_match`, `invalid`, a malformed result, or a command error, stop that dispatch and report the role and resolution error; never fall back to the harness model. Use subagent dispatch when the operation is self-contained; use inline when it needs conversation history.
+**Subagent definitions + model tuning:** The 8 Forge roles (`forge-architect`, `forge-debugger`, `forge-impl`, `forge-keeper`, `forge-refiner`, `forge-release`, `forge-reviewer`, `forge-toolsmith`) live under the installed Copilot directory's `agents/`. Each role's tier-resolved model is baked into its installed definition (frontmatter `model:`, rendered by `install.sh` and `/forge-setup-models`). Dispatch every Forge role (including entry Keeper, sequential dispatch, and team fan-out) as `agent_type: forge-{role}` and **never pass a `model` parameter**: an explicit `model` overrides the baked binding. Pass `model` only when the user explicitly asks for a one-off override. A role the entry role-binding check reported as unresolvable must not be dispatched. Use subagent dispatch when the operation is self-contained; use inline when it needs conversation history.
 
 Load `references/subagent-models.md` for the default tier assignments, resolution statuses, and model-assignment guidance before dispatching any Forge role or when the user asks about role models.
 
