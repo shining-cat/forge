@@ -2098,7 +2098,18 @@ do_status() {
 
   local branch=""
   if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
-    branch="$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null)"
+    # Prefer the session's own checkout when it is the project's repo or one of
+    # its worktrees; otherwise the mapped project dir. Never guess beyond that:
+    # an unrelated cwd must not leak its branch into the project chip.
+    local cwd cwd_root branch_dir="$PROJECT_DIR"
+    cwd="$(echo "${STDIN_JSON:-}" | jq -r '.workspace.current_dir // empty' 2>/dev/null)"
+    [ -n "$cwd" ] || cwd="$PWD"
+    cwd_root="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ -n "$cwd_root" ] && git -C "$PROJECT_DIR" worktree list --porcelain 2>/dev/null \
+        | grep -qxF "worktree $cwd_root"; then
+      branch_dir="$cwd_root"
+    fi
+    branch="$(git -C "$branch_dir" branch --show-current 2>/dev/null)"
   fi
 
   # Checkpoint freshness chip: 💾 always (semantic = "save state"), color = urgency
