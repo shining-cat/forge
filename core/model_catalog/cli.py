@@ -83,6 +83,14 @@ def main(argv=None):
     pub = sub.add_parser("publish")
     pub.add_argument("--input", required=True)
     pub.add_argument("--output")
+    rend = sub.add_parser("render-agents")
+    rend.add_argument("--snapshot", required=True)
+    rend.add_argument("--config", required=True)
+    rend.add_argument("--binding", required=True)
+    rend.add_argument("--src-dir", required=True)
+    rend.add_argument("--dest-dir")
+    rend.add_argument("--available")
+    rend.add_argument("--check", action="store_true")
     mig = sub.add_parser("migrate")
     mig.add_argument("--config", required=True)
     mig.add_argument("--metadata")
@@ -92,6 +100,18 @@ def main(argv=None):
             print(json.dumps(publish_manual(args.input, args.output), sort_keys=True)); return 0
         if args.command == "migrate":
             print(json.dumps(migrate_config(args.config, args.metadata), sort_keys=True)); return 0
+        if args.command == "render-agents":
+            try:
+                from .agents import render_agents
+            except ImportError:
+                from agents import render_agents
+            rows = render_agents(args.snapshot, args.config, args.binding, args.src_dir, args.dest_dir,
+                                 check=args.check, available=None if args.available is None else _split(args.available))
+            errors = [row for row in rows if row["action"] == "error"]
+            drift = [row for row in rows if row["action"] == "drift"]
+            status = "error" if errors else "drift" if drift else "ok"
+            print(json.dumps({"status": status, "agents": rows}, sort_keys=True))
+            return EXIT_CODES["no_match"] if errors else 5 if drift else 0
         if args.command == "check-coverage":
             result = _coverage(args.snapshot, args.binding)
             print(json.dumps(result, sort_keys=True))

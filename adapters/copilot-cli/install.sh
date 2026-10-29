@@ -110,8 +110,15 @@ if [[ -n "$FORGE_PROJECT_REPO" ]]; then
 fi
 info "Installing Copilot CLI adapter into $COPILOT_DIR"
 
+# Installed agents carry a `model:` line baked in from the catalog (see the
+# render-agents step below). Compare without it so an unchanged definition is
+# not recopied and backed up on every install.
 for agent in "$ADAPTER/agents/"*.agent.md; do
-  copy_owned "$agent" "$COPILOT_DIR/agents/$(basename "$agent")"
+  installed="$COPILOT_DIR/agents/$(basename "$agent")"
+  if [[ -f "$installed" ]] && diff -q <(grep -v '^model:' "$installed") "$agent" >/dev/null 2>&1; then
+    continue
+  fi
+  copy_owned "$agent" "$installed"
 done
 
 while IFS= read -r skill; do
@@ -266,6 +273,26 @@ if [[ -f "$SETTINGS_FILE" ]]; then
       jq '. + {"statusLine": {"type": "command", "command": "~/.copilot/scripts/statusline.sh", "padding": 0}}' "$SETTINGS_FILE" > "$tmp"
       mv "$tmp" "$SETTINGS_FILE"
     fi
+  fi
+fi
+
+# Bake each role's resolved model into its installed agent definition so the
+# tier binding holds on any dispatch that omits `model`. Never fatal: a fresh
+# install has no catalog yet, and /forge-setup-models re-runs this step.
+if "$DRY_RUN"; then
+  printf '  would render role models into %s/agents\n' "$COPILOT_DIR"
+else
+  catalog_vault="$(grep '^VAULT_PATH=' "$COPILOT_DIR/forge.conf" | head -1 | cut -d= -f2-)"
+  catalog_snapshot="${catalog_vault:-$VAULT_PATH}/_shared/model-catalog/catalog.json"
+  if [[ -f "$catalog_snapshot" ]]; then
+    if "$COPILOT_DIR/scripts/forge-model-catalog.sh" render-agents --snapshot "$catalog_snapshot" \
+        --src-dir "$COPILOT_DIR/agents" >/dev/null; then
+      info "Role models rendered into agent definitions."
+    else
+      warn "Some role models could not be rendered; run '$COPILOT_DIR/scripts/forge-model-catalog.sh render-agents --snapshot $catalog_snapshot --src-dir $COPILOT_DIR/agents' for details."
+    fi
+  else
+    info "No model catalog yet; run /forge-setup-models to bind role models."
   fi
 fi
 

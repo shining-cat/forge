@@ -30,3 +30,12 @@ fi
 [[ -f "$COPILOT_DIR/forge.conf" ]] || { echo "Error: forge.conf is missing" >&2; exit 1; }
 python3 "$SETUP_PY" --runtime "$FORGE_RUNTIME" --cli "$CATALOG_CLI" \
   --catalog "$VAULT_PATH/_shared/model-catalog/catalog.json"
+
+# Re-bake role models into the agent definitions so the new mapping takes effect
+# on the next Copilot restart without relying on per-dispatch prompt rules.
+if [[ "$FORGE_RUNTIME" == copilot-cli && -x "$COPILOT_DIR/scripts/forge-model-catalog.sh" && -d "$COPILOT_DIR/agents" ]]; then
+  "$COPILOT_DIR/scripts/forge-model-catalog.sh" render-agents \
+    --snapshot "$VAULT_PATH/_shared/model-catalog/catalog.json" --src-dir "$COPILOT_DIR/agents" \
+    || echo "Warning: some role models could not be rendered into agent definitions" >&2
+  echo "Restart Copilot CLI to load the updated agent model bindings."
+fi

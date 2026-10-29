@@ -41,7 +41,8 @@ for fragment in (
     'skills/wellness-coach/hooks/wellness_location.py file wellness-preferences.json',
     '/absolute/copilot/directory/scripts/forge-context.sh set-marker pending',
     '/absolute/copilot/directory/scripts/forge-model-catalog.sh onboarding-status',
-    '--role keeper --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json',
+    '/absolute/copilot/directory/scripts/forge-model-catalog.sh render-agents --check --snapshot /absolute/vault/path/_shared/model-catalog/catalog.json --src-dir /absolute/copilot/directory/agents',
+    'never pass a `model` parameter',
     'read that project\'s `current-checkpoint.md` for its recorded checkout path',
 ):
     if fragment not in skill:
@@ -58,9 +59,9 @@ entry = skill.split("### 2–6. Load Vault Context & Reconcile (Keeper Dispatch)
 dispatch = skill.split("**Subagent definitions + model tuning:**", 1)[1].split("## Agent-Teams Mode", 1)[0]
 reference = (adapter / "references/subagent-models.md").read_text()
 for label, text, fragments in (
-    ("entry Keeper", entry, ("--role keeper", "dispatch_id", "`model`", "keep the", "marker pending", "do not", "inline fallback")),
-    ("all Forge roles", dispatch, ("Before **every** Forge role dispatch", "entry Keeper", "team fan-out", "--role {role}", "dispatch_id", "`model`", "no_match", "invalid", "stop")),
-    ("dispatch reference", reference, ('resolve --role keeper --snapshot', '"/absolute/copilot/directory/scripts/forge-model-catalog.sh"', "`resolved`", "`inherit`", "`no_match`", "`invalid`", "Do not dispatch")),
+    ("entry Keeper", entry, ("agent_type: forge-keeper", "no `model` parameter", "keep the", "marker pending", "do not", "inline fallback")),
+    ("all Forge roles", dispatch, ("frontmatter `model:`", "entry Keeper", "team fan-out", "agent_type: forge-{role}", "never pass a `model` parameter", "unresolvable", "must not be dispatched")),
+    ("dispatch reference", reference, ('render-agents --check --snapshot', '"/absolute/copilot/directory/scripts/forge-model-catalog.sh"', "`drift`", "`error`", "`ok`", "Do not dispatch", "no `model` parameter")),
 ):
     for fragment in fragments:
         if fragment not in text:
