@@ -62,7 +62,7 @@ Use the absolute parent directory of the `forge.conf` file you just read as
 the installed Copilot directory. For **every** Forge Bash script invocation,
 put that literal absolute directory in the tool command; never send
 `$COPILOT_DIR`, `${COPILOT_HOME:-...}`, `~`, an environment assignment, or a
-compound shell command as the executable path. Copilot CLI matches saved
+compound shell command as the executable path. Submit each script call as its own Bash command: no `D=...;` assignments, `;`/`&&` chains or pipes (each distinct form prompts separately). Copilot CLI matches saved
 command identifiers against the submitted command form, not the path after
 shell expansion: a saved `/absolute/path/.../forge-context.sh` approval did
 not match `"$COPILOT_DIR/scripts/forge-context.sh"` in a live entry. The

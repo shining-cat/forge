@@ -86,6 +86,7 @@ for fragment in (
     'Run `forge-calendar.sh entry-fetch` when the resolved preferences enable the calendar',
     'Treat a failed `review-sync` as an explicit gap',
     "forge-context.sh checkout-state <project_path>",
+    "forge-context.sh vault-state",
     "For a scoped task or note edit, verify the changed file with Read",
     "Do not use",
 ):
@@ -114,4 +115,16 @@ printf 'changed\n' > "$tmp/project with spaces/example.txt"
 state="$(HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" checkout-state "$tmp/project with spaces")"
 [[ "$state" == *"Git state: uncommitted changes"* && "$state" == *"example.txt"* ]]
 ! HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" checkout-state "$tmp/vault" >/dev/null 2>&1
+[[ "$state" == *"Recent commits:"* ]]
+printf 'x\n' > "$tmp/project with spaces/a.txt"
+git -C "$tmp/project with spaces" add a.txt
+git -C "$tmp/project with spaces" -c user.name=t -c user.email=t@t commit -qm "first commit"
+state="$(HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" checkout-state "$tmp/project with spaces")"
+[[ "$state" == *"first commit"* ]]
+mkdir -p "$tmp/vault/PERSO/proj/decisions" "$tmp/vault/PERSO/proj/tasks/open"
+touch "$tmp/vault/PERSO/proj/decisions/d.md"
+printf 'proj' > "$tmp/vault/_shared/forge-active"
+git -C "$tmp/vault" init -q
+vs="$(HOME="$tmp/default" FORGE_CONF_OVERRIDE="$tmp/forge.conf" bash "$script" vault-state)"
+[[ "$vs" == *"Decisions: 1"* && "$vs" == *"Open tasks: 0"* && "$vs" == *"Friction entries: log missing"* ]]
 echo PASS

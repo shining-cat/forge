@@ -52,8 +52,8 @@ Implicit acceptance is **not** validated — confirm with the user before loggin
 2. Load knowledge bases (if INDEX.md has a KB section) → pull latest, list topics
 3. Reconcile GitHub PRs: `forge-context.sh review-sync` + parse PR state
 4. Load project rules: read CLAUDE.md if present
-5. Verify git state: compare checkpoint git state with `forge-context.sh checkout-state <project_path>` using the literal absolute installed script path. Do not repeat `git -C` shell calls unless the subcommand fails; report any gap.
-6. Gather summary data: active decisions count, recent friction headlines, substrate check, next interruption
+5. Verify git state: compare checkpoint git state with `forge-context.sh checkout-state <project_path>` using the literal absolute installed script path. It also returns the recent commits. Then run `forge-context.sh vault-state` for vault git status, last vault commit, decisions and open-task counts, and friction headlines. Do NOT run raw `git -C`, `find`, `grep`/`wc` or compound/`printf` shell commands at entry: each triggers an approval prompt. Fall back to them only if a subcommand fails; report any gap.
+6. Gather summary data: use the `vault-state` output (decisions, friction headlines), plus substrate check and next interruption
 
 **Input (dispatch provides):**
 ```json

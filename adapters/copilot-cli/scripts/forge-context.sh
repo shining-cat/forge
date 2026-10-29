@@ -567,7 +567,7 @@ fi
 STDIN_JSON=""
 SUBCMD_PEEK="${1:-}"
 case "$SUBCMD_PEEK" in
-  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|checkout-state|list-projects|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
+  set-marker|park|resume|append-friction|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|friction-tail|weekly-wrap-due|weekly-wrap-line|teammate-notice|draft-invite-line|draft-list|mark-weekly-wrap-done|substrate-check|checkout-state|vault-state|list-projects|review-sync|repo-gh|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|vault-rm|run-tests|trust-anchor)
     # No stdin read, no guards. These operate on marker/shared state only.
     # trust-anchor reads only VAULT_PATH + REPO_ROOTS from forge.conf (no
     # marker / active project needed) — install.sh and forge-shell-init.sh
@@ -4712,6 +4712,36 @@ do_checkout_state() {
   else
     printf 'Git state: uncommitted changes\n%s\n' "$changes"
   fi
+  printf 'Recent commits:\n%s\n' "$(git -C "$checkout" --no-pager log --oneline -10 2>/dev/null)"
+}
+
+# ── Subcommand: vault-state ───────────────────────────────────────────
+# One read-only call for the entry ceremony's vault facts, so the Keeper needs
+# no raw git -C / find / grep / wc shell calls (each prompts for approval).
+do_vault_state() {
+  local vault="${VAULT_PATH:-}" project vdir friction
+  if [ -z "$vault" ] || [ ! -d "$vault" ]; then
+    echo "[vault-state] VAULT_PATH not set or missing" >&2
+    return 2
+  fi
+  project="$(extract_marker_project)"
+  if [ -z "$project" ] || ! vdir="$(get_vault_dir "$project")"; then
+    echo "[vault-state] no active project resolvable from marker" >&2
+    return 1
+  fi
+  printf 'Project dir: %s\n' "$vdir"
+  printf 'Vault git: %s\n' "$(git -C "$vault" status --short --branch 2>&1 | head -1)"
+  printf 'Vault uncommitted: %s\n' "$(git -C "$vault" status --short 2>/dev/null | wc -l | tr -d ' ')"
+  printf 'Last vault commit: %s\n' "$(git -C "$vault" --no-pager log -1 --format='%cI %s' 2>/dev/null)"
+  printf 'Decisions: %s\n' "$(find "$vdir/decisions" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  printf 'Open tasks: %s\n' "$(find "$vdir/tasks/open" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+  friction="$vault/_shared/friction-log.md"
+  if [ -f "$friction" ]; then
+    printf 'Friction entries: %s\n' "$(grep -c '^### ' "$friction" || true)"
+    printf 'Recent friction headlines:\n%s\n' "$(grep '^### ' "$friction" | tail -5 | cut -c1-140)"
+  else
+    echo "Friction entries: log missing"
+  fi
 }
 
 # ── Subcommand: list-projects ──────────────────────────────────────────
@@ -6263,6 +6293,7 @@ case "$SUBCMD" in
   next-meeting)        do_next_meeting ;;
   substrate-check)     do_substrate_check ;;
   checkout-state)      do_checkout_state "${2:-}" ;;
+  vault-state)         do_vault_state ;;
   list-projects)       do_list_projects ;;
   review-sync)         do_review_sync "${@:2}" ;;
   repo-gh)             do_repo_gh "${@:2}" ;;
@@ -6281,7 +6312,7 @@ case "$SUBCMD" in
   run-tests)               do_run_tests "${@:2}" ;;
   trust-anchor)            do_trust_anchor ;;
   *)
-    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|checkout-state|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests|trust-anchor}" >&2
+    echo "Usage: forge-context.sh {post-tool|gate|stop|recover|reconcile-marker|status|vault-sync|wrap-up-state|weekly-wrap-due|weekly-wrap-line|teammate-notice|mark-weekly-wrap-done|check-install|rollback-install|open-task-audit|backlog-audit|set-marker|append-braindump|append-friction|friction-tail|pin-friction|archive-friction-entries|harvest-friction|promote-friction|bootstrap-harvest|audit-prose-rules|skill-budgets|framework-budget|bootstrap-classify|resolve-task|learn-wind-down|wind-down-list|next-meeting|substrate-check|checkout-state|vault-state|review-sync|repo-gh|draft-list|draft-invite-line|write-checkpoint|new-task|set-task-status|bump-backlog-header|add-recently-shipped|render-backlog-cell|update-backlog-row|add-backlog-row|remove-backlog-row|vault-rm|run-tests|trust-anchor}" >&2
     exit 1
     ;;
 esac
