@@ -102,7 +102,7 @@ Read `${COPILOT_HOME:-$HOME/.copilot}/forge.conf` to get `VAULT_PATH`. The marke
 
 #### 1a. Check existing marker for cross-session conflict (BEFORE overwriting)
 
-Read the existing `${VAULT_PATH}/_shared/forge-active`. If missing / empty / `__pending__` / legacy plain-string / JSON with matching `$COPILOT_SESSION_ID` → no conflict, proceed to step 1b. If JSON with a DIFFERENT `session_id` → potential cross-session conflict.
+Read the existing `${VAULT_PATH}/_shared/forge-active`. If missing / empty / `__pending__` / legacy plain-string / JSON with matching `$COPILOT_AGENT_SESSION_ID` → no conflict, proceed to step 1b. If JSON with a DIFFERENT `session_id` → potential cross-session conflict.
 
 Load `references/marker-takeover.md` for the staleness check (tmux-pane primary signal, marker-mtime fallback) and the alive/dead branches (prompt-the-user vs silent-takeover-with-note) — load it when a conflicting `session_id` is detected.
 
@@ -124,11 +124,11 @@ Check which project directories exist under the vault to determine valid environ
 
 **Present the choices as a neutral, unordered list — NEVER frame one as "(Recommended)", "last active", "most recent", or otherwise imply recency.** At step 1c the marker, `recover`, and `gap-since-last-signal` have not run yet, so any recency/recommendation claim would be sourced from stale context (e.g. the MEMORY.md "Active:" header) with no evidence behind it. A fabricated default is worse than none — it makes the user wonder what Claude knows that they don't, when the answer is nothing. If a recency-ranked ordering is ever wanted, it must wait until after `gap-since-last-signal` is read (step 2). (Honest-reporting sibling — see step 6.)
 
-Once the project is unambiguously chosen, run `/absolute/copilot/directory/scripts/forge-context.sh set-marker active <project>` via the Bash tool. The script captures the current `$COPILOT_SESSION_ID`, current timestamp, and current `$TMUX_PANE` and writes a JSON object to the marker:
+Once the project is unambiguously chosen, run `/absolute/copilot/directory/scripts/forge-context.sh set-marker active <project>` via the Bash tool. The script captures the current `$COPILOT_AGENT_SESSION_ID`, current timestamp, and current `$TMUX_PANE` and writes a JSON object to the marker:
 
 ```json
 {
-  "session_id": "<value of $COPILOT_SESSION_ID at session start>",
+  "session_id": "<value of $COPILOT_AGENT_SESSION_ID at session start>",
   "project": "<the chosen project name, e.g. my-app>",
   "started_at": "<output of `date +'%Y-%m-%dT%H:%M:%S%z'`>",
   "tmux_pane": "<value of $TMUX_PANE if set, else null>"
@@ -150,7 +150,7 @@ The `parked` slot is present only mid-excursion; `session_id` / `started_at` / `
 
 Same prompt-bypass rationale as step 1b — DO NOT use the Write tool here either.
 
-This format enables session-isolated hooks: only the GitHub Copilot CLI window whose `$COPILOT_SESSION_ID` matches `session_id` will receive Forge hook side effects (braindump prompts, commit gates, checkpoint nags). Sibling windows reading the same marker file will see they don't own it and stay silent. Wellness is intentionally global across windows: break timing belongs to the person, not one Forge session.
+This format enables session-isolated hooks: only the GitHub Copilot CLI window whose `$COPILOT_AGENT_SESSION_ID` matches `session_id` will receive Forge hook side effects (braindump prompts, commit gates, checkpoint nags). Sibling windows reading the same marker file will see they don't own it and stay silent. Wellness is intentionally global across windows: break timing belongs to the person, not one Forge session.
 
 If the current working directory is outside the chosen project's checkout, read that project's `current-checkpoint.md` for its recorded checkout path and verify it with `/absolute/copilot/directory/scripts/forge-context.sh checkout-state "/absolute/recorded/checkout"` before dispatching Keeper. Compare the returned `Checkout:` root to the checkpoint path; pass its branch and Git state to Keeper. This read-only subcommand avoids a separate `git -C` approval. Do not probe a remembered or guessed checkout path first. If the checkpoint does not identify a usable path, report that gap and resolve the checkout without assuming the vault project name is the repository directory name.
 

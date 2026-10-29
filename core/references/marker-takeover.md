@@ -7,7 +7,7 @@ Background for the `#### 1a. Check existing marker for cross-session conflict` s
 Read the existing `${VAULT_PATH}/_shared/forge-active`. Behavior depends on what's there:
 
 - **Missing / empty / `__pending__` / legacy plain-string** → no conflict, proceed to step 1b.
-- **JSON marker with `session_id` matching `$CLAUDE_CODE_SESSION_ID`** → re-entry in same session, proceed to step 1b (will overwrite with fresh marker).
+- **JSON marker with `session_id` matching the current session's id** (the runtime's session-id variable: `$CLAUDE_CODE_SESSION_ID` on Claude Code, `$COPILOT_AGENT_SESSION_ID` on Copilot CLI) → re-entry in same session, proceed to step 1b (will overwrite with fresh marker).
 - **JSON marker with a DIFFERENT `session_id`** → potential cross-session conflict — run the staleness check below.
 
 ## Staleness check (only when session_id differs)

@@ -7,6 +7,11 @@ set -euo pipefail
 
 COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 
+# Copilot CLI exposes the session id to tool subprocesses as
+# COPILOT_AGENT_SESSION_ID; the SessionStart hook's COPILOT_SESSION_ID export
+# never reaches them, so fall back to it.
+COPILOT_SESSION_ID="${COPILOT_SESSION_ID:-${COPILOT_AGENT_SESSION_ID:-}}"
+
 HOME_DIR="$HOME"
 
 # Resolve marker path from forge.conf VAULT_PATH

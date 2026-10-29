@@ -15,7 +15,7 @@
 set -uo pipefail  # NOT -e: handle errors gracefully via emit_error
 
 JSON_MODE=false
-SESSION_ID="${COPILOT_SESSION_ID:-}"
+SESSION_ID="${COPILOT_SESSION_ID:-${COPILOT_AGENT_SESSION_ID:-}}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
