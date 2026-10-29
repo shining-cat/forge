@@ -29,6 +29,12 @@
       },
       {
         "type": "command",
+        "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-role-model-guard.sh",
+        "matcher": "^[tT][aA][sS][kK]$",
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
         "bash": "${COPILOT_HOME:-$HOME/.copilot}/hooks/forge-vault-plan-guard.sh",
         "matcher": "Write|Edit",
         "timeoutSec": 10

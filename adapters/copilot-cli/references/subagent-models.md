@@ -68,7 +68,18 @@ to make the tier binding structural:
   and reported.
 - Copilot loads agents at start, so a re-render takes effect after a restart.
 - **Dispatch rule:** `agent_type: forge-{role}` and **no `model` parameter**.
-  Passing one overrides the baked binding.
+  Passing one overrides the baked binding. Pass it only when the user explicitly
+  asks for a one-off override.
+- **Dispatch backstop:** `forge-role-model-guard.sh`, registered under
+  `PreToolUse`, returns `ask` whenever any of the eight Forge roles carries an
+  explicit `model` key (even if it equals the baked model). It does not resolve
+  tiers or compare models; approval is for a user-requested one-off override.
+  Other agents, omitted models, non-task tools, and parse problems allow silently
+  with exit 0. The hook is not gated on an active Forge session.
+  Recorded task events confirm `task`, `agent_type`, and `model`, but the live
+  task PreToolUse envelope is unverified: the hook assumes
+  `.tool_input.agent_type` / `.tool_input.model` and accepts `task`
+  case-insensitively.
 - **Entry check:** `render-agents --check` compares every installed agent with
   the current mapping. Run it with the literal absolute wrapper path, the
   literal absolute `--snapshot` and `--src-dir` paths, and `--available` set to
