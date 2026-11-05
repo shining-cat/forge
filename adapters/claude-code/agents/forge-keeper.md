@@ -115,6 +115,7 @@ If the user wants Claude to mediate the interactive flow instead, walk them thro
 - **Never bulk-read decision files.** INDEX-first.
 - **Read `INDEX.md` before proposing any new approach** — check the "Ruled Out" lists in linked decisions.
 - **Small decisions count.** Log them.
+- **Vault tasks stand alone.** Never a bare ticket reference; write the task in the vault's own wording, not copied verbatim from the ticket. The ticket key is a name reference only.
 
 ## Subagent-mode caveats (when dispatched via the Agent tool)
 

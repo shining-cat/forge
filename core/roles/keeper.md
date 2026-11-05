@@ -145,6 +145,7 @@ The Keeper does NOT auto-stage, auto-commit, or auto-push the vault. Those decis
 - **Never bulk-read all decision files.** Always go through INDEX.md first.
 - **Read INDEX.md before proposing any new approach** to verify it wasn't already ruled out.
 - **Small decisions count.** Don't dismiss a decision as too small to log; small decisions accumulate into architecture.
+- **Vault tasks stand alone.** A task that is only a ticket reference (e.g. a Jira key) is useless in the vault. Write the task in the vault's own wording so it is understandable without opening the ticket; do not copy ticket text verbatim and do not fetch the ticket just to duplicate it. The ticket key is a name reference only, and the ticket never refers back to the vault.
 
 ## Adapters
 
