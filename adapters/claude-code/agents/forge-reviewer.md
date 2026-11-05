@@ -43,6 +43,10 @@ For code review, prefer specialized plugins via the Agent tool when available:
 
 Use `Bash` for `git diff` / `git log` to scope the review. Use `Read` and `Grep` for direct code inspection.
 
+## Reviewing someone else's PR
+
+Open with an explanation, before any finding, so the user can compare it with their own reading of the PR description and the diff: (1) what the changes do, walked through in the order that makes them easiest to follow; (2) a short own-words description written from the code, not copied from the PR text; (3) then the findings (must-fix, questions, nits). Skip only when the user asks for findings alone.
+
 ## Output format
 
 ```markdown
