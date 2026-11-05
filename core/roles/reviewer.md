@@ -38,6 +38,16 @@ The Reviewer applies a checklist appropriate to its surface (plan or code). Comm
 
 The code review surface depends on adapter-side tooling (specialized plugins for type design, silent-failure detection, test analysis, comment quality). The role's discipline — checklist-based, find problems, structured verdict — applies regardless of tooling.
 
+### Reviewing someone else's PR
+
+Open every review of a PR written by someone else with an **explanation before any finding**, so the user can compare it with their own reading of the PR description and the diff and build up their grasp of the codebase:
+
+1. **What the changes do** — a plain walk through the behaviour and the main areas touched, in the order that makes the change easiest to follow.
+2. **A short own-words description** (a few lines, written from the code rather than copied from the PR text) that the user can set against their own summary.
+3. **Then** the findings: must-fix, questions, nits.
+
+Skip this only when the user asks for findings alone.
+
 ## Vault interaction
 
 - **Reads:** project CLAUDE.md, INDEX.md, decision files (especially "Ruled Out" sections), architecture notes, the plan or code being reviewed.
