@@ -4,6 +4,7 @@
 
 set -u
 
+COPILOT_DIR="${COPILOT_HOME:-$HOME/.copilot}"
 SETTINGS_FILE="$COPILOT_DIR/settings.json"
 
 while [ $# -gt 0 ]; do
