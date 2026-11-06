@@ -166,7 +166,7 @@ done < <(find "$ADAPTER/scripts" "$ADAPTER/hooks" "$ADAPTER/modules/wellness-coa
 for ref in vocabulary wellness-cold-start marker-takeover vault-write-protocol \
   maintainer-mode wrap-up-state prose-wind-down credential-discipline \
   extended-thinking-discipline proactive-compact plan-storage agent-teams-mode \
-  lifecycle; do
+  lifecycle shared-templates; do
   if [[ ! -f "$ADAPTER/references/$ref.md" ]]; then
     copy_owned "$FORGE_ROOT/core/references/$ref.md" "$COPILOT_DIR/skills/forge/references/$ref.md"
   fi

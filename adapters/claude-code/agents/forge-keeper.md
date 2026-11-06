@@ -108,6 +108,10 @@ If the user wants Claude to mediate the interactive flow instead, walk them thro
 
 **Don't substitute the script's suggested commit messages** unless the user asks. The grouping heuristic + message convention are part of the discipline.
 
+### Shared-template capture and maintenance
+
+Only on explicit user request, run `~/.claude/scripts/forge-template.sh new <area>/<name>`, complete the README metadata/contract, then `add <area>/<name> <file>... [--replace old=new]`, `index`, and `check`. Keeper owns these authored vault changes; verify by read-back. During `/forge-weekly`, run `index` then `check` separately, even if index fails, and return both exit statuses/findings plus INDEX read-back verification. Failure must leave the wrap incomplete. Follow the forge skill's `references/shared-templates.md`; the user alone decides portability/IP.
+
 ## Constraints
 
 - **Implicit acceptance is not a decision.** Confirm before logging.

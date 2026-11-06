@@ -484,7 +484,7 @@ build_pairs() {
     printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/vault-templates/shared-template.md" "$SKILLS_DIR/forge/templates/shared-template.md"
 
     # Forge skill references (symlinks to core/references/*) — A2: preserve local edits
-    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md; do
+    for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md shared-templates.md; do
       printf "%s\t%s\tsymlink\tpreserve\n" "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref"
     done
 
@@ -1478,7 +1478,7 @@ safe_cp "$FORGE_ROOT/core/skills/forge-setup-models/scripts/forge-setup-models.s
 # wellness-cold-start thresholds). install_symlink with preserve leaves
 # those copies alone and writes a `.upstream.<ts>` sibling for diff.
 run mkdir -p "$SKILLS_DIR/forge/references"
-for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md; do
+for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md shared-templates.md; do
   install_symlink "$FORGE_ROOT/core/references/$ref" "$SKILLS_DIR/forge/references/$ref" preserve
 done
 # Claude-specific references live in the adapter (they bind the neutral core

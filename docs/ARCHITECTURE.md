@@ -21,10 +21,10 @@ are separate adapters over the same role-neutral core.
 
 | Skill | What it does |
 |-------|-------------|
-| `forge` | Entry point — loads vault, syncs own + reviewed PRs, activates Petra and session rules |
+| `forge` | Entry point — loads vault, syncs own + reviewed PRs, activates Petra and session rules; read-only shared-template lookup before new helpers/tools/tasks (including PRO and end-user mode), capture only on user request via Keeper |
 | `forge-checkpoint` | Mid-session state save |
 | `forge-exit` | End-of-session wrap-up |
-| `forge-weekly` | Friday wrap ceremony — friction harvest, BACKLOG triage, draft promotion (Quartermaster persona) |
+| `forge-weekly` | Friday wrap ceremony — friction harvest, BACKLOG triage, draft promotion (Quartermaster persona); Keeper regenerates/checks the shared-template index in both modes; failure leaves the wrap incomplete |
 | `forge-audit` | User-invocable scan for MUST/Never/always-style prose in skills/scripts (recurrence-aware) |
 | `forge-audit-permissions` | Surfaces anti-patterns in `settings.json` permission rules |
 | `forge-vault-sync` | Commit + push the vault when drift accumulates (categorized commits) |
@@ -67,7 +67,7 @@ are separate adapters over the same role-neutral core.
 | Location | Content |
 |----------|---------|
 | `~/.claude/skills/{name}/SKILL.md` | 11 skill definitions: `forge`, `forge-checkpoint`, `forge-exit`, `forge-weekly`, `forge-audit`, `forge-audit-permissions`, `forge-vault-sync`, `keeper`, `refiner`, `plan-reviewer`, `promote-from-review` (+ wellness-coach when opted in) |
-| `~/.claude/skills/forge/references/` | Forge skill references — 19 files, loaded on-demand from main `SKILL.md` stubs. Lifecycle / vocabulary / wellness-awareness / wellness-cold-start / agent-teams-mode / maintainer-mode / extended-thinking-discipline / proactive-compact / plan-storage / marker-takeover / pr-sync / wrap-up-state / prose-wind-down / script-replacement-patterns / friction-classifier / credential-discipline / forge-permissions come from `core/references/` (vendor-neutral); model-cost-posture / subagent-models come from `adapters/claude-code/references/` (Claude-specific bindings of the neutral `core/references/model-cost-posture.md` principle). Both source dirs symlink into this one flat namespace |
+| `~/.claude/skills/forge/references/` | Forge skill references — 20 files, loaded on-demand from main `SKILL.md` stubs. Lifecycle / vocabulary / wellness-awareness / wellness-cold-start / agent-teams-mode / maintainer-mode / extended-thinking-discipline / proactive-compact / plan-storage / marker-takeover / pr-sync / wrap-up-state / prose-wind-down / script-replacement-patterns / friction-classifier / credential-discipline / forge-permissions / shared-templates come from `core/references/` (vendor-neutral); model-cost-posture / subagent-models come from `adapters/claude-code/references/` (Claude-specific bindings of the neutral `core/references/model-cost-posture.md` principle). Both source dirs symlink into this one flat namespace |
 | `~/.claude/skills/wellness-coach/references/` | Wellness references — 6 files: `onboarding`, `conflict-resolution`, `window-isolation`, `personas`, `auto-detected-tiers`, `strike-conversation`. Loaded on-demand from wellness `SKILL.md` stubs |
 | `~/.claude/agents/` | Subagent adapter definitions (forge-architect, forge-debugger, forge-impl, forge-keeper, forge-refiner, forge-release, forge-reviewer, forge-toolsmith) — dispatched via the Agent tool with `subagent_type: "forge-{role}"` |
 | `~/.claude/hooks/` | Hook scripts (`approval-notifier.sh`, `forge-compaction.sh`, `forge-vault-plan-guard.sh`, `forge-vault-write-guard.sh`, `forge-credential-guard.sh`, `forge-session-end.sh`, `inject-current-time.sh`) |

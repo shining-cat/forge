@@ -12,6 +12,14 @@ For the day-walkthrough that shows how these fit together, see the [README](../R
 | `/forge-exit` | **Wrap the session.** Writes a final checkpoint, deactivates the active-project marker, resets the wellness break clock. Hooks stop firing into a dead session. Also triggered conversationally by phrases like *"done for today"* / *"calling it"* / *"logging off"*. |
 | `/forge-weekly` | **Friday wrap ceremony.** The Quartermaster persona harvests the week's friction into structured patterns, triages captured drafts into proper tasks, runs the cross-project retro, logs the week. Ends by asking whether to chain into `/forge-exit` and close out the day too (defaults to no — ceremony alone is a valid reason to run it, e.g. mid-day triage). |
 
+In both adapters, `/forge` reads `${VAULT_PATH}/PERSO/_shared/Templates/INDEX.md`
+before a new helper/tool/task and offers a fitting match (read-only, including
+PRO and end-user mode; silently skips a missing library/index). Template capture
+is only on user request, via Keeper and `forge-template.sh`; the user decides
+portability/IP. `/forge-weekly` has Keeper run `index` then `check` and report;
+either failure leaves the wrap due. End-user mode suppresses maintenance nags,
+not lookup or the weekly check.
+
 ## During work
 
 | Command | What it does |
