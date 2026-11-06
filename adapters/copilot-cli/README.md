@@ -7,6 +7,12 @@ without changing the Claude Code adapter or the role specifications.
 
 - `agents/*.agent.md` — user-level Copilot custom agents, selected through `/agent`
 - `skills/*/SKILL.md` — user-level Copilot skills, reloaded with `/skills reload`
+  `/forge` offers read-only shared-template matches before new helpers/tools/tasks
+  (including PRO and end-user mode; silently skips a missing library/index).
+  Capture is only on user request via Keeper; `/forge-weekly` has Keeper run
+  `forge-template.sh index` then `check`, with failures leaving the wrap incomplete.
+  Details load on demand from `forge/references/shared-templates.md`;
+  end-user mode suppresses maintenance nags, not lookup or the weekly check.
 - `hooks/forge.json` — hook configuration copied to `~/.copilot/hooks/forge.json`
 - `scripts/` and `hooks/` — runtime files copied to the corresponding Copilot directories
   (including executable `${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-template.sh`)

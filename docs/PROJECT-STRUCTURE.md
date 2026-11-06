@@ -183,6 +183,12 @@ The vault includes templates for recurring file shapes. Source of truth lives in
 | `project-index.md` | Starter `INDEX.md` for a new project (about, decisions, tasks links, standing notes) |
 | `shared-template.md` | Reusable helper/tool README skeleton. Both adapters package it in `<runtime-dir>/skills/forge/templates/` for Keeper to seed `${VAULT_PATH}/PERSO/_shared/Templates/_skeleton/README.md`. `forge-template.sh` requires the vault skeleton; it does not fall back to the packaged copy. |
 
+The `/forge` session rules read `${VAULT_PATH}/PERSO/_shared/Templates/INDEX.md`
+before new helpers/tools/tasks, including from PRO (read-only; missing library
+or index silently skipped). Only requested captures go through Keeper.
+`/forge-weekly` has Keeper regenerate the index and check README metadata and
+index coverage; failure leaves the wrap incomplete.
+
 ## Vault file portability (mobile-safe — a hard rule)
 
 The vault is synced across machines **and mobile** (Obsidian Android via git). Android/SAF storage is more restrictive than macOS/Linux, so two things must **never** be tracked in the vault repo:

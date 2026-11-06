@@ -9,6 +9,12 @@ or the role specifications.
 - `agents/*.md` — Claude Code subagent definitions, dispatched through the
   `Agent` tool and available to agent teams
 - `skills/*/SKILL.md` — Claude Code skills discovered from `~/.claude/skills/`
+  `/forge` offers read-only shared-template matches before new helpers/tools/tasks
+  (including PRO and end-user mode; silently skips a missing library/index).
+  Capture is only on user request via Keeper; `/forge-weekly` has Keeper run
+  `forge-template.sh index` then `check`, with failures leaving the wrap incomplete.
+  Details load on demand from `forge/references/shared-templates.md`;
+  end-user mode suppresses maintenance nags, not lookup or the weekly check.
 - `hooks/*.sh` — Claude lifecycle hooks registered in `settings.json`
 - `scripts/` — Forge runtime, maintenance, and statusline scripts
   (including executable `~/.claude/scripts/forge-template.sh`)

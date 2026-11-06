@@ -115,6 +115,10 @@ Extract dates via regex `^\s*-\s*\*\*(\d{4}-\d{2}-\d{2})`, filter to dates older
 
 When zero decisions are old enough, say so and skip — *"All decisions fresh. No audit needed."*
 
+### 4a. Shared-template index and check
+
+Dispatch Keeper synchronously to run `~/.claude/scripts/forge-template.sh index` then `~/.claude/scripts/forge-template.sh check` as separate calls (check even after an index failure). Keeper returns both exit statuses and findings, and reads back `${VAULT_PATH}/PERSO/_shared/Templates/INDEX.md` after successful regeneration. Report invalid/missing front matter and unindexed templates. Run in both modes; suppress maintenance nags/follow-up invitations in end-user mode per the forge skill's `references/maintainer-mode.md`. Any failure or unavailable Keeper leaves the wrap incomplete; do not mark done or announce closure.
+
 ### 5. Week-summary checkpoint
 
 > **[Quartermaster]** Closing the ledger.
@@ -148,6 +152,9 @@ project: {project}
 ## Decisions
 - {bullet per archive/revise, or "all fresh"}
 
+## Shared templates
+- Index/check: {both exit statuses, findings, read-back verification}
+
 ## Week vibe
 {one line — what the week felt like; can be blank if user prefers}
 ```
@@ -156,7 +163,7 @@ Compute `{YYYY-WNN}` as ISO 8601 week (e.g. `2026-W22`). Compute `{date range}` 
 
 ### 6. Mark the wrap done
 
-Only after Keeper verifies all required authored vault mutations (including friction promotions, triage changes, and the weekly checkpoint), run `~/.claude/scripts/forge-context.sh mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses. If any required write failed or was deferred, do not mark the wrap done or announce it closed; report the incomplete work and leave the wrap due.
+Only after Keeper verifies all required authored vault mutations (including friction promotions, triage changes, template index regeneration, and the weekly checkpoint) AND both template `index` and `check` succeeded, run `~/.claude/scripts/forge-context.sh mark-weekly-wrap-done`. This updates `${VAULT_PATH}/_shared/forge-runtime.json` with the current timestamp and ISO week, so the next `weekly-wrap-due` check returns `not-due` until the gap elapses. If any required write/check failed or was deferred, do not mark the wrap done or announce it closed; report the incomplete work, leave the wrap due, and stop here (skip Steps 7–8).
 
 ### 7. Hand-off
 

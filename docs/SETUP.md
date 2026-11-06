@@ -342,6 +342,13 @@ Two postures, flippable via `MAINTAINER_MODE` in `~/.claude/forge.conf`:
 
 Productivity surfaces (Keeper checkpoint cadence, Refiner correction loop, wellness reminders, PR sync, commit/push nudges, brain-dump prompts, install drift + rollback hints) fire identically in both modes.
 
+Both adapters install the on-demand `forge/references/shared-templates.md`.
+The `/forge` lookup stays available in end-user mode, including from PRO, and
+silently skips a missing library/index. `/forge-weekly` still has Keeper run
+`forge-template.sh index` then `check`; failure prevents marking the wrap done.
+Only ambient template-maintenance nags/invitations are suppressed; capture
+requires an explicit user request.
+
 What's suppressed in end-user mode:
 
 | Surface | Where it's gated |
