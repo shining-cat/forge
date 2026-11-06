@@ -85,7 +85,13 @@ Companion scripts:
 ~/.copilot/scripts/forge-cost-audit.py --provider anthropic --cache-composition  # Anthropic-only TTL analysis
 ~/.claude/scripts/forge-calendar.sh entry-fetch    # today's agenda (used by /forge entry)
 ~/.claude/scripts/forge-calendar.sh in-meeting     # presence-only: are you in a meeting right now
+~/.claude/scripts/forge-template.sh check          # validate shared-template metadata (read-only)
+"${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-template.sh" check  # Copilot equivalent
 ```
+
+`forge-template.sh` also exposes `new`, `add`, and `index`; vault-writing
+invocations belong to Keeper. Both installers package the seed skeleton as
+`skills/forge/templates/shared-template.md` under the runtime directory.
 
 Full subcommand list (also printed by running `~/.claude/scripts/forge-context.sh` with no args):
 

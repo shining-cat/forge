@@ -20,6 +20,12 @@ Forge `install.sh` writes a baseline allow-list into `~/.claude/settings.json` s
 | `forge-permission-lint.sh` | `Bash($HOME/.claude/scripts/forge-permission-lint.sh:*)` | end of `install.sh` (fail-closed) + `/forge-audit-permissions` skill |
 | `forge-gap-since-last-signal.sh` | `Bash($HOME/.claude/scripts/forge-gap-since-last-signal.sh:*)` | Unified gap-detection primitive — emits seconds-since-last-Forge-signal across {checkpoints, marker JSON, braindumps, vault git}. Consumers: wellness on-entry, Petra's cold-start banner, Keeper stale-checkpoint math, prose end-of-day triggers |
 | `forge-calendar.sh` | `Bash($HOME/.claude/scripts/forge-calendar.sh:*)` + `Bash($HOME/.claude/scripts/forge-calendar.sh *)` + `Bash(~/.claude/scripts/forge-calendar.sh *)` | Today's agenda + delta-check + next-meeting. SKILL invokes via `~/...` tilde form; the colon-form alone doesn't cover that invocation style (see pitfall #2 in `permission-patterns.md`). All three forms baked into install.sh baseline. |
+| `forge-template.sh` | `Bash($HOME/.claude/scripts/forge-template.sh:*)` + `Bash($HOME/.claude/scripts/forge-template.sh *)` + `Bash(~/.claude/scripts/forge-template.sh *)` | Keeper's explicitly requested template capture (`new`, `add`), index regeneration and validation (`index`, `check`). All three sibling-style invocation forms are installed. |
+
+Copilot installs `forge-template.sh` under `${COPILOT_HOME:-$HOME/.copilot}/scripts/`,
+like its sibling scripts. It has no installer-managed command allowlist:
+saved approvals in `permissions-config.json` remain CLI-managed and untouched.
+Neither adapter's generic permission linter requires per-script entries.
 
 ### Claude Code statusline (`~/.claude/`)
 

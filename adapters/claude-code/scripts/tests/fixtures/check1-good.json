@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Write(/Users/me/.claude/scripts/*)",
-      "Edit(/Users/me/.claude/skills/wellness-coach/scripts/*)"
+      "Edit(/Users/me/.claude/skills/wellness-coach/scripts/*)",
+      "Bash(/Users/me/.claude/scripts/forge-template.sh:*)",
+      "Bash(/Users/me/.claude/scripts/forge-template.sh *)",
+      "Bash(~/.claude/scripts/forge-template.sh *)"
     ],
     "deny": []
   },

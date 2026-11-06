@@ -43,6 +43,15 @@ out=$("$LINTER" --file "$FIXTURES/check1-good.json" 2>&1); rc=$?
 assert_exit "check1-good: exits 0" "0" "$rc"
 
 echo ""
+echo "Template script — catalogued baseline invocation forms"
+for pattern in "Bash(/Users/me/.claude/scripts/forge-template.sh:*)" \
+  "Bash(/Users/me/.claude/scripts/forge-template.sh *)" \
+  "Bash(~/.claude/scripts/forge-template.sh *)"; do
+  out=$(jq -r '.permissions.allow[]' "$FIXTURES/check1-good.json")
+  assert_contains "template permission: $pattern" "$pattern" "$out"
+done
+
+echo ""
 echo "Check 2 — Bash leading-* literal"
 out=$("$LINTER" --file "$FIXTURES/check2-bad.json" 2>&1); rc=$?
 assert_exit "check2-bad: exits 1" "1" "$rc"

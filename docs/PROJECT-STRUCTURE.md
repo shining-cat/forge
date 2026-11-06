@@ -181,6 +181,7 @@ The vault includes templates for recurring file shapes. Source of truth lives in
 | `draft.md` | 5-second Obsidian capture for half-formed ideas. Lives in `{project}/tasks/drafts/`. Triaged into proper tasks at `/forge-weekly`. |
 | `friction-entry.md` | Snippet for appending a new entry to `_shared/friction-log.md` (no frontmatter — it's a section, not a file). Most users invoke `forge-context.sh append-friction` instead. |
 | `project-index.md` | Starter `INDEX.md` for a new project (about, decisions, tasks links, standing notes) |
+| `shared-template.md` | Reusable helper/tool README skeleton. Both adapters package it in `<runtime-dir>/skills/forge/templates/` for Keeper to seed `${VAULT_PATH}/PERSO/_shared/Templates/_skeleton/README.md`. `forge-template.sh` requires the vault skeleton; it does not fall back to the packaged copy. |
 
 ## Vault file portability (mobile-safe — a hard rule)
 
