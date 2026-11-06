@@ -481,6 +481,7 @@ build_pairs() {
     printf "%s\t%s\tskill_md\toverwrite\n" "$FORGE_ROOT/core/skills/forge-setup-models/SKILL.md" "$SKILLS_DIR/forge-setup-models/SKILL.md"
     printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/skills/forge-setup-models/scripts/forge-setup-models.sh" "$SKILLS_DIR/forge-setup-models/scripts/forge-setup-models.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/tools/forge-model-catalog-setup.py" "$CLAUDE_DIR/scripts/forge-model-catalog-setup.py"
+    printf "%s\t%s\tfile\toverwrite\n" "$FORGE_ROOT/core/vault-templates/shared-template.md" "$SKILLS_DIR/forge/templates/shared-template.md"
 
     # Forge skill references (symlinks to core/references/*) — A2: preserve local edits
     for ref in lifecycle.md vocabulary.md wellness-awareness.md script-replacement-patterns.md friction-classifier.md onboarding.md agent-teams-mode.md wellness-cold-start.md prose-wind-down.md wrap-up-state.md maintainer-mode.md extended-thinking-discipline.md proactive-compact.md plan-storage.md marker-takeover.md pr-sync.md credential-discipline.md; do
@@ -535,6 +536,7 @@ build_pairs() {
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-classify-friction.sh"     "$CLAUDE_DIR/scripts/forge-classify-friction.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-calendar.sh"              "$CLAUDE_DIR/scripts/forge-calendar.sh"
+    printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-template.sh" "$CLAUDE_DIR/scripts/forge-template.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-snapshot.sh"         "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-cost-audit.py"            "$CLAUDE_DIR/scripts/forge-cost-audit.py"
     printf "%s\t%s\tfile\toverwrite\n" "$ADAPTER/scripts/forge-model-catalog.sh"       "$CLAUDE_DIR/scripts/forge-model-catalog.sh"
@@ -695,6 +697,9 @@ expected_perms() {
     "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
     "Bash($HOME/.claude/scripts/forge-calendar.sh *)"
     "Bash(~/.claude/scripts/forge-calendar.sh *)"
+    "Bash($HOME/.claude/scripts/forge-template.sh:*)"
+    "Bash($HOME/.claude/scripts/forge-template.sh *)"
+    "Bash(~/.claude/scripts/forge-template.sh *)"
     "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
     "Bash($HOME/.claude/scripts/forge-cost-audit.py:*)"
     "Bash($HOME/.claude/scripts/forge-cost-audit.py *)"
@@ -1548,10 +1553,14 @@ safe_cp "$ADAPTER/scripts/forge-permission-lint.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-classify-friction.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-gap-since-last-signal.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-calendar.sh" "$CLAUDE_DIR/scripts/"
+safe_cp "$ADAPTER/scripts/forge-template.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-snapshot.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-cost-audit.py" "$CLAUDE_DIR/scripts/"
 safe_cp "$ADAPTER/scripts/forge-model-catalog.sh" "$CLAUDE_DIR/scripts/"
 safe_cp "$FORGE_ROOT/core/tools/forge-model-catalog-setup.py" "$CLAUDE_DIR/scripts/"
+# Package the editable skeleton for Keeper seeding; the script has no fallback.
+run mkdir -p "$SKILLS_DIR/forge/templates"
+safe_cp "$FORGE_ROOT/core/vault-templates/shared-template.md" "$SKILLS_DIR/forge/templates/shared-template.md"
 safe_cp "$ADAPTER/scripts/statusline.sh" "$CLAUDE_DIR/statusline.sh" preserve
 
 run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
@@ -1566,6 +1575,7 @@ run chmod +x "$CLAUDE_DIR/hooks/forge-compaction.sh" \
              "$CLAUDE_DIR/scripts/forge-classify-friction.sh" \
              "$CLAUDE_DIR/scripts/forge-gap-since-last-signal.sh" \
              "$CLAUDE_DIR/scripts/forge-calendar.sh" \
+             "$CLAUDE_DIR/scripts/forge-template.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-snapshot.sh" \
              "$CLAUDE_DIR/scripts/forge-cost-audit.py" \
              "$CLAUDE_DIR/scripts/forge-model-catalog.sh" \
@@ -1649,6 +1659,9 @@ PERMS_TO_ADD=(
   "Bash($HOME/.claude/scripts/forge-calendar.sh:*)"
   "Bash($HOME/.claude/scripts/forge-calendar.sh *)"
   "Bash(~/.claude/scripts/forge-calendar.sh *)"
+  "Bash($HOME/.claude/scripts/forge-template.sh:*)"
+  "Bash($HOME/.claude/scripts/forge-template.sh *)"
+  "Bash(~/.claude/scripts/forge-template.sh *)"
   "Bash($HOME/.claude/scripts/forge-cost-snapshot.sh:*)"
   "Bash($HOME/.claude/statusline.sh:*)"
   # Forge hooks

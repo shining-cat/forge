@@ -11,6 +11,10 @@ or the role specifications.
 - `skills/*/SKILL.md` — Claude Code skills discovered from `~/.claude/skills/`
 - `hooks/*.sh` — Claude lifecycle hooks registered in `settings.json`
 - `scripts/` — Forge runtime, maintenance, and statusline scripts
+  (including executable `~/.claude/scripts/forge-template.sh`)
+- `core/vault-templates/shared-template.md` — packaged in
+  `~/.claude/skills/forge/templates/shared-template.md` for Keeper seeding, not a
+  script fallback; template invocation permissions follow `forge-calendar.sh`
 - `references/` — Claude-specific bindings such as model and subagent posture
 
 The adapter is installed with:

@@ -32,7 +32,7 @@ The installer will:
 2. **Ask for vault location** — where to store your knowledge vault (default: `~/Vault`)
 3. **Copy skills** — 11 core skills (`forge`, `forge-checkpoint`, `forge-exit`, `forge-weekly`, `forge-audit`, `forge-audit-permissions`, `forge-vault-sync`, `keeper`, `refiner`, `plan-reviewer`, `promote-from-review`) + wellness coach module into `~/.claude/skills/`
 4. **Install agent definitions** — 8 `forge-*` adapter files into `~/.claude/agents/` (architect, debugger, impl, keeper, refiner, release, reviewer, toolsmith)
-5. **Install hooks and scripts** — checkpoint tracking, compaction handling, statusline
+5. **Install hooks and scripts** — checkpoint tracking, compaction handling, statusline, `forge-template.sh`; package the shared-template skeleton in `~/.claude/skills/forge/templates/` for Keeper seeding
 6. **Configure settings.json** — add hooks and permissions (creates backup first)
 7. **Patch paths** — vault location injected into all skills and scripts
 
@@ -172,6 +172,9 @@ The installer targets `${COPILOT_HOME:-$HOME/.copilot}`. It installs Forge
 custom agents into `agents/`, skills into `skills/`, runtime scripts into
 `scripts/`, hooks into `hooks/`, and core and Copilot-specific Forge skill
 references into `skills/forge/references/`. It creates `forge.conf` only when absent.
+This includes executable `scripts/forge-template.sh` and the Keeper seed
+`skills/forge/templates/shared-template.md`; installation does not seed the
+shared-template library or change Copilot's saved command approvals.
 Existing Forge-owned files are backed up before replacement; unrelated Copilot
 configuration is not rewritten.
 

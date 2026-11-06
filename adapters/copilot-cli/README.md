@@ -9,6 +9,10 @@ without changing the Claude Code adapter or the role specifications.
 - `skills/*/SKILL.md` — user-level Copilot skills, reloaded with `/skills reload`
 - `hooks/forge.json` — hook configuration copied to `~/.copilot/hooks/forge.json`
 - `scripts/` and `hooks/` — runtime files copied to the corresponding Copilot directories
+  (including executable `${COPILOT_HOME:-$HOME/.copilot}/scripts/forge-template.sh`)
+- `core/vault-templates/shared-template.md` — packaged in
+  `${COPILOT_HOME:-$HOME/.copilot}/skills/forge/templates/shared-template.md`
+  for Keeper seeding, not a script fallback
 
 The adapter is installed with:
 
@@ -41,6 +45,8 @@ Copilot-specific references, so entry and checkpoint instructions resolve.
 
 Forge entry resolves the installed directory once and submits literal absolute
 script paths so saved Copilot CLI command approvals can match. The installer
+has no per-script command allowlist and leaves `permissions-config.json` untouched,
+including for `forge-template.sh`. It
 does not change shell startup files, and custom `COPILOT_HOME` remains supported.
 
 The Copilot adapter intentionally differs from Claude in three places:
