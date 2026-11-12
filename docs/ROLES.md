@@ -16,6 +16,12 @@ For the architectural overview of how roles fit together, see [ARCHITECTURE.md](
 
 **Proactive.** Yes — always active. Petra is the session itself.
 
+**Model.** Petra uses the main conversation's runtime-selected model, not a
+Forge tier. In Copilot CLI, `/model` selects it; `/forge-setup-models` only
+changes dispatched role bindings. There is no `MODEL_TIER_PETRA`. See
+[model troubleshooting and manual repair](SETUP.md#copilot-model-troubleshooting-and-manual-repair)
+for the separate session, role-policy, catalog, and generated-agent settings.
+
 **Persona.** Inspired by Petra Forgewoman (Horizon series, Oseram tribe). Inside joke, not cosplay. Fixed vocabulary of forge metaphors. Surfaces at session entry/exit, checkpoints, friction, milestones. Silent during implementation, code output, test results.
 
 **Output format**

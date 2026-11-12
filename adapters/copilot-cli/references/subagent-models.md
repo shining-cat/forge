@@ -38,6 +38,17 @@ holds `MODEL_TIER_<ROLE>` keys, each set to `minimal`, `economy`, `standard`,
 catalog (`${VAULT_PATH}/_shared/model-catalog/catalog.json`) binds tiers to
 runtime models. Re-run `/forge-setup-models` to change model mappings.
 
+**Petra is not one of these subagents.** She runs in the main Copilot
+conversation and uses its selected session model; no `MODEL_TIER_PETRA` key
+or tier mapping controls her. Changing a role binding does not change Petra.
+An `inherit` role follows that same session model.
+
+For configuration-file locations, recovery from an unavailable session model,
+and terminal-only catalog repair, see
+[Copilot model troubleshooting and manual repair](../../../docs/SETUP.md#copilot-model-troubleshooting-and-manual-repair).
+Availability checks compare advertised model IDs, not account access or service
+health; entry validation is not a per-dispatch availability hook.
+
 Defaults (written by `install.sh`), tier assigned per role's judgment bar:
 
 | Key | Default tier | Role | Background |

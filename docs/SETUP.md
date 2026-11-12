@@ -156,6 +156,72 @@ During the first `/forge` onboarding, supply the model IDs enabled for your acti
 
 Confirmed manual mappings remain valid until you change them. System-sourced snapshots still expire after 24 hours; manual remapping accepts a structurally valid expired system catalog, retaining other runtime records with inactive bindings until each runtime is remapped. Resolution requires an exact tier and an active binding for the requested runtime — **there is no cross-tier fallback**. Check coverage with `forge-model-catalog.sh check-coverage --snapshot "${VAULT_PATH}/_shared/model-catalog/catalog.json" --binding claude` (or `--binding copilot-cli`), as appropriate.
 
+### Copilot model troubleshooting and manual repair
+
+**Petra is the main conversation, not a tier-bound subagent.** She uses the
+model selected in Copilot CLI for that session. There is no `MODEL_TIER_PETRA`
+or `forge-petra.agent.md`; `/forge-setup-models` changes role bindings, not
+Petra's model. A role configured as `inherit` also uses the session model.
+
+First identify which layer needs repair:
+
+| Layer | Where to look | What to change |
+|-------|---------------|----------------|
+| Petra / main session | Copilot's `/model` picker; user default in Copilot's `settings.json` | Select an available session model, independently of Forge |
+| Role -> tier | Installed `forge.conf`, normally `~/.copilot/forge.conf` | The relevant `MODEL_TIER_<ROLE>` key |
+| Tier -> model | **`<VAULT_PATH>/_shared/model-catalog/catalog.json`** | Active `copilot-cli` bindings in `records`; prefer the setup script below |
+| Rendered role -> model | Installed `agents/forge-*.agent.md`, normally under `~/.copilot/agents/` | Regenerate from the policy and catalog; do not repair generated frontmatter by hand |
+
+Read `VAULT_PATH` from the installed `forge.conf` to find the catalog. If
+`COPILOT_HOME` is customized, use that directory instead of `~/.copilot`.
+The catalog belongs to the vault, not to the Forge source checkout.
+
+**If Copilot fails before `/forge` can run:** select an available model with
+`/model <model-id>`, or launch `copilot --model <model-id>`. To save a default
+for new sessions, use `/model --global <model-id>` or `/config model <model-id>`.
+A session-only switch does not update that default. Trusted repository defaults
+can override the user default, and resumed sessions retain their own model.
+Changing Forge's catalog cannot repair an unavailable main-session model.
+
+**If a Forge role binding needs repair:** use `/forge-setup-models` after
+recovering the session. You can also run its interactive script directly in
+your terminal, without a working model conversation:
+
+```bash
+"/absolute/copilot/directory/skills/forge-setup-models/scripts/forge-setup-models.sh"
+```
+
+Replace the example directory with the absolute installed Copilot directory.
+The script defaults to `copilot-cli`; supply the model IDs available to you
+and choose all four tier mappings. It validates the candidate before publishing,
+preserves role-to-tier policy and other runtime records, and regenerates Copilot
+agent models. Restart Copilot CLI afterward, then run `/forge`.
+
+For a manual `MODEL_TIER_<ROLE>` edit, regenerate the agent definitions after
+saving `forge.conf`. For a hand-edited catalog, back it up first, preserve its
+schema and other runtime records, and check both coverage and availability;
+syntactically valid JSON alone does not establish usable bindings.
+These standalone commands provide the checks and regeneration:
+
+```bash
+"/absolute/copilot/directory/scripts/forge-model-catalog.sh" check-coverage --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json" --binding copilot-cli
+"/absolute/copilot/directory/scripts/forge-model-catalog.sh" check-availability --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json" --available "<comma-separated-available-model-ids>"
+"/absolute/copilot/directory/scripts/forge-model-catalog.sh" render-agents --snapshot "/absolute/vault/path/_shared/model-catalog/catalog.json" --src-dir "/absolute/copilot/directory/agents" --available "<comma-separated-available-model-ids>"
+```
+
+Substitute all paths and the available-model list before running each command.
+Stop on a failed check; do not dispatch an affected role. Successful rendering
+still requires a Copilot restart to load the changed definitions.
+
+**What the safeguards cover:** `/forge` entry compares bindings with the
+model IDs advertised by Copilot's task tool and checks rendered-agent drift.
+Missing IDs are reported with a replacement suggestion when possible; remapping
+requires confirmation, with no silent cross-tier fallback. This is not an
+account-entitlement or service-health probe, and it is not an automatic check
+before every dispatch. Access changes during a session can still cause a role
+call to fail. The model-override hook guards explicit dispatch overrides, not
+availability.
+
 ## GitHub Copilot CLI adapter
 
 The Copilot adapter is a separate runtime binding. It leaves the Claude adapter
