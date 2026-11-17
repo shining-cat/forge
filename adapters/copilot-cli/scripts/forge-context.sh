@@ -182,14 +182,17 @@ extract_marker_project() {
   case "$marker_text" in
     ""|"__pending__") return 0 ;;
   esac
-  # Try parse as JSON first
-  proj=$(echo "$marker_text" | jq -r '.project // empty' 2>/dev/null)
-  if [ -n "$proj" ]; then
-    echo "$proj"
+  if printf '%s' "$marker_text" | jq empty >/dev/null 2>&1; then
+    proj=$(printf '%s' "$marker_text" | jq -sr '
+      if length == 1 and (.[0] | type) == "object"
+      then .[0].project | select(type == "string") else empty end
+    ' 2>/dev/null) || return 0
+    [ -z "$proj" ] || printf '%s\n' "$proj"
   else
-    # Legacy plain-string marker — first line is the project name
-    echo "$marker_text" | head -1
+    case "$marker_text" in \{*|\[*|\"*) return 0 ;; esac
+    printf '%s\n' "$marker_text" | head -1
   fi
+  return 0
 }
 
 # Given a project name, scan $VAULT_PATH/*/{project}/ to determine which ENV
@@ -271,13 +274,27 @@ session_owns_forge() {
   case "$marker_text" in
     ""|"__pending__") return 1 ;;
   esac
-  marker_session=$(echo "$marker_text" | jq -r '.session_id // empty' 2>/dev/null)
-  # Legacy plain-string marker → preserve old global behavior
-  [ -z "$marker_session" ] && return 0
-  # JSON marker — compare session IDs
+  if ! printf '%s' "$marker_text" | jq empty >/dev/null 2>&1; then
+    case "$marker_text" in \{*|\[*|\"*) return 1 ;; esac
+    return 0  # Legacy plain-text project, not malformed JSON.
+  fi
+  # Compare JSON strings: raw command substitution strips trailing newlines.
+  marker_session=$(printf '%s' "$marker_text" | jq -ces '
+    if length == 1 and (.[0] | type) == "object"
+    then .[0].session_id | select(type == "string") | select(test("\\S"))
+    else empty end
+  ' 2>/dev/null) || return 1
   current_session="${COPILOT_SESSION_ID:-}"
-  if [ -z "$current_session" ] && [ -n "${STDIN_JSON:-}" ]; then
-    current_session=$(echo "$STDIN_JSON" | jq -r '.session_id // empty' 2>/dev/null)
+  if [ -n "$current_session" ]; then
+    [[ "$current_session" =~ [^[:space:]] ]] || return 1
+    current_session=$(jq -cn --arg session "$current_session" '$session') || return 1
+  elif [ -n "${STDIN_JSON:-}" ]; then
+    current_session=$(printf '%s' "$STDIN_JSON" | jq -ce '
+      (.session_id // .sessionId // empty)
+      | select(type == "string") | select(test("\\S"))
+    ' 2>/dev/null) || return 1
+  else
+    return 1
   fi
   [ "$marker_session" = "$current_session" ]
 }
@@ -3239,14 +3256,16 @@ do_set_marker() {
         exit 1
       fi
       local session="${COPILOT_SESSION_ID:-}"
+      if [[ ! "$session" =~ [^[:space:]] ]]; then
+        echo "[forge-context] set-marker active requires a nonblank session ID (COPILOT_SESSION_ID or COPILOT_AGENT_SESSION_ID)" >&2
+        exit 1
+      fi
       local started
       started="$(date +'%Y-%m-%dT%H:%M:%S%z')"
-      local tmux_pane_json="null"
-      if [ -n "${TMUX_PANE:-}" ]; then
-        tmux_pane_json="\"$TMUX_PANE\""
-      fi
-      printf '{"session_id":"%s","project":"%s","started_at":"%s","tmux_pane":%s}' \
-        "$session" "$project" "$started" "$tmux_pane_json" > "$MARKER"
+      jq -cn --arg session "$session" --arg project "$project" \
+        --arg started "$started" --arg pane "${TMUX_PANE:-}" \
+        '{session_id:$session, project:$project, started_at:$started,
+          tmux_pane:(if $pane == "" then null else $pane end)}' > "$MARKER"
       # Flip the project checkpoint's session flag so statusline reflects active
       # state immediately (avoids stale `💾 dormant` indicator on session resume).
       local project_vault_dir
