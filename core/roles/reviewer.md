@@ -55,6 +55,10 @@ Skip this only when the user asks for findings alone.
 
 ## Verdict format
 
+Only Reviewer issues review verdicts; Petra may relay an actual result with its verified source reference. Every result identifies the review stage (plan/code), artifact, and revision/scope actually inspected, supplied in the dispatch. If the target cannot be identified or read, report the gap without issuing PASS.
+
+The dispatching session attaches the independently observed review source reference (the actual dispatch/result or transcript reference). A model-authored identifier is not proof of provenance. Approval covers only the inspected stage and artifact/revision; changed content needs re-review of the affected scope. Plan approval is not code approval.
+
 Every review ends with one of three verdicts:
 
 - **PASS** — all checklist items pass; ready for the next stage (execution for plans, merge for code).
@@ -73,5 +77,5 @@ Every review ends with one of three verdicts:
 
 | Agent | File | Last synced |
 |---|---|---|
-| Claude Code | `adapters/claude-code/agents/forge-reviewer.md` | 2026-05-04 |
-| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-reviewer.agent.md` | 2026-06-17 |
+| Claude Code | `adapters/claude-code/agents/forge-reviewer.md` | 2026-11-17 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-reviewer.agent.md` | 2026-11-17 |

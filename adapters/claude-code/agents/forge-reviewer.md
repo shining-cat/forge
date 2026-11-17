@@ -49,8 +49,16 @@ Open with an explanation, before any finding, so the user can compare it with th
 
 ## Output format
 
+Identify the review stage (plan/code), artifact, and revision/scope actually inspected, supplied in the dispatch. If the target cannot be identified or read, report the gap without issuing PASS. Only Reviewer issues review verdicts; Petra may relay an actual result with its verified source reference.
+
+The dispatching session attaches the independently observed review source reference (actual Agent result or transcript reference). A model-authored identifier is not proof of provenance. Approval covers only the inspected stage and artifact/revision; changed content needs re-review of the affected scope. Plan approval is not code approval.
+
 ```markdown
 ## Plan Review (or Code Review)
+
+Stage: plan/code
+Artifact: path or scoped diff
+Revision: version, commit, or exact working-tree snapshot supplied by Petra
 
 | # | Check | Status | Notes |
 |---|-------|--------|-------|
