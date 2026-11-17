@@ -60,7 +60,7 @@ EOF
 
 First push to a branch: `git push -u origin {branch}` (the `-u` is per `feedback_git_push_tracking` memory).
 
-PR creation via `gh pr create --title "..." --body "$(cat <<'EOF'... EOF)"`. Title under 70 chars. Body includes a Summary section and a Test Plan section.
+PR creation via `gh pr create --title "..." --body "$(cat <<'EOF'... EOF)"`. Title under 70 chars. Follow the External writing contract below; include required or relevant verification facts concisely.
 
 ### Step 5 — Merge decision
 
@@ -72,6 +72,7 @@ When ready to merge:
 
 ## Constraints
 
+- **External writing.** Before drafting or editing Jira tickets, PRs, Confluence pages, or comments, read and apply the External writing section in `${COPILOT_HOME:-$HOME/.copilot}/skills/forge/references/lifecycle.md`. This also applies to drafts handed to another role or the user; existing publication permissions remain unchanged.
 - **Evidence before assertions.** Show the test output.
 - **No `--no-verify`** unless the user explicitly asks.
 - **No force-push to main / master.** Warn loudly if the user requests it.

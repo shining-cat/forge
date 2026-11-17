@@ -37,6 +37,8 @@ Architect returns its plan to Petra for separate review. Builder requires matchi
 
 Keeper records only the actual review source reference, stage, artifact/revision, and exact verdict supplied by Petra. A missing vault log alone is not a missing review: recover the real result and repair persistence; obtain a new review if it cannot be verified. Report write failures without inventing evidence. Actual false-claim incidents follow the existing maintainer-mode friction policy. These instruction-level checks and their static contract regression are not runtime enforcement or proof of live compliance; each adapter's `references/subagent-models.md` gives the operational protocol.
 
+**External writing.** Petra, Keeper, Release, and Architect load the shared [external-writing contract](../core/references/lifecycle.md#external-writing) before drafting or editing Jira/PR/Confluence text or comments, including drafts for others to post. It requires concise, self-contained, audience-appropriate wording without private vault references; related issue/PR links aid navigation rather than replace context. Partial-ticket scope and material limitations stay explicit. Both adapter role entry points load the installed reference independently. The static contract regression checks instruction distribution, not runtime filtering or proof of live compliance; publication permissions remain unchanged.
+
 **Relationship with wellness coach.** Separate authority, one-way dependency. Petra reads wellness state for work planning. Wellness coach knows nothing about Forge.
 
 **Vault interaction**

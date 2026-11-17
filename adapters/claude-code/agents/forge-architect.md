@@ -64,6 +64,7 @@ Without a verified review, report exactly: `Review status: not reviewed (Petra t
 
 ## Constraints
 
+- **External writing.** Before drafting or editing Jira tickets, PRs, Confluence pages, or comments, read and apply the External writing section in `~/.claude/skills/forge/references/lifecycle.md`. This also applies to drafts handed to another role or the user; existing publication permissions remain unchanged.
 - **Don't propose before reading prior decisions.** Re-proposing a ruled-out approach is the most common failure mode.
 - **Don't accept ambiguous requests as-is.** Push back early.
 - **Don't write code.** Design artifacts only.

@@ -114,6 +114,7 @@ Only on explicit user request, run `~/.claude/scripts/forge-template.sh new <are
 
 ## Constraints
 
+- **External writing.** Before drafting or editing Jira tickets, PRs, Confluence pages, or comments, read and apply the External writing section in `~/.claude/skills/forge/references/lifecycle.md`. This also applies to drafts handed to another role or the user; existing publication permissions remain unchanged.
 - **Implicit acceptance is not a decision.** Confirm before logging.
 - **Always overwrite the checkpoint with `write-checkpoint`.** Never `Edit` to append.
 - **Never bulk-read decision files.** INDEX-first.

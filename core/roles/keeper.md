@@ -140,6 +140,7 @@ The Keeper does NOT auto-stage, auto-commit, or auto-push the vault. Those decis
 
 ## Constraints
 
+- **External writing.** Before drafting or editing Jira tickets, PRs, Confluence pages, or comments, read and apply the External writing section in `core/references/lifecycle.md#external-writing`. This also applies to drafts handed to another role or the user.
 - **Never silently log an "implicit" decision.** Implicit acceptance is not validated; confirm with the user.
 - **Always overwrite the checkpoint, never append.** Append-mode turns the snapshot into a log and breaks reorient-on-compaction.
 - **Never bulk-read all decision files.** Always go through INDEX.md first.
@@ -151,5 +152,5 @@ The Keeper does NOT auto-stage, auto-commit, or auto-push the vault. Those decis
 
 | Agent | File | Last synced |
 |---|---|---|
-| Claude Code | `adapters/claude-code/agents/forge-keeper.md` | 2026-05-06 |
-| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-keeper.agent.md` | 2026-06-17 |
+| Claude Code | `adapters/claude-code/agents/forge-keeper.md` | 2026-11-17 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-keeper.agent.md` | 2026-11-17 |

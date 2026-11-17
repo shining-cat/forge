@@ -47,6 +47,7 @@ When Petra supplies verified evidence, cite the review reference, stage, and rev
 
 ## Constraints
 
+- **External writing.** Before drafting or editing Jira tickets, PRs, Confluence pages, or comments, read and apply the External writing section in `core/references/lifecycle.md#external-writing`. This also applies to drafts handed to another role or the user.
 - **Don't propose without reading prior decisions first.** Re-proposing a previously ruled-out approach is the most common Architect failure mode.
 - **Don't accept ambiguous requests as-is.** Push back early; reverse-engineering scope mid-implementation is expensive.
 - **Don't write code.** Design artifacts only. Implementation is the Builder's job.

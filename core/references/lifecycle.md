@@ -44,6 +44,26 @@
 - Stored in vault as next week's starting context
 - Wind-down — transitioning from work mode to weekend
 
+## External writing
+
+Apply before drafting or editing Jira tickets, PR titles and descriptions,
+Confluence pages, or comments, including drafts prepared for someone else to post.
+
+- Use concise Why/What wording by default; honor explicit user/project formats.
+  Keep Jira accessible; PR technical. Preserve facts the reader needs to act.
+- Make each artifact self-contained and use its own wording. Related issue keys and PR URLs
+  aid navigation but never replace essential context or defer the explanation elsewhere.
+- Never mention a user's private vault or disclose its paths, note links, backlinks,
+  checkpoint/decision references, or other private note metadata in external artifacts.
+  Do not paste private notes; restate only relevant, externally appropriate facts.
+  Normal repository paths and links appropriate for the destination's audience remain allowed.
+- Describe the work covered, not omitted-work inventories or internal process.
+  Keep partial-ticket scope explicit and preserve material limitations needed to understand the change.
+- Before handoff or publication, reread the complete title/body/comment for unnecessary
+  prose, missing context, and private references; remove or rewrite any offending text.
+- These are writing safeguards, not permission to publish. Existing approval requirements,
+  authorship choices, and role boundaries still apply.
+
 ## Spec-Runtime Sync Rule
 
 When modifying any forge component (skills, hooks, roles, vault structure), the change **must** be reflected in the corresponding `docs/` file in the Forge repo, in the same action. The repo docs describe what the forge IS — if they drift from what the forge DOES, they become misleading for users.
