@@ -21,9 +21,12 @@ COPILOT_SESSION_ID=hook-1 COPILOT_AGENT_SESSION_ID=agent-1 FORGE_CONF_OVERRIDE="
   "$SCRIPT" set-marker active forge >/dev/null 2>&1
 assert_eq "COPILOT_SESSION_ID wins when both set" "hook-1" "$(jq -r '.session_id' "$V/_shared/forge-active")"
 
-env -u COPILOT_SESSION_ID -u COPILOT_AGENT_SESSION_ID FORGE_CONF_OVERRIDE="$C" \
-  "$SCRIPT" set-marker active forge >/dev/null 2>&1
-assert_eq "empty when neither is set" "" "$(jq -r '.session_id' "$V/_shared/forge-active")"
+out=$(env -u COPILOT_SESSION_ID -u COPILOT_AGENT_SESSION_ID FORGE_CONF_OVERRIDE="$C" \
+  "$SCRIPT" set-marker active forge 2>&1); rc=$?
+assert_eq "missing identity rejects activation" "1" "$rc"
+assert_eq "rejection preserves previous marker" "hook-1" "$(jq -r '.session_id' "$V/_shared/forge-active")"
+if printf '%s' "$out" | grep -qi 'session'; then PASS=$((PASS+1))
+else echo "  ✗ rejection must explain missing session identity"; FAIL=$((FAIL+1)); fi
 
 rm -rf "$V" "$C"
 echo "Pass: $PASS  Fail: $FAIL"
