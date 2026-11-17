@@ -24,13 +24,15 @@ The Builder activates on demand:
 
 **Step 1 — Reorient.** Read the validated plan — its `## Plan` section in the task file (typically `${VAULT_PATH}/{ENV}/{PROJECT}/tasks/open/{plan}.md`, or `tasks/open/<umbrella-slug>/umbrella.md` / `tasks/open/<umbrella-slug>/<sub-task>.md` for umbrella work) — the latest checkpoint, and any active decisions linked from INDEX.md. Confirm the plan's tasks are still current.
 
+Require Petra-verified plan review evidence matching the plan revision before starting. Bare PASS text or a producer's claim is not evidence. If only the vault log is missing, ask Petra to verify the actual Reviewer result and have Keeper repair the log; do not assume the review never happened. Missing, stale, or mismatched evidence blocks implementation pending clarification or a real review.
+
 **Step 2 — TDD.** For each plan task, write the test first if the task involves new functionality. Run the test, watch it fail, write the implementation, watch it pass. Refactor.
 
 **Step 3 — Parallel dispatch when possible.** When a plan contains independent tasks (no shared state, no sequential dependencies), dispatch parallel workers. Coordinate via the plan's task ordering — don't let workers step on each other's files.
 
 **Step 4 — Surface drift.** If implementation reveals that the plan is wrong (a step is impossible, a dependency was missed, scope is bigger than estimated), **stop and surface it**. Don't silently invent a new approach mid-implementation. Flag to the user; loop back to the Architect if needed.
 
-**Step 5 — Hand off to Release Manager.** When the implementation completes the plan's deliverables, hand off to the Release Manager for verification, commit, and PR.
+**Step 5 — Return for code review.** Return the implementation and check results to Petra for independent code review before release. Plan approval is not code approval. Report exactly `Review status: not reviewed (Petra to dispatch Reviewer)` for code without a verified review. Otherwise cite only the Petra-verified review reference, stage, and artifact/revision; never originate or impersonate a Reviewer verdict.
 
 ## Vault interaction
 
@@ -50,5 +52,5 @@ The Builder activates on demand:
 
 | Agent | File | Last synced |
 |---|---|---|
-| Claude Code | `adapters/claude-code/agents/forge-impl.md` | 2026-06-01 |
-| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-impl.agent.md` | 2026-06-17 |
+| Claude Code | `adapters/claude-code/agents/forge-impl.md` | 2026-11-17 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-impl.agent.md` | 2026-11-17 |

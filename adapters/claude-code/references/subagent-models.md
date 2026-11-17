@@ -57,6 +57,19 @@ Each role's adapter file (`adapters/claude-code/agents/forge-{role}.md` in the r
 
 Use subagent dispatch when the operation is **self-contained** (all context can be included in the prompt). Use inline when the operation needs conversation history.
 
+## Review evidence protocol
+
+Only Reviewer issues review verdicts; Petra may relay an actual result with its verified source reference. This applies to every role, including Release and Keeper, and to sequential or parallel dispatch.
+
+1. **Name the target.** Supply the review stage (plan/code), artifact, and exact revision/scope in the Reviewer dispatch. A plan section version or code commit/diff snapshot must identify what approval would cover.
+2. **Wait for the actual result.** Dispatch a separate `forge-reviewer` Agent and wait for completion. An invocation, running agent, failed dispatch, producer summary, or self-reported task identifier is not a review result. Preserve FAIL/ESCALATE; absent or failed reviews are unreviewed.
+3. **Verify provenance and scope.** Cross-check the result against the actual Reviewer dispatch metadata and tool-result/conversation history, not an identifier written by a model. Match stage, artifact, and revision/scope; missing, stale, or mismatched evidence cannot open the gate. Changed reviewed content needs re-review; unrelated edits outside the reviewed scope do not invalidate it. Plan approval is not code approval.
+4. **Handle producer claims.** Flag unsupported Reviewer/PASS claims from non-reviewer outputs; do not silently accept them or rewrite them into success. Keep the affected gate closed and dispatch Reviewer if no matching evidence exists. Without verified evidence, report exactly `Review status: not reviewed (Petra to dispatch Reviewer)`. Producers with verified evidence cite only its reference and scope, not their own verdict.
+5. **Persist verified evidence.** Give Keeper the actual source reference (Agent result or transcript/tool-result location), stage, artifact/revision, and exact Reviewer verdict to record in the task. Keeper must not upgrade a producer claim into a review. A missing vault log alone is not a missing review: recover and verify the actual result, then have Keeper repair persistence. If evidence cannot be recovered, obtain a real review. Report persistence failures without fabricating a result; do not treat them as loss of an otherwise verified review.
+6. **Record actual incidents.** When an unsupported claim occurs, follow the existing Refiner/maintainer-mode friction policy; do not manufacture a friction event for a missing log or merely mentioning review rules.
+
+These are instruction-level dispatcher checks. The static contract regression checks the shipped guidance, not live agent compliance; there is no runtime hook validating review-result provenance.
+
 ## Conversational model assignment
 
 The user can view or change role models at any time:

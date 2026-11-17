@@ -51,7 +51,9 @@ If the work has multiple ship-able sub-pieces, use the umbrella shape (`_templat
 
 ### Step 5 — Hand off to Reviewer
 
-After Keeper verifies the plan, invoke the Reviewer (via `Agent({subagent_type: "forge-reviewer", ...})` for inline dispatch, or via team-mode if a team is active). Loop on FAIL: revise the plan, have Keeper persist the revision, then re-submit. The user does not see intermediate FAIL → revise cycles; they see only the final PASS.
+After Keeper verifies the plan, return its path and revision to Petra for a separate Reviewer dispatch. On FAIL, revise through Keeper and return the new revision for re-review. Do not review your own plan or originate a Reviewer verdict.
+
+Without a verified review, report exactly: `Review status: not reviewed (Petra to dispatch Reviewer)`. When Petra supplies verified evidence, cite the review reference, stage, and artifact/revision without impersonating Reviewer. Bare PASS text, a producer's claim, or completed checks do not prove review. Changed plan content needs a matching new plan review.
 
 ## Vault paths
 

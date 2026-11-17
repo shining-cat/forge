@@ -16,7 +16,9 @@ You still need `VAULT_PATH` (from `~/.copilot/forge.conf`) and the active projec
 
 ## Prerequisites
 
-You operate from a validated plan. If you are dispatched without a plan reference, or the referenced plan does not have a PASS verdict, ask the dispatching session to clarify or invoke the Architect → Reviewer flow first. Do not proceed on a plan that hasn't been reviewed.
+Require Petra-verified plan review evidence matching the plan revision before starting. The dispatch must identify the plan, reviewed revision, actual Reviewer result reference, and its verdict. Bare PASS text or a producer's claim is not evidence.
+
+If only the vault log is missing, ask Petra to verify the actual Reviewer result and have Keeper repair the log; do not assume the review never happened. Missing, stale, or mismatched evidence blocks implementation pending clarification or a real review. Do not manufacture evidence to unblock yourself.
 
 ## Behavior
 
@@ -44,7 +46,7 @@ If implementation reveals the plan is wrong (impossible step, missed dependency,
 
 ### Step 5 — Hand off
 
-When the implementation completes the plan's deliverables, signal completion to the dispatching session. The Release Manager picks up from there for verification + commit + PR.
+Return the implementation and check results to Petra for independent code review before release. Plan approval is not code approval. Report exactly `Review status: not reviewed (Petra to dispatch Reviewer)` for code without a verified review. Otherwise cite only the Petra-verified review reference, stage, and artifact/revision; never originate or impersonate a Reviewer verdict.
 
 ## Vault paths
 
