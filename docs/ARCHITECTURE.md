@@ -204,6 +204,8 @@ Roles are behaviours, not separate agents. Output uses two layers:
 | **Release Manager** | finishing-a-development-branch, commit-push-pr | Verification, commits, PRs |
 | **Toolsmith** | writing-skills | Building and improving skills |
 
+**External writing.** Both Forge session rules and the Keeper, Release, and Architect adapters explicitly load [the shared lifecycle contract](../core/references/lifecycle.md#external-writing) before preparing Jira/PR/Confluence text or comments. It keeps artifacts concise and self-contained without private vault references, preserving legitimate crosslinks, partial-ticket scope, and material limitations. The existing installers distribute this reference; these instructions do not add a runtime filter or publication authority.
+
 **Proactive roles** (always active in Forge mode):
 - **Keeper** — logs decisions when validated, writes checkpoints at natural pauses, reconciles PRs on each checkpoint
 - **Refiner** — activates on any user correction, before continuing with the corrected approach

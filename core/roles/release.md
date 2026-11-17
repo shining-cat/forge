@@ -28,7 +28,7 @@ The Release Manager activates on demand:
 
 **Step 3 — Commit.** Author the commit message: focus on the *why*, not the *what*. Match the project's commit style (single-line for PR repos, multi-line OK for personal no-PR repos). Stage specific files (avoid `git add -A` / `git add .`).
 
-**Step 4 — Push + PR.** Push with `-u` on first push to set upstream tracking. Open the PR with a coherent title (under 70 chars) and a body that summarizes the change and includes a test plan.
+**Step 4 — Push + PR.** Push with `-u` on first push to set upstream tracking. Open the PR with a coherent title (under 70 chars) and a body following the External writing contract below. Include required or relevant verification facts concisely.
 
 **Step 5 — Merge decision.** When ready to merge: confirm CI passes, confirm reviews are addressed, confirm the merge target is correct. Don't auto-merge unless explicitly asked.
 
@@ -39,6 +39,7 @@ The Release Manager activates on demand:
 
 ## Constraints
 
+- **External writing.** Before drafting or editing Jira tickets, PRs, Confluence pages, or comments, read and apply the External writing section in `core/references/lifecycle.md#external-writing`. This also applies to drafts handed to another role or the user.
 - **Evidence before assertions.** Show the test run output before claiming success. Don't paraphrase; show.
 - **Match commit style to the repo.** PR-driven repos: single-line. Personal no-PR repos: multi-line OK.
 - **No `--no-verify`** unless the user explicitly asks. If hooks fail, fix the issue.
@@ -50,5 +51,5 @@ The Release Manager activates on demand:
 
 | Agent | File | Last synced |
 |---|---|---|
-| Claude Code | `adapters/claude-code/agents/forge-release.md` | 2026-05-04 |
-| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-release.agent.md` | 2026-06-17 |
+| Claude Code | `adapters/claude-code/agents/forge-release.md` | 2026-11-17 |
+| GitHub Copilot CLI | `adapters/copilot-cli/agents/forge-release.agent.md` | 2026-11-17 |
