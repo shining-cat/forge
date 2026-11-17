@@ -38,7 +38,7 @@ are separate adapters over the same role-neutral core.
 
 | Component | Type | What it does |
 |-----------|------|-------------|
-| `wellness-timer.py` | Hook (PreToolUse + Stop) | Runtime break timer — injects reminders, blocks tools on strike. Stop tick covers workflows where PreToolUse fires too rarely (user reading long agent output). Schedule-aware defer for in-progress / imminent meetings. |
+| `wellness-timer.py` | Hook (PreToolUse + Stop) | Runtime break timer — injects reminders, blocks tools on strike. Stop tick covers workflows where PreToolUse fires too rarely (user reading long agent output). Schedule-aware defer for in-progress / imminent meetings. Lock detection selects the newest qualifying completed period, skipping later sub-threshold re-locks; existing tier-specific timestamp gates prevent repeat credit. |
 | `wellness-precompact.py` | Hook (PreCompact) | Break suggestion during compaction |
 | `idle-sampler.py` | Daemon (launchd, 60s) | Samples screen state when activity monitor is enabled. Marker-gated: no-ops when Forge isn't active. |
 | `approval-notifier.sh` | Hook (PreToolUse) | Notification on tool approval prompts |

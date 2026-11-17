@@ -267,19 +267,18 @@ def read_idle_log():
 
 def find_last_screen_off_break(samples, micro_threshold_minutes=None,
                                real_threshold_minutes=None):
-    """Find the last lock/off period and classify it into a tier.
+    """Find the newest qualifying completed lock/off period and its tier.
 
     Returns a tuple (timestamp_iso, duration_minutes, tier) where tier is:
       "real"  — duration ≥ real_threshold
       "micro" — micro_threshold ≤ duration < real_threshold
-    Returns None if no qualifying lock period is found (duration < micro
-    threshold, or no off→on transition in the samples).
+    Returns None if no completed lock period meets the micro threshold.
 
     The caller uses the tier to decide credit semantics:
       "real"  → resets both timers, clears strike, logs "auto-real"
       "micro" → resets 🙆 only, does NOT clear strike, logs "auto-micro"
-    Sub-threshold locks return None and produce no log entry — they're noise
-    (phone glance, someone walking by).
+    Sub-threshold locks are skipped — they're noise (phone glance, someone
+    walking by) and must not hide an earlier qualifying period.
     """
     if micro_threshold_minutes is None:
         micro_threshold_minutes = MICRO_BREAK_LOCK_THRESHOLD_MINUTES
@@ -317,7 +316,7 @@ def find_last_screen_off_break(samples, micro_threshold_minutes=None,
             elif duration_min >= micro_threshold_minutes:
                 tier = "micro"
             else:
-                return None  # below noise floor — ignore entirely
+                continue  # below noise floor — scan earlier periods
 
             ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(break_end))
             return (ts, duration_min, tier)
